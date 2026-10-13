@@ -12,6 +12,17 @@ Dialog {
     }
     padding: 20
 
+    // [fork] The native style's title and button rows paint their own square-cornered panels,
+    // which cover the rounded background's corners
+    Component.onCompleted: {
+        if (header && header.background) {
+            header.background.visible = false
+        }
+        if (footer && footer.background) {
+            footer.background.visible = false
+        }
+    }
+
     onClosed: {
         // We must force focus back to the last item. If we don't,
         // gamepad and keyboard navigation will break after a
