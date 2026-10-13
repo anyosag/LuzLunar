@@ -86,7 +86,9 @@ jobs:
       - name: Use Xcode 26 or later
         shell: bash
         run: |
-          major=$(xcodebuild -version | head -n1 | grep -oE '[0-9]+' | head -n1)
+          # Read the whole output first: xcodebuild crashes if a pipe closes early (head)
+          version=$(xcodebuild -version)
+          major=$(echo "$version" | grep -oE '[0-9]+' | head -n1)
           if [ "${major:-0}" -lt 26 ]; then
             xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
             [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
