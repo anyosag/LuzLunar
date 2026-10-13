@@ -1,5 +1,6 @@
 import QtQuick 2.0
 import QtQuick.Controls 2.2
+import QtQuick.Controls.impl 2.15 // [fork] IconImage
 import QtQuick.Layouts 1.2
 
 NavigableDialog {
@@ -29,8 +30,10 @@ NavigableDialog {
             running: visible
         }
 
-        Image {
+        // [fork] Tinted in the text color: the icons are white-only SVGs, invisible in light mode (was Image)
+        IconImage {
             id: dialogImage
+            color: dialog.palette.windowText
             source: (standardButtons & Dialog.Yes) ?
                         "qrc:/res/baseline-help_outline-24px.svg" :
                         "qrc:/res/baseline-error_outline-24px.svg"

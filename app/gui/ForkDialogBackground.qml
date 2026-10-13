@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Effects
 
 // [fork] The panel behind dialogs on macOS: rounded, with a hairline border and a soft shadow, in
-// the system colors. NavigableDialog creates it on macOS only.
+// the system colors. NavigableDialog uses it as its background.
 Rectangle {
     property var dialog
 
