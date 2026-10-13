@@ -81,6 +81,22 @@ PLIST=$APP/Contents/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" $PLIST 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Add :CFBundleName string $APP_NAME" $PLIST || fail "Setting CFBundleName failed!"
 
+# A layered Icon Composer icon, which macOS 26 renders in Liquid Glass instead of boxing a legacy
+# icon. actool also writes LuzLunar.icns, the same icon flattened, for older macOS.
+echo Compiling the $APP_NAME app icon
+if xcrun actool "$SOURCE_ROOT/scripts/fork/$APP_NAME.icon" --compile $APP/Contents/Resources \
+     --app-icon $APP_NAME --include-all-app-icons --standalone-icon-behavior all \
+     --enable-on-demand-resources NO --development-region en --target-device mac --platform macosx \
+     --minimum-deployment-target 13.0 --output-partial-info-plist $BUILD_FOLDER/icon-info.plist; then
+  /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string $APP_NAME" $PLIST || fail "Setting CFBundleIconName failed!"
+  if [ -f $APP/Contents/Resources/$APP_NAME.icns ]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile $APP_NAME" $PLIST || fail "Setting CFBundleIconFile failed!"
+  fi
+  ls -la $APP/Contents/Resources | grep -E "Assets.car|\.icns"
+else
+  echo "::warning::actool couldn't compile the app icon; keeping Moonlight's icon"
+fi
+
 echo Checking the binary is arm64 only
 lipo -archs $APP/Contents/MacOS/$APP_NAME
 [ "$(lipo -archs $APP/Contents/MacOS/$APP_NAME)" == "arm64" ] || fail "Expected an arm64-only binary!"

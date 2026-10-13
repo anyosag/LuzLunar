@@ -133,6 +133,8 @@ jobs:
             LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
               perl -e 'alarm 120; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
           done
+          # The app icon as older macOS shows it (actool's flattened .icns)
+          sips -s format png build/build-Release/app/LuzLunar.app/Contents/Resources/LuzLunar.icns --out "$RUNNER_TEMP/screenshots/app-icon.png" || true
           ls -R "$RUNNER_TEMP/screenshots" || true
 
       - name: Upload UI screenshots
