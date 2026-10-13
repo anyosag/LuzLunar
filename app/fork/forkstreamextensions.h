@@ -5,6 +5,7 @@
 #include "SDL_compat.h"
 
 class ClipboardSync;
+class NotchBar;
 class NvComputer;
 class NvApp;
 
@@ -13,7 +14,7 @@ class NvApp;
 class ForkStreamExtensions
 {
 public:
-    ForkStreamExtensions(NvComputer* computer, const NvApp& app);
+    ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window);
     ~ForkStreamExtensions();
 
     ForkStreamExtensions(const ForkStreamExtensions&) = delete;
@@ -31,4 +32,5 @@ public:
 private:
     bool m_ShortcutGuard;
     std::unique_ptr<ClipboardSync> m_Clipboard;
+    std::unique_ptr<NotchBar> m_NotchBar;
 };

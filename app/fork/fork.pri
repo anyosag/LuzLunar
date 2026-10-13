@@ -8,7 +8,8 @@ SOURCES += \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
     $$PWD/forkstreamextensions.cpp \
-    $$PWD/streamprofiles.cpp
+    $$PWD/streamprofiles.cpp \
+    $$PWD/streamstats.cpp
 
 HEADERS += \
     $$PWD/apolloclient.h \
@@ -18,11 +19,14 @@ HEADERS += \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
     $$PWD/streamprofiles.h \
-    $$PWD/mac/macintegration.h
+    $$PWD/streamstats.h \
+    $$PWD/mac/macintegration.h \
+    $$PWD/mac/notchbar.h
 
 macx {
     SOURCES += \
-        $$PWD/mac/macintegration.mm
+        $$PWD/mac/macintegration.mm \
+        $$PWD/mac/notchbar.mm
 }
 
 RESOURCES += \

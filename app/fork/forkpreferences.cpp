@@ -4,6 +4,7 @@
 
 #define SER_KEYTARGETS "fork/keyTargets"
 #define SER_CLIPBOARDSYNC "fork/clipboardSync"
+#define SER_NOTCHBAR "fork/notchBar"
 
 namespace
 {
@@ -36,7 +37,8 @@ ForkPreferences* ForkPreferences::get()
 ForkPreferences::ForkPreferences(QObject* parent)
     : QObject(parent),
       m_KeyMap(defaultKeyMap()),
-      m_ClipboardSyncMode(CSM_AUTOMATIC)
+      m_ClipboardSyncMode(CSM_AUTOMATIC),
+      m_NotchBar(true)
 {
     QSettings settings;
 
@@ -53,6 +55,19 @@ ForkPreferences::ForkPreferences(QObject* parent)
     if (mode >= CSM_OFF && mode <= CSM_AUTOMATIC) {
         m_ClipboardSyncMode = mode;
     }
+
+    m_NotchBar = settings.value(SER_NOTCHBAR, m_NotchBar).toBool();
+}
+
+void ForkPreferences::setNotchBar(bool enabled)
+{
+    if (enabled == m_NotchBar) {
+        return;
+    }
+
+    m_NotchBar = enabled;
+    QSettings().setValue(SER_NOTCHBAR, enabled);
+    emit notchBarChanged();
 }
 
 void ForkPreferences::setClipboardSyncMode(int mode)
