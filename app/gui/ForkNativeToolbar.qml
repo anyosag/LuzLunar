@@ -4,14 +4,14 @@ import WindowChrome 1.0
 
 // [fork] Shows main.qml's toolbar buttons in a native macOS toolbar, whose buttons are Liquid Glass
 // on macOS 26. Clicking a native button clicks its QML button, so each keeps its upstream behavior,
-// shortcuts included. Where the native toolbar isn't available, active stays false and the QML
-// toolbar stays.
+// shortcuts included. The QML button with keyboard focus is highlighted natively. Where the native
+// toolbar isn't available, active stays false and the QML toolbar stays.
 Item {
     id: root
 
     property var targetWindow
 
-    // Each entry: { id, button, symbol (SF Symbol name), label, toolTip, visible, navigational }
+    // Each entry: { id, button, symbol (SF Symbol name), label, toolTip, visible, navigational, focused }
     property var items: []
 
     // Hidden while a stream starts or ends, like the QML toolbar
@@ -30,7 +30,8 @@ Item {
                 "label": item.label,
                 "toolTip": item.toolTip || "",
                 "visible": item.visible !== false,
-                "navigational": item.navigational === true
+                "navigational": item.navigational === true,
+                "focused": item.focused === true
             }
         }))
     }

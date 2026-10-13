@@ -25,8 +25,9 @@ public:
     // Takes over the window's title bar. Call once, after the window is created.
     Q_INVOKABLE void attach(QWindow* window);
 
-    // Each item is a map with id, symbol (SF Symbol name), label, toolTip, visible and,
-    // for back buttons, navigational. Items keep the order of the first call.
+    // Each item is a map with id, symbol (SF Symbol name), label, toolTip, visible, focused (its
+    // QML button has keyboard focus; highlighted natively) and, for back buttons, navigational.
+    // Items keep the order of the first call.
     Q_INVOKABLE void setToolbarItems(const QVariantList& items);
 
     // Hides the toolbar while a stream starts or ends, like the QML toolbar

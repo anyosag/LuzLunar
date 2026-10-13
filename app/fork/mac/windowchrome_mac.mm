@@ -13,7 +13,7 @@
     NSToolbar* m_Toolbar;
     NSArray<NSString*>* m_ItemIds;          // the items QML declared, in its order
     NSArray<NSString*>* m_ToolbarOrder;     // the same with the system spacers
-    // Per item id: label, symbol, image (built once per symbol), toolTip, navigational, hidden
+    // Per item id: label, symbol, image (built once per symbol), toolTip, navigational, hidden, focused
     NSMutableDictionary<NSString*, NSMutableDictionary*>* m_State;
 }
 - (instancetype)initWithOwner:(ForkWindowChrome*)owner;
@@ -107,6 +107,24 @@
         }
     }
 
+    // Keyboard and gamepad focus lives on the clipped QML buttons, so show it on the native item.
+    // macOS 26 makes the focused item prominent (configureItem); earlier versions select it.
+    if (@available(macOS 26.0, *)) {
+    }
+    else {
+        NSString* focusedId = nil;
+        for (NSString* itemId in m_ItemIds) {
+            NSDictionary* state = m_State[itemId];
+            if ([state[@"focused"] boolValue] && ![state[@"hidden"] boolValue]) {
+                focusedId = itemId;
+                break;
+            }
+        }
+        if (!(focusedId == m_Toolbar.selectedItemIdentifier || [focusedId isEqualToString:m_Toolbar.selectedItemIdentifier])) {
+            m_Toolbar.selectedItemIdentifier = focusedId;
+        }
+    }
+
     if (window.toolbar != m_Toolbar) {
         window.toolbar = m_Toolbar;
     }
@@ -145,6 +163,7 @@
         state[@"toolTip"] = (toolTip.isEmpty() ? item.value("label").toString() : toolTip).toNSString();
         state[@"navigational"] = @(item.value("navigational").toBool());
         state[@"hidden"] = @(!item.value("visible", true).toBool());
+        state[@"focused"] = @(item.value("focused").toBool());
     }
 }
 
@@ -166,10 +185,19 @@
             toolbarItem.hidden = hidden;
         }
     }
+    if (@available(macOS 26.0, *)) {
+        // Tinted with the accent color while its QML button has keyboard focus
+        NSToolbarItemStyle style = [state[@"focused"] boolValue] ? NSToolbarItemStyleProminent : NSToolbarItemStylePlain;
+        if (toolbarItem.style != style) {
+            toolbarItem.style = style;
+        }
+    }
 }
 
 - (void)itemClicked:(NSToolbarItem*)sender
 {
+    // A click selects a selectable item; only keyboard focus should leave it highlighted
+    m_Toolbar.selectedItemIdentifier = nil;
     m_Owner->notifyTriggered(QString::fromNSString(sender.itemIdentifier));
 }
 
@@ -183,6 +211,17 @@
 {
     (void)toolbar;
     return m_ToolbarOrder;
+}
+
+// Before macOS 26, selection is how the item whose QML button has keyboard focus is highlighted.
+// On macOS 26 selectable items lose the Liquid Glass button group, so none are selectable there.
+- (NSArray<NSToolbarItemIdentifier>*)toolbarSelectableItemIdentifiers:(NSToolbar*)toolbar
+{
+    (void)toolbar;
+    if (@available(macOS 26.0, *)) {
+        return @[];
+    }
+    return m_ItemIds;
 }
 
 - (NSToolbarItem*)toolbar:(NSToolbar*)toolbar

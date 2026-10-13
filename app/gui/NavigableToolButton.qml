@@ -3,6 +3,7 @@ import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 
 import SfSymbols 1.0 // [fork]
+import WindowChrome 1.0 // [fork]
 
 ToolButton {
     property string iconSource
@@ -11,6 +12,9 @@ ToolButton {
     property string symbolName
 
     activeFocusOnTab: true
+
+    // [fork] While the native toolbar shows these buttons, VoiceOver should only announce those
+    Accessible.ignored: WindowChrome.active
 
     // [fork] Toolbar-sized, tinted icons for the native macOS style
     // (upstream sizes the icon to the Material background for TV readability)
