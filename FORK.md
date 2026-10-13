@@ -36,12 +36,12 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 | `app/main.cpp` | The native `macOS` Quick Controls style on macOS instead of Material |
 | `app/gui/main.qml` | No Material import or background override; a transparent window `color` while the native chrome is active; `ForkNativeToolbar` before the header, with each button's `focused` state; while it's active the header is clipped to zero height but its buttons stay in the focus chain; Escape on a toolbar button returns to the page; the Settings button leaves the chain on the Settings page and the Update tooltip stays hidden with the native toolbar; `id: backButton`; `symbolName` on the toolbar buttons; title size |
 | `app/gui/NavigableToolButton.qml` | `symbolName` (an SF Symbol from the image provider, `iconSource` as fallback), 20 pt tinted icons, hidden from VoiceOver while the native toolbar shows them |
-| `app/gui/NavigableItemDelegate.qml` | Rounded card background on `QtQuick.Templates` |
+| `app/gui/NavigableItemDelegate.qml` | Rounded card background on `QtQuick.Templates`, with a `cornerRadius` property |
 | `app/gui/NavigableDialog.qml` | `ForkDialogBackground` as the background, padding, and the style's header and footer panels hidden |
 | `app/gui/NavigableMessageDialog.qml` | Icon is a tinted `IconImage` (was `Image`); `ForkBusyIndicator` |
 | `app/gui/StreamSegue.qml`, `QuitSegue.qml`, `CliPair.qml`, `CliStartStreamSegue.qml`, `CliQuitStreamSegue.qml` | `ForkBusyIndicator`, and the stage label at least its own height |
 | `app/gui/NavigableMenu.qml` | `popupType: Popup.Item` (in-window, so gamepad keys reach it) |
-| `app/gui/PcView.qml`, `app/gui/AppView.qml` | Tile, icon and font sizes; tinted `IconImage`s from 2x images; `ForkBusyIndicator` for the search spinner; no Material import |
+| `app/gui/PcView.qml`, `app/gui/AppView.qml` | Tile, icon and font sizes; tinted `IconImage`s from 2x images; AppView's box art cut to 12 pt rounded corners (`MultiEffect` mask) inside a card whose corners nest around it; `ForkBusyIndicator` for the search spinner; no Material import |
 | `app/gui/AutoResizingComboBox.qml` | Indicator null check; the Material popup color only off macOS; versionless Controls import and `popup.popupType: Popup.Item` (in-window, so gamepad keys reach it) |
 | `app/gui/SettingsView.qml` | Plain group box titles instead of sky blue |
 
