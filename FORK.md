@@ -30,6 +30,15 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 | `app/gui/appmodel.cpp`, `app/gui/computermodel.cpp`, `app/cli/startstream.cpp` | `new Session(...)` replaced with `StreamProfiles::createSession(...)` |
 | `app/gui/AppView.qml` | "Stream Settings..." menu item after "Hide Game", and the `StreamProfileDialog` next to `quitAppDialog` |
 | `app/streaming/video/ffmpeg.cpp` | `ForkStreamStats::publish()` in the once-a-second stats block of `submitDecodeUnit()` |
+| `app/main.cpp` | The native `macOS` Quick Controls style on macOS instead of Material |
+| `app/gui/main.qml` | No Material import or background override; `ForkNativeToolbar` before the header, which collapses while it's active; `id: backButton`; `symbolName` on the toolbar buttons; title size |
+| `app/gui/NavigableToolButton.qml` | `symbolName` and 20 pt tinted icons |
+| `app/gui/NavigableItemDelegate.qml` | Rounded card background on `QtQuick.Templates` |
+| `app/gui/NavigableDialog.qml` | `ForkDialogBackground` and padding on macOS |
+| `app/gui/NavigableMenu.qml` | `popupType: Popup.Window` |
+| `app/gui/PcView.qml`, `app/gui/AppView.qml` | Tile, icon and font sizes; tinted `IconImage`s; no Material import |
+| `app/gui/AutoResizingComboBox.qml` | Indicator null check; the Material popup color only off macOS |
+| `app/gui/SettingsView.qml` | Plain group box titles instead of sky blue |
 
 ## Fork features
 
@@ -55,3 +64,8 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
   - macOS keeps a fullscreen window below the notch, so the bar is a separate non-activating panel above the stream's level that joins its fullscreen Space. It uses Liquid Glass (`NSGlassEffectView`) on macOS 26 and vibrancy before that.
   - Stats come from the decoder's once-a-second stats tick, computed only while the bar is listening.
   - The bar shows only while the stream is fullscreen on the active Space of a display with a notch. Turn it off in Settings › Keyboard & Clipboard.
+- **Native macOS look** (`app/gui/Fork*.qml`, `app/fork/windowchrome.*`, `app/fork/mac/windowchrome.mm`):
+  - On macOS the app uses Qt's native `macOS` style, so controls follow the system appearance and accent color. Other platforms keep Material.
+  - On macOS 15 and later the main window gets a real `NSToolbar` (Liquid Glass buttons on macOS 26) with SF Symbols. `ForkNativeToolbar.qml` mirrors main.qml's toolbar buttons into it and clicks the QML button when a native one is clicked, so upstream's behavior and shortcuts stay. The QML toolbar collapses while the native one is active.
+  - Rounded tiles with hover, press and focus states; dialogs are rounded panels with a shadow.
+  - CI saves screenshots of the main views in light and dark (`app/fork/screenshotharness.cpp`, the `LuzLunar-screenshots-*` artifact).

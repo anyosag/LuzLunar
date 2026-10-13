@@ -92,10 +92,12 @@ CenteredGridView {
             id: searchSpinner
             visible: StreamingPreferences.enableMdns
             running: visible
+            implicitWidth: 28 // [fork] the native macOS style has no size of its own
+            implicitHeight: 28
         }
 
         Label {
-            height: searchSpinner.height
+            height: Math.max(searchSpinner.height, implicitHeight) // [fork] was searchSpinner.height
             elide: Label.ElideRight
             text: StreamingPreferences.enableMdns ? qsTr("Searching for compatible hosts on your local network...")
                                                   : qsTr("Automatic PC discovery is disabled. Add your PC manually.")

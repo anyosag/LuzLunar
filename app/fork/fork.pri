@@ -10,7 +10,8 @@ SOURCES += \
     $$PWD/forkstreamextensions.cpp \
     $$PWD/screenshotharness.cpp \
     $$PWD/streamprofiles.cpp \
-    $$PWD/streamstats.cpp
+    $$PWD/streamstats.cpp \
+    $$PWD/windowchrome.cpp
 
 HEADERS += \
     $$PWD/apolloclient.h \
@@ -21,13 +22,15 @@ HEADERS += \
     $$PWD/forkstreamextensions.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
+    $$PWD/windowchrome.h \
     $$PWD/mac/macintegration.h \
     $$PWD/mac/notchbar.h
 
 macx {
     SOURCES += \
         $$PWD/mac/macintegration.mm \
-        $$PWD/mac/notchbar.mm
+        $$PWD/mac/notchbar.mm \
+        $$PWD/mac/windowchrome.mm
 }
 
 RESOURCES += \

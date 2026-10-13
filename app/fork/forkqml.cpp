@@ -6,6 +6,7 @@
 
 #include "forkpreferences.h"
 #include "streamprofiles.h"
+#include "windowchrome.h"
 
 namespace
 {
@@ -26,6 +27,12 @@ namespace
             StreamProfiles* profiles = StreamProfiles::get();
             QQmlEngine::setObjectOwnership(profiles, QQmlEngine::CppOwnership);
             return profiles;
+        });
+        qmlRegisterSingletonType<ForkWindowChrome>("WindowChrome", 1, 0, "WindowChrome",
+                                                   [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkWindowChrome* chrome = ForkWindowChrome::get();
+            QQmlEngine::setObjectOwnership(chrome, QQmlEngine::CppOwnership);
+            return chrome;
         });
     }
 }

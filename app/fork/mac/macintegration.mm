@@ -1,5 +1,7 @@
 #include "macintegration.h"
 
+#include <QWindow>
+
 #import <AppKit/AppKit.h>
 
 namespace
@@ -35,4 +37,10 @@ bool MacIntegration::clipboardHasConcealedContent()
         return [types containsObject:@"org.nspasteboard.ConcealedType"] ||
                [types containsObject:@"org.nspasteboard.TransientType"];
     }
+}
+
+long MacIntegration::windowNumber(QWindow* window)
+{
+    NSView* view = reinterpret_cast<NSView*>(window->winId());
+    return view.window != nil ? view.window.windowNumber : 0;
 }

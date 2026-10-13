@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QGuiApplication>
 #include <QImage>
+#include <QProcess>
 #include <QQmlContext>
 #include <QQmlExpression>
 #include <QQuickWindow>
@@ -15,6 +16,8 @@
 #include <QTimer>
 
 #include <iterator>
+
+#include "mac/macintegration.h"
 
 namespace
 {
@@ -27,6 +30,14 @@ namespace
     // Each step runs its script, waits, then saves a screenshot
     const Step k_Steps[] = {
         { "1-computers", nullptr, 6000 },
+        // The CI Mac has no PCs, so show sample tiles in their states (online, offline, not paired)
+        { "1b-computer-tiles",
+          "stackView.currentItem.model = Qt.createQmlObject('import QtQuick; ListModel { "
+          "ListElement { name: \"GonzaloPC\"; online: true; paired: true; statusUnknown: false; serverSupported: true; wakeable: false; details: \"\" } "
+          "ListElement { name: \"Living Room\"; online: false; paired: true; statusUnknown: false; serverSupported: true; wakeable: true; details: \"\" } "
+          "ListElement { name: \"Office PC\"; online: true; paired: false; statusUnknown: false; serverSupported: true; wakeable: false; details: \"\" } "
+          "}', window); "
+          "stackView.currentItem.currentIndex = 0; stackView.currentItem.forceActiveFocus()", 1500 },
         { "2-settings-top", "settingsButton.clicked()", 2500 },
         { "3-settings-middle", "stackView.currentItem.contentY = Math.max(0, stackView.currentItem.contentHeight / 2 - stackView.currentItem.height / 2)", 1500 },
         { "4-settings-bottom", "stackView.currentItem.contentY = Math.max(0, stackView.currentItem.contentHeight - stackView.currentItem.height)", 1500 },
@@ -88,6 +99,18 @@ namespace
                 }
                 else {
                     qWarning() << "[fork] Couldn't save screenshot" << path;
+                }
+
+                // Qt's grab only has the QML content. The window server's capture also has the
+                // title bar and native toolbar, if the CI Mac allows screen capture.
+                if (long number = MacIntegration::windowNumber(window)) {
+                    QProcess capture;
+                    capture.start("/usr/sbin/screencapture",
+                                  { "-x", "-o", QString("-l%1").arg(number),
+                                    QDir(outputDir).filePath(QString::fromUtf8(step.name) + "-native.png") });
+                    if (!capture.waitForFinished(5000)) {
+                        capture.kill();
+                    }
                 }
             }
             runStep(outputDir, index + 1);

@@ -227,15 +227,39 @@ ApplicationWindow {
         }
     }
 
+    // [fork] On macOS 15+ the buttons below show in a native toolbar (Liquid Glass on macOS 26)
+    // and the QML toolbar collapses. Clicks go to the QML buttons.
+    ForkNativeToolbar {
+        id: nativeToolbar
+        targetWindow: window
+        shown: toolBar.visible
+        title: stackView.currentItem ? stackView.currentItem.objectName : ""
+        subtitle: stackView.currentItem instanceof SettingsView ? qsTr("Version %1").arg(SystemProperties.versionString) : ""
+        items: [
+            { "id": "back", "button": backButton, "symbol": "chevron.left", "label": qsTr("Back"),
+              "navigational": true, "visible": stackView.depth > 1 },
+            { "id": "update", "button": updateButton, "symbol": "arrow.down.circle", "label": qsTr("Update"),
+              "toolTip": updateButton.ToolTip.text, "visible": updateButton.browserUrl !== "" },
+            { "id": "discord", "button": discordButton, "symbol": "bubble.left.and.bubble.right", "label": qsTr("Discord"),
+              "toolTip": discordButton.ToolTip.text, "visible": SystemProperties.hasBrowser && stackView.currentItem instanceof SettingsView },
+            { "id": "addPc", "button": addPcButton, "symbol": "plus", "label": qsTr("Add PC"),
+              "toolTip": addPcButton.ToolTip.text, "visible": stackView.currentItem instanceof PcView },
+            { "id": "help", "button": helpButton, "symbol": "questionmark.circle", "label": qsTr("Help"),
+              "toolTip": helpButton.ToolTip.text, "visible": SystemProperties.hasBrowser },
+            { "id": "settings", "button": settingsButton, "symbol": "gearshape", "label": qsTr("Settings"),
+              "toolTip": settingsButton.ToolTip.text, "visible": !(stackView.currentItem instanceof SettingsView) }
+        ]
+    }
+
     header: ToolBar {
         id: toolBar
-        height: 52 // [fork] macOS toolbar height (was 60)
+        height: nativeToolbar.active ? 0 : 52 // [fork] macOS toolbar height (was 60), or none with the native toolbar
         anchors.topMargin: 5
         anchors.bottomMargin: 5
 
         Label {
             id: titleLabel
-            visible: toolBar.width > 700
+            visible: toolBar.width > 700 && !nativeToolbar.active // [fork]
             anchors.fill: parent
             text: stackView.currentItem.objectName
             font.pointSize: 15 // [fork] macOS title size (was 20)
@@ -246,12 +270,15 @@ ApplicationWindow {
         }
 
         RowLayout {
+            visible: !nativeToolbar.active // [fork] Shortcuts inside still work while hidden
             spacing: 10
             anchors.leftMargin: 10
             anchors.rightMargin: 10
             anchors.fill: parent
 
             NavigableToolButton {
+                id: backButton // [fork] for the native toolbar
+
                 // Only make the button visible if the user has navigated somewhere.
                 visible: stackView.depth > 1
 
