@@ -89,12 +89,10 @@ CenteredGridView {
         spacing: 5
         visible: pcGrid.count === 0
 
-        BusyIndicator {
+        ForkBusyIndicator { // [fork] was BusyIndicator
             id: searchSpinner
             visible: StreamingPreferences.enableMdns
             running: visible
-            implicitWidth: 28 // [fork] the native macOS style has no size of its own
-            implicitHeight: 28
         }
 
         Label {

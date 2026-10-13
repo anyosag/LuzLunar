@@ -24,7 +24,7 @@ NavigableDialog {
     RowLayout {
         spacing: 10
 
-        BusyIndicator {
+        ForkBusyIndicator { // [fork] was BusyIndicator
             id: dialogSpinner
             visible: false
             running: visible

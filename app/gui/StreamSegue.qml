@@ -204,7 +204,7 @@ Item {
         anchors.centerIn: parent
         spacing: 5
 
-        BusyIndicator {
+        ForkBusyIndicator { // [fork] was BusyIndicator
             id: stageSpinner
             running: visible
             visible: false
@@ -212,7 +212,7 @@ Item {
 
         Label {
             id: stageLabel
-            height: stageSpinner.height
+            height: Math.max(stageSpinner.height, implicitHeight) // [fork] was stageSpinner.height
             text: stageText
             font.pointSize: 20
             verticalAlignment: Text.AlignVCenter
