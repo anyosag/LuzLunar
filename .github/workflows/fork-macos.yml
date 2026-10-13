@@ -109,6 +109,9 @@ jobs:
           add-tools-to-path: true
           version: ${{ needs.setup.outputs.qt_version }}
           aqtsource: ${{ needs.setup.outputs.aqtsource }}
+          # The macOS Controls style draws BusyIndicator from an animated WebP, which needs the
+          # qtimageformats plugin; macdeployqt then bundles it.
+          modules: 'qtimageformats'
 
       - name: Set version
         shell: bash
