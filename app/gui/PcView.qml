@@ -121,9 +121,12 @@ CenteredGridView {
             y: 16
             source: SfSymbols.available ? SfSymbols.url("desktopcomputer") : "qrc:/res/desktop_windows-48px.svg"
             color: palette.windowText
+            // Drawn at 128 pt from a 2x image, so it's sharp on Retina
+            width: 128
+            height: 128
             sourceSize {
-                width: 128
-                height: 128
+                width: 256
+                height: 256
             }
         }
 
@@ -137,9 +140,11 @@ CenteredGridView {
             source: SfSymbols.available ? SfSymbols.url(!model.online ? "exclamationmark.triangle.fill" : "lock.fill")
                                         : (!model.online ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg" : "qrc:/res/baseline-lock-24px.svg")
             color: !model.online ? "#FF9F0A" : palette.windowText
+            width: 40
+            height: 40
             sourceSize {
-                width: 40
-                height: 40
+                width: 80
+                height: 80
             }
         }
 
