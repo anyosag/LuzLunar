@@ -21,6 +21,7 @@ ApolloClient::Target ApolloClient::targetFor(NvComputer* computer)
     target.httpsPort = computer->activeHttpsPort;
     target.serverCert = computer->serverCert;
     target.useTrueUid = !computer->isNvidiaServerSoftware;
+    target.hostUuid = computer->uuid;
     return target;
 }
 
@@ -50,6 +51,13 @@ qint64 ApolloClient::permissions()
 
 ApolloClient::Response ApolloClient::request(const QString& command, const QString& arguments, const QByteArray* postBody, int timeoutMs)
 {
+    RequestOptions options;
+    options.timeoutMs = timeoutMs;
+    return request(command, arguments, postBody, options);
+}
+
+ApolloClient::Response ApolloClient::request(const QString& command, const QString& arguments, const QByteArray* postBody, const RequestOptions& options)
+{
     Response response;
     if (m_Target.address.isNull() || m_Target.serverCert.isNull()) {
         response.networkError = "Host isn't paired over HTTPS";
@@ -75,6 +83,10 @@ ApolloClient::Response ApolloClient::request(const QString& command, const QStri
 #if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
     request.setAttribute(QNetworkRequest::ConnectionCacheExpiryTimeoutSecondsAttribute, 0);
 #endif
+    if (options.transferTimeoutMs > 0) {
+        // Large clipboard transfers can take a while on a slow connection, but shouldn't stall
+        request.setTransferTimeout(options.transferTimeoutMs);
+    }
 
     // Like NvHTTP::handleSslErrors(): the host's self-signed certificate is pinned at pairing time
     QSslCertificate serverCert = m_Target.serverCert;
@@ -89,7 +101,7 @@ ApolloClient::Response ApolloClient::request(const QString& command, const QStri
 
     QNetworkReply* reply;
     if (postBody != nullptr) {
-        request.setHeader(QNetworkRequest::ContentTypeHeader, "text/plain; charset=utf-8");
+        request.setHeader(QNetworkRequest::ContentTypeHeader, options.contentType);
         reply = nam.post(request, *postBody);
     }
     else {
@@ -98,18 +110,44 @@ ApolloClient::Response ApolloClient::request(const QString& command, const QStri
 
     QEventLoop loop;
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    QTimer::singleShot(timeoutMs, &loop, &QEventLoop::quit);
+    if (options.transferTimeoutMs <= 0) {
+        QTimer::singleShot(options.timeoutMs, &loop, &QEventLoop::quit);
+    }
+
+    bool cancelled = false;
+    QTimer cancelPoll;
+    if (options.cancelled) {
+        QObject::connect(&cancelPoll, &QTimer::timeout, &loop, [&]() {
+            if (options.cancelled()) {
+                cancelled = true;
+                loop.quit();
+            }
+        });
+        cancelPoll.start(100);
+    }
+
+    bool tooLarge = false;
+    if (options.maxResponseBytes > 0) {
+        QObject::connect(reply, &QNetworkReply::downloadProgress, &loop, [&](qint64 received, qint64 total) {
+            if (received > options.maxResponseBytes || total > options.maxResponseBytes) {
+                tooLarge = true;
+                loop.quit();
+            }
+        });
+    }
+
     loop.exec(QEventLoop::ExcludeUserInputEvents);
 
     if (!reply->isFinished()) {
         reply->abort();
-        response.networkError = "Request timed out";
+        response.networkError = cancelled ? "Cancelled" : (tooLarge ? "Response too large" : "Request timed out");
     }
     else {
         response.httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         response.body = reply->readAll();
         if (response.httpStatus == 0) {
-            response.networkError = reply->errorString();
+            // A transfer timeout aborts the reply itself
+            response.networkError = reply->error() == QNetworkReply::OperationCanceledError ? QString("Request timed out") : reply->errorString();
         }
     }
 

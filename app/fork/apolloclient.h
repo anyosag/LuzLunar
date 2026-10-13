@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QByteArray>
 #include <QSslCertificate>
 #include <QString>
@@ -19,12 +21,21 @@ public:
         uint16_t httpsPort = 0;
         QSslCertificate serverCert;
         bool useTrueUid = true;
+        QString hostUuid;
     };
 
     struct Response {
         int httpStatus = 0;      // 0 if the request didn't get an HTTP response
         QByteArray body;
         QString networkError;    // set when httpStatus is 0
+    };
+
+    struct RequestOptions {
+        QByteArray contentType = "text/plain; charset=utf-8";   // of the POST body
+        int timeoutMs = 3000;           // for the whole request, unless transferTimeoutMs is set
+        int transferTimeoutMs = 0;      // instead: give up only after this long without any progress
+        qint64 maxResponseBytes = 0;    // give up on larger responses; 0 for no limit
+        std::function<bool()> cancelled;    // polled while waiting; true aborts the request
     };
 
     static Target targetFor(NvComputer* computer);
@@ -36,6 +47,7 @@ public:
 
     // GET command?arguments, or POST postBody to it when postBody isn't null
     Response request(const QString& command, const QString& arguments, const QByteArray* postBody, int timeoutMs);
+    Response request(const QString& command, const QString& arguments, const QByteArray* postBody, const RequestOptions& options);
 
 private:
     Target m_Target;

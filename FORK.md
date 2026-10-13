@@ -53,11 +53,18 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
   - Each session gets its own copy of the settings with the profile applied, so the global settings never change. Command line flags win over the profile.
   - Profiles are stored under `fork/profiles/<host uuid>/<hex app name>`.
   - CI warns if streaming code starts reading the global settings directly, which would bypass profiles.
-- **Apollo clipboard sync** (`app/fork/clipboardsync.*`, `apolloclient.*`):
-  - Text is shared through Apollo's HTTPS `GET`/`POST /actions/clipboard?type=text`, using the paired client certificate.
+- **Apollo clipboard sync** (`app/fork/clipboardsync.*`, `apolloclient.*`, `clipbundle.*`, `mac/pasteboard*`):
+  - With LuzLunar's Apollo build (anyosag/Apollo), the clipboard travels as a *clipbundle* through `GET`/`POST /actions/clipboard?type=bundle&v=1`, using the paired client certificate. One bundle carries plain text, RTF, HTML, PNG/JPEG and Office's drawing format (`Art::GVML ClipFormat` on Windows, `com.microsoft.Art--GVML-ClipFormat` on the Mac), so formatting survives Word, Excel and PowerPoint copies between the Mac and the PC. Other Apollo versions answer 400, and sync falls back to plain text (`type=text`).
+  - `clipbundle.*` is shared byte for byte with anyosag/Apollo (`src/fork/clipbundle.*`), and `tests/fork/clipbundle_test.cpp` runs in both repos' CI. Keep the copies identical. It has the compact little-endian format, zlib compression for text formats, a content hash, the Windows "HTML Format" header, and the send rules:
+    - a file copy sends only its text
+    - an image is sent only for picture copies (no text, or an image offered first), so an Excel range doesn't send a rendered bitmap
+    - Word's HTML that points at local image files is dropped when RTF (which embeds the pictures) is there
+    - bundles are limited to 64 MB
+  - Only what changed is transferred. The PC returns a state token (its clipboard sequence number) and a content hash, and the Mac sends them back, so an unchanged clipboard costs a few bytes. Uploads are skipped while `NSPasteboard.changeCount` and the content hash are unchanged. This state lasts for the app's life, per host.
+  - On the Mac, the pasteboard is read and written on the sync worker thread (`mac/pasteboard_mac.mm`), so streaming never waits for Office to render or for TIFF/HEIC to convert (with ImageIO). Images go as PNG, HEIC photos as JPEG.
   - Modes are Off, Shortcuts only (Ctrl+Option+Shift+U sends, G fetches) and Automatic (the default). Automatic sends the clipboard when a stream starts or regains focus, and fetches the PC's when it loses focus or ends.
   - Requests run one at a time on a worker thread and report back through an SDL event, because the Qt event loop is paused while streaming.
-  - Sync never wipes the local clipboard with empty text and never sends back text that came from the host. It skips password-manager clips (`org.nspasteboard.ConcealedType`/`TransientType`) and never logs clipboard contents.
+  - Sync never wipes the local clipboard with an empty one and never sends back content that came from the host. Password-manager clips (`org.nspasteboard.ConcealedType`/`TransientType`, or Windows' `ExcludeClipboardContentFromMonitorProcessing`) are never synced automatically, and when sent with the shortcut they're marked private on the other side. Logs show types and sizes, never content.
   - The host must be Apollo, and Apollo must give this device its Clipboard permissions. Sync checks this through serverinfo `<Permission>`.
 - **Notch info bar** (`app/fork/mac/notchbar.*`, `app/fork/streamstats.*`):
   - In fullscreen on a MacBook with a camera notch, the strip beside the notch shows the app and PC name on the left. On the right it shows the frame rate, network latency, bitrate, codec and loss.
