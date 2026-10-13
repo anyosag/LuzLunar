@@ -1465,6 +1465,11 @@ Flickable {
             }
         }
 
+        // [fork] fork settings (Mac keyboard, clipboard, ...)
+        ForkSettingsGroupBox {
+            width: (parent.width - (parent.leftPadding + parent.rightPadding))
+        }
+
         GroupBox {
             id: gamepadSettingsGroupBox
             width: (parent.width - (parent.leftPadding + parent.rightPadding))

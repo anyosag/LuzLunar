@@ -2,6 +2,7 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
+#include "fork/forkstreamextensions.h" // [fork]
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -1954,6 +1955,9 @@ void Session::exec()
     // Start rich presence to indicate we're in game
     RichPresenceManager presence(*m_Preferences, m_App.name);
 
+    // [fork] Per-stream fork features (shortcut guard, clipboard sync, ...)
+    ForkStreamExtensions forkExtensions(m_Computer, m_App);
+
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
 
@@ -1995,6 +1999,8 @@ void Session::exec()
             continue;
         }
 #endif
+        forkExtensions.handleEvent(event); // [fork]
+
         switch (event.type) {
         case SDL_QUIT:
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,

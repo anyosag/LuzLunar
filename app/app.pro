@@ -580,3 +580,6 @@ macx {
 
 VERSION = "$$cat(version.txt)"
 DEFINES += VERSION_STR=\\\"$$cat(version.txt)\\\"
+
+# [fork] fork-only sources and resources, see FORK.md
+include(fork/fork.pri)

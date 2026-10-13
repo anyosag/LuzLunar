@@ -20,4 +20,16 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 
 | Upstream file | Hook |
 |---|---|
-| _(none yet)_ | |
+| `app/app.pro` | `include(fork/fork.pri)` at the end |
+| `app/streaming/input/keyboard.cpp` | `ForkInput::preprocessKeyEvent()` right after the special key combos; `forkForceGui` in the META modifier check and the LGUI/RGUI cases |
+| `app/streaming/session.cpp` | `ForkStreamExtensions` created after `RichPresenceManager` in `exec()`, and `handleEvent()` before the event `switch` |
+| `app/gui/SettingsView.qml` | `ForkSettingsGroupBox` between the Input and Gamepad groups |
+
+## Fork features
+
+- **Mac keyboard remapping** (`app/fork/forkkeymap.*`, `forkinput.*`, `forkpreferences.*`):
+  - Command, Control and Option can each send Ctrl, Alt, the Windows key or nothing. The defaults are Command → Ctrl, Control → Windows and Option → Alt.
+  - Moonlight's Ctrl+Option+Shift shortcuts still match the physical keys.
+  - While streaming with Command remapped, Cmd+Q/Cmd+H go to the host (`app/fork/mac/macintegration.mm`).
+  - Settings live under `fork/keyTargets` in Moonlight's preferences.
+  - Unit tests are in `tests/fork/keymap_test.cpp`.
