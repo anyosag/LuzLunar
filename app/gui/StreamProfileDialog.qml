@@ -7,7 +7,7 @@ import StreamProfiles 1.0
 import SystemProperties 1.0
 
 // Per-app stream settings, opened from an app's "Stream Settings..." menu item.
-// Every row starts with "Global", which follows Moonlight's settings.
+// Every row starts with "Global", which follows the global settings.
 NavigableDialog {
     id: streamProfileDialog
 
@@ -240,7 +240,7 @@ NavigableDialog {
 
         Label {
             width: 420
-            text: qsTr("Frame pacing only applies when V-Sync is on. Settings left on Global follow Moonlight's settings.")
+            text: qsTr("Frame pacing only applies when V-Sync is on. Settings left on Global follow LuzLunar's settings.")
             font.pointSize: 9
             wrapMode: Text.Wrap
         }

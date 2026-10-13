@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fork build for Apple Silicon: scripts/generate-dmg.sh, but arm64 only and ad-hoc signed.
+# LuzLunar build for Apple Silicon: scripts/generate-dmg.sh, but arm64 only, renamed and ad-hoc signed.
 # Requires create-dmg from https://github.com/sindresorhus/create-dmg and Qt's tools on PATH.
 #
 # An unsigned arm64 app doesn't launch on Apple Silicon (macdeployqt invalidates the linker's
@@ -22,6 +22,7 @@ SOURCE_ROOT=$PWD
 BUILD_FOLDER=$BUILD_ROOT/build-$BUILD_CONFIG
 INSTALLER_FOLDER=$BUILD_ROOT/installer-$BUILD_CONFIG
 APP=$BUILD_FOLDER/app/Moonlight.app
+APP_NAME=LuzLunar
 
 if [ -n "$CI_VERSION" ]; then
   VERSION=$CI_VERSION
@@ -55,8 +56,8 @@ popd
 
 echo Saving dSYM file
 pushd $BUILD_FOLDER
-dsymutil app/Moonlight.app/Contents/MacOS/Moonlight -o Moonlight-$VERSION.dsym || fail "dSYM creation failed!"
-cp -R Moonlight-$VERSION.dsym $INSTALLER_FOLDER || fail "dSYM copy failed!"
+dsymutil app/Moonlight.app/Contents/MacOS/Moonlight -o $APP_NAME-$VERSION.dsym || fail "dSYM creation failed!"
+cp -R $APP_NAME-$VERSION.dsym $INSTALLER_FOLDER || fail "dSYM copy failed!"
 popd
 
 echo Creating app bundle
@@ -67,22 +68,35 @@ macdeployqt $APP $EXTRA_ARGS -qmldir=$SOURCE_ROOT/app/gui -appstore-compliant ||
 echo Removing dSYM files from app bundle
 find $APP -name '*.dSYM' | xargs rm -rf
 
+# The fork ships as LuzLunar. The bundle ID and Moonlight's settings domain stay the same,
+# so pairing and settings carry over from the official app.
+echo Renaming the app bundle to $APP_NAME
+FINAL_APP=$BUILD_FOLDER/app/$APP_NAME.app
+rm -rf $FINAL_APP
+mv $APP $FINAL_APP || fail "Renaming the app bundle failed!"
+APP=$FINAL_APP
+mv $APP/Contents/MacOS/Moonlight $APP/Contents/MacOS/$APP_NAME || fail "Renaming the executable failed!"
+PLIST=$APP/Contents/Info.plist
+/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_NAME" -c "Set :CFBundleDisplayName $APP_NAME" $PLIST || fail "Updating Info.plist failed!"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" $PLIST 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleName string $APP_NAME" $PLIST || fail "Setting CFBundleName failed!"
+
 echo Checking the binary is arm64 only
-lipo -archs $APP/Contents/MacOS/Moonlight
-[ "$(lipo -archs $APP/Contents/MacOS/Moonlight)" == "arm64" ] || fail "Expected an arm64-only binary!"
+lipo -archs $APP/Contents/MacOS/$APP_NAME
+[ "$(lipo -archs $APP/Contents/MacOS/$APP_NAME)" == "arm64" ] || fail "Expected an arm64-only binary!"
 
 echo Signing app bundle ad-hoc
 codesign --force --deep --sign - $APP || fail "Ad-hoc signing failed!"
 codesign --verify --deep --strict --verbose=2 $APP || fail "Signature verification failed!"
 codesign -dv $APP 2>&1 | grep -q 'Signature=adhoc' || fail "Bundle isn't ad-hoc signed!"
 
-echo Smoke test: launching Moonlight --version
-perl -e 'alarm 60; exec @ARGV' $APP/Contents/MacOS/Moonlight --version
+echo Smoke test: launching $APP_NAME --version
+perl -e 'alarm 60; exec @ARGV' $APP/Contents/MacOS/$APP_NAME --version
 STATUS=$?
 case $STATUS in
-  0) echo "Moonlight started and exited cleanly" ;;
-  137) fail "Moonlight was killed at launch (SIGKILL), which usually means an invalid code signature" ;;
-  *) echo "::warning::Moonlight --version exited with status $STATUS (not a signature failure)" ;;
+  0) echo "$APP_NAME started and exited cleanly" ;;
+  137) fail "$APP_NAME was killed at launch (SIGKILL), which usually means an invalid code signature" ;;
+  *) echo "::warning::$APP_NAME --version exited with status $STATUS (not a signature failure)" ;;
 esac
 
 echo Creating DMG
@@ -93,5 +107,8 @@ case $? in
   *) fail "create-dmg failed!";;
 esac
 
-mv $INSTALLER_FOLDER/Moonlight.dmg $INSTALLER_FOLDER/Moonlight-$VERSION.dmg
-echo Build successful: $INSTALLER_FOLDER/Moonlight-$VERSION.dmg
+# create-dmg names the image after the app's display name
+DMG=$(ls $INSTALLER_FOLDER/*.dmg | head -n1)
+[ -n "$DMG" ] || fail "create-dmg produced no DMG!"
+mv "$DMG" $INSTALLER_FOLDER/$APP_NAME-$VERSION.dmg
+echo Build successful: $INSTALLER_FOLDER/$APP_NAME-$VERSION.dmg
