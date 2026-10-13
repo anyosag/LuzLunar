@@ -1,0 +1,94 @@
+---
+# Once a day, merges new commits from moonlight-stream/moonlight-qt into this fork's master
+# and builds a fresh macOS app when there were any.
+#
+# Upstream sometimes changes .github/workflows, and GITHUB_TOKEN may not push those changes.
+# Add a fine-grained token with Contents and Workflows read/write on this repo as the
+# SYNC_TOKEN secret to sync them too. Pushes made with it also trigger fork-macos.yml directly.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
+    inputs:
+      build:
+        description: Build the app even if upstream has no new commits
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge upstream master
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push the merge to master
+      actions: write  # keep this schedule enabled
+    outputs:
+      updated: ${{ steps.merge.outputs.updated }}
+      sha: ${{ steps.merge.outputs.sha }}
+      has_pat: ${{ steps.merge.outputs.has_pat }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Merge upstream
+        id: merge
+        env:
+          UPSTREAM: https://github.com/moonlight-stream/moonlight-qt.git
+          HAS_PAT: ${{ secrets.SYNC_TOKEN != '' }}
+        run: |
+          echo "has_pat=$HAS_PAT" >> "$GITHUB_OUTPUT"
+          git fetch --quiet "$UPSTREAM" master
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo "master already contains upstream $(git rev-parse --short FETCH_HEAD)."
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "New upstream commits:"
+          git log --oneline HEAD..FETCH_HEAD
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git merge --no-edit -m "Merge upstream moonlight-stream/moonlight-qt master" FETCH_HEAD; then
+            git diff --name-only --diff-filter=U
+            echo "::error::Upstream changes conflict with this fork's changes in the files above. Merge $UPSTREAM master into master manually (see FORK.md)."
+            exit 1
+          fi
+          if ! git push origin HEAD:master; then
+            if git diff --name-only HEAD@{1} HEAD -- .github/workflows | grep -q .; then
+              echo "::error::Upstream changed .github/workflows, which GITHUB_TOKEN can't push. Add a SYNC_TOKEN secret (see the comment at the top of this file) or merge manually."
+            fi
+            exit 1
+          fi
+
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # GitHub disables scheduled workflows in public repos after 60 days without activity.
+      - name: Keep schedule enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT "repos/${{ github.repository }}/actions/workflows/sync-upstream.yml/enable"
+
+  build:
+    name: Build app
+    needs: sync
+    # A push made with SYNC_TOKEN already triggers fork-macos.yml, so only build here for GITHUB_TOKEN pushes.
+    if: (needs.sync.outputs.updated == 'true' && needs.sync.outputs.has_pat != 'true') || inputs.build
+    uses: ./.github/workflows/fork-macos.yml
+    with:
+      ref: ${{ needs.sync.outputs.sha }}
