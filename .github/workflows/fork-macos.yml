@@ -121,3 +121,23 @@ jobs:
           name: zDevDbgSyms-LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
           path: build/installer-Release/*.dsym/*
           if-no-files-found: error
+
+      # Screenshots of the main views and dialogs in dark and light mode, taken by the app itself
+      # (app/fork/screenshotharness.cpp), so UI changes can be reviewed without a Mac.
+      - name: UI screenshots
+        shell: bash
+        continue-on-error: true
+        run: |
+          app=build/build-Release/app/LuzLunar.app/Contents/MacOS/LuzLunar
+          for scheme in dark light; do
+            LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
+              perl -e 'alarm 120; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
+          done
+          ls -R "$RUNNER_TEMP/screenshots" || true
+
+      - name: Upload UI screenshots
+        uses: actions/upload-artifact@v6
+        with:
+          name: LuzLunar-screenshots-${{ env.CI_VERSION }}
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn

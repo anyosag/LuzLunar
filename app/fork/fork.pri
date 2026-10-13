@@ -8,6 +8,7 @@ SOURCES += \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
     $$PWD/forkstreamextensions.cpp \
+    $$PWD/screenshotharness.cpp \
     $$PWD/streamprofiles.cpp \
     $$PWD/streamstats.cpp
 
