@@ -14,6 +14,14 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner. Upstream's default; macos-15 when GitHub is short of macOS 26 machines.
+        type: choice
+        options:
+          - upstream
+          - macos-15
+        default: upstream
   # Used by sync-upstream.yml, since pushes made with GITHUB_TOKEN don't trigger workflows.
   workflow_call:
     inputs:
@@ -45,11 +53,17 @@ jobs:
       - name: Read build-win-mac.yml
         id: read
         shell: bash
+        env:
+          RUNNER_OVERRIDE: ${{ inputs.runner }}
         run: |
           f=.github/workflows/build-win-mac.yml
           os=$(grep -oE 'os: macos-[0-9A-Za-z.-]+' "$f" | head -n1 | cut -d' ' -f2)
           qt=$(grep -A1 -E 'os: macos-' "$f" | grep -oE 'qt_version: [0-9.]+' | head -n1 | cut -d' ' -f2)
           aqt=$(grep -oE "aqtsource: '[^']+'" "$f" | head -n1 | sed -E "s/aqtsource: '(.*)'/\1/")
+          # A manual run can pick another runner when GitHub has no macOS 26 machines free
+          if [ -n "$RUNNER_OVERRIDE" ] && [ "$RUNNER_OVERRIDE" != "upstream" ]; then
+            os=$RUNNER_OVERRIDE
+          fi
           echo "os=${os:-macos-26}" >> "$GITHUB_OUTPUT"
           echo "qt_version=${qt:-6.11.2}" >> "$GITHUB_OUTPUT"
           echo "aqtsource=${aqt:-aqtinstall}" >> "$GITHUB_OUTPUT"
@@ -66,6 +80,19 @@ jobs:
           ref: ${{ inputs.ref }}
           submodules: 'recursive'
           fetch-depth: 1
+
+      # The macOS 26 SDK is needed for Liquid Glass and Icon Composer icons. Older runners have
+      # Xcode 26 installed but not as the default.
+      - name: Use Xcode 26 or later
+        shell: bash
+        run: |
+          major=$(xcodebuild -version | head -n1 | grep -oE '[0-9]+' | head -n1)
+          if [ "${major:-0}" -lt 26 ]; then
+            xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
+            [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+            sudo xcode-select -s "$xcode"
+          fi
+          xcodebuild -version
 
       - name: Install create-dmg
         run: |
