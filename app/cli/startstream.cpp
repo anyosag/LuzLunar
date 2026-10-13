@@ -2,6 +2,7 @@
 #include "backend/computermanager.h"
 #include "backend/computerseeker.h"
 #include "streaming/session.h"
+#include "fork/streamprofiles.h" // [fork]
 
 #include <QCoreApplication>
 #include <QTimer>
@@ -102,7 +103,7 @@ public:
                     m_TimeoutTimer->stop();
                     if (isNotStreaming() || isStreamingApp(app)) {
                         m_State = StateStartSession;
-                        session = new Session(m_Computer, app, m_Preferences);
+                        session = StreamProfiles::createSession(m_Computer, app, m_Preferences); // [fork] CLI > profile > global
                         emit q->sessionCreated(app.name, session);
                     } else {
                         emit q->appQuitRequired(getCurrentAppName());

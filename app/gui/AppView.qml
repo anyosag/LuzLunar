@@ -328,6 +328,11 @@ CenteredGridView {
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
                 }
+                // [fork] per-app stream settings
+                NavigableMenuItem {
+                    text: qsTr("Stream Settings...")
+                    onTriggered: streamProfileDialog.openFor(computerIndex, model.name)
+                }
             }
         }
     }
@@ -372,6 +377,11 @@ CenteredGridView {
         }
 
         onAccepted: quitApp()
+    }
+
+    // [fork] per-app stream settings
+    StreamProfileDialog {
+        id: streamProfileDialog
     }
 
     ScrollBar.vertical: ScrollBar {}
