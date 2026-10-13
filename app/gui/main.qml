@@ -2,7 +2,7 @@ import QtQuick 2.9
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 import QtQuick.Window 2.2
-import QtQuick.Controls.Material 2.2
+// [fork] No explicit Material import: it would override the native macOS style set in main.cpp
 
 import ComputerManager 1.0
 import AutoUpdateChecker 1.0
@@ -24,13 +24,7 @@ ApplicationWindow {
 
     // This function runs prior to creation of the initial StackView item
     function doEarlyInit() {
-        // Override the background color to Material 2 colors for Qt 6.5+
-        // in order to improve contrast between GFE's placeholder box art
-        // and the background of the app grid.
-        if (SystemProperties.usesMaterial3Theme) {
-            Material.background = "#303030"
-        }
-
+        // [fork] The Material 2 background override is gone with the native macOS style
         SdlGamepadKeyNavigation.enable()
     }
 
@@ -235,7 +229,7 @@ ApplicationWindow {
 
     header: ToolBar {
         id: toolBar
-        height: 60
+        height: 52 // [fork] macOS toolbar height (was 60)
         anchors.topMargin: 5
         anchors.bottomMargin: 5
 
@@ -244,7 +238,8 @@ ApplicationWindow {
             visible: toolBar.width > 700
             anchors.fill: parent
             text: stackView.currentItem.objectName
-            font.pointSize: 20
+            font.pointSize: 15 // [fork] macOS title size (was 20)
+            font.bold: true
             elide: Label.ElideRight
             horizontalAlignment: Qt.AlignHCenter
             verticalAlignment: Qt.AlignVCenter
@@ -261,6 +256,7 @@ ApplicationWindow {
                 visible: stackView.depth > 1
 
                 iconSource: "qrc:/res/arrow_left.svg"
+                symbolName: "chevron.left" // [fork]
 
                 onClicked: goBack()
 
@@ -319,6 +315,7 @@ ApplicationWindow {
                 visible: stackView.currentItem instanceof PcView
 
                 iconSource:  "qrc:/res/ic_add_to_queue_white_48px.svg"
+                symbolName: "plus" // [fork]
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -346,6 +343,7 @@ ApplicationWindow {
                 id: updateButton
 
                 iconSource: "qrc:/res/update.svg"
+                symbolName: "arrow.down.circle" // [fork]
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -383,6 +381,7 @@ ApplicationWindow {
                 visible: SystemProperties.hasBrowser
 
                 iconSource: "qrc:/res/question_mark.svg"
+                symbolName: "questionmark.circle" // [fork]
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -413,6 +412,7 @@ ApplicationWindow {
                 ToolTip.text: qsTr("Gamepad Mapper")
 
                 iconSource: "qrc:/res/ic_videogame_asset_white_48px.svg"
+                symbolName: "gamecontroller" // [fork]
 
                 onClicked: navigateTo("qrc:/gui/GamepadMapper.qml", GamepadMapper)
 
@@ -425,6 +425,7 @@ ApplicationWindow {
                 id: settingsButton
 
                 iconSource:  "qrc:/res/settings.svg"
+                symbolName: "gearshape" // [fork]
 
                 onClicked: navigateTo("qrc:/gui/SettingsView.qml", SettingsView)
 

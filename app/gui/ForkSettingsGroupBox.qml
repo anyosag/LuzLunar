@@ -8,7 +8,7 @@ import SystemProperties 1.0
 GroupBox {
     id: forkSettingsGroupBox
     padding: 12
-    title: "<font color=\"skyblue\">" + qsTr("Keyboard & Clipboard") + "</font>"
+    title: qsTr("Keyboard & Clipboard") // [fork] plain title for the native style
     font.pointSize: 12
 
     Column {

@@ -1,5 +1,6 @@
 import QtQuick 2.9
 import QtQuick.Controls 2.2
+import QtQuick.Controls.impl 2.15 // [fork] IconImage for tinted, theme-aware icons
 import QtQuick.Layouts 1.3
 
 import ComputerModel 1.0
@@ -17,7 +18,7 @@ CenteredGridView {
     activeFocusOnTab: true
     topMargin: 20
     bottomMargin: 5
-    cellWidth: 310; cellHeight: 330;
+    cellWidth: 230; cellHeight: 240; // [fork] macOS-sized tiles (was 310x330)
     objectName: qsTr("Computers")
 
     Component.onCompleted: {
@@ -98,7 +99,7 @@ CenteredGridView {
             elide: Label.ElideRight
             text: StreamingPreferences.enableMdns ? qsTr("Searching for compatible hosts on your local network...")
                                                   : qsTr("Automatic PC discovery is disabled. Add your PC manually.")
-            font.pointSize: 20
+            font.pointSize: 15 // [fork] was 20
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
         }
@@ -107,32 +108,38 @@ CenteredGridView {
     model: computerModel
 
     delegate: NavigableItemDelegate {
-        width: 300; height: 320;
+        width: 220; height: 230; // [fork] was 300x320
         grid: pcGrid
 
         property alias pcContextMenu : pcContextMenuLoader.item
 
-        Image {
+        // [fork] A system-tinted computer symbol instead of the white-only SVG, so it shows in light mode too
+        IconImage {
             id: pcIcon
             anchors.horizontalCenter: parent.horizontalCenter
+            y: 16
+            name: "desktopcomputer"
             source: "qrc:/res/desktop_windows-48px.svg"
+            color: palette.windowText
             sourceSize {
-                width: 200
-                height: 200
+                width: 128
+                height: 128
             }
         }
 
-        Image {
+        IconImage {
             // TODO: Tooltip
             id: stateIcon
             anchors.horizontalCenter: pcIcon.horizontalCenter
             anchors.verticalCenter: pcIcon.verticalCenter
-            anchors.verticalCenterOffset: !model.online ? -18 : -16
+            anchors.verticalCenterOffset: -10
             visible: !model.statusUnknown && (!model.online || !model.paired)
+            name: !model.online ? "exclamationmark.triangle.fill" : "lock.fill"
             source: !model.online ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg" : "qrc:/res/baseline-lock-24px.svg"
+            color: !model.online ? "#FF9F0A" : palette.windowText
             sourceSize {
-                width: !model.online ? 75 : 70
-                height: !model.online ? 75 : 70
+                width: 40
+                height: 40
             }
         }
 
@@ -140,9 +147,9 @@ CenteredGridView {
             id: statusUnknownSpinner
             anchors.horizontalCenter: pcIcon.horizontalCenter
             anchors.verticalCenter: pcIcon.verticalCenter
-            anchors.verticalCenterOffset: -15
-            width: 75
-            height: 75
+            anchors.verticalCenterOffset: -10
+            width: 40
+            height: 40
             visible: model.statusUnknown
             running: visible
         }
@@ -153,8 +160,12 @@ CenteredGridView {
 
             width: parent.width
             anchors.top: pcIcon.bottom
+            anchors.topMargin: 8
             anchors.bottom: parent.bottom
-            font.pointSize: 36
+            leftPadding: 10
+            rightPadding: 10
+            font.pointSize: 15 // [fork] was 36
+            font.bold: true
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             elide: Text.ElideRight

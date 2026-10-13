@@ -4,16 +4,22 @@ import QtQuick.Layouts 1.3
 
 ToolButton {
     property string iconSource
+    // [fork] SF Symbol name, used on macOS through the system icon theme; iconSource is the fallback
+    property string symbolName
 
     activeFocusOnTab: true
 
+    // [fork] Toolbar-sized, tinted icons for the native macOS style
+    // (upstream sizes the icon to the Material background for TV readability)
+    icon.name: symbolName
     icon.source: iconSource
-    icon.width: background.width
-    icon.height: background.height
+    icon.width: 20
+    icon.height: 20
+    icon.color: palette.buttonText
+    display: AbstractButton.IconOnly
 
-    // This determines the size of the Material highlight. We increase it
-    // from the default because we use larger than normal icons for TV readability.
-    Layout.preferredHeight: parent.height
+    Layout.preferredHeight: 34
+    Layout.preferredWidth: 38
 
     Keys.onReturnPressed: {
         clicked()

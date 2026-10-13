@@ -1,8 +1,12 @@
-import QtQuick 2.0
-import QtQuick.Controls 2.2
+import QtQuick
+import QtQuick.Controls // [fork] versionless, for popupType (Qt 6.8)
 
 Menu {
     property var initiator
+
+    // [fork] The native macOS style defaults to native popup menus, which don't receive the key
+    // events that gamepad navigation sends, so keep menus as in-window popups.
+    popupType: Popup.Window
 
     onOpened: {
         // If the initiating object currently has keyboard focus,

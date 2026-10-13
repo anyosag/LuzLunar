@@ -1,6 +1,6 @@
 import QtQuick 2.9
 import QtQuick.Controls 2.2
-import QtQuick.Controls.Material 2.2
+// [fork] No explicit Material import: it would override the native macOS style set in main.cpp
 
 import AppModel 1.0
 import ComputerManager 1.0
@@ -144,8 +144,6 @@ CenteredGridView {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 3000
                     ToolTip.visible: hovered
-
-                    Material.background: "#D0808080"
                 }
 
                 RoundButton {
@@ -170,8 +168,6 @@ CenteredGridView {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 3000
                     ToolTip.visible: hovered
-
-                    Material.background: "#D0808080"
                 }
             }
         }
@@ -193,7 +189,7 @@ CenteredGridView {
             sourceComponent: Label {
                 id: appNameText
                 text: model.name
-                font.pointSize: 22
+                font.pointSize: 17 // [fork] was 22
                 leftPadding: 20
                 rightPadding: 20
                 verticalAlignment: Text.AlignVCenter
@@ -344,7 +340,7 @@ CenteredGridView {
 
         Label {
             text: qsTr("This computer doesn't seem to have any applications or some applications are hidden")
-            font.pointSize: 20
+            font.pointSize: 15 // [fork] was 20
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
         }
