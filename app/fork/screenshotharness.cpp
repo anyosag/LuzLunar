@@ -129,7 +129,11 @@ namespace
         QTimer::singleShot(0, [outputDir]() {
             QString scheme = qEnvironmentVariable("LUZLUNAR_SCREENSHOT_SCHEME");
             if (scheme == "dark" || scheme == "light") {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
                 QGuiApplication::styleHints()->setColorScheme(scheme == "dark" ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+#else
+                qWarning() << "[fork] Screenshot harness: LUZLUNAR_SCREENSHOT_SCHEME needs Qt 6.8; using the system appearance";
+#endif
             }
             runStep(outputDir, 0);
         });
