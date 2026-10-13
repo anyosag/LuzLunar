@@ -9,6 +9,7 @@ SOURCES += \
     $$PWD/forkqml.cpp \
     $$PWD/forkstreamextensions.cpp \
     $$PWD/screenshotharness.cpp \
+    $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
     $$PWD/streamstats.cpp \
     $$PWD/windowchrome.cpp
@@ -20,6 +21,7 @@ HEADERS += \
     $$PWD/forkkeymap.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
+    $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
@@ -30,6 +32,7 @@ macx {
     SOURCES += \
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/notchbar.mm \
+        $$PWD/mac/sfsymbolprovider.mm \
         $$PWD/mac/windowchrome.mm
 }
 

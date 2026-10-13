@@ -5,6 +5,7 @@
 #include <QQmlEngine>
 
 #include "forkpreferences.h"
+#include "sfsymbols.h"
 #include "streamprofiles.h"
 #include "windowchrome.h"
 
@@ -27,6 +28,12 @@ namespace
             StreamProfiles* profiles = StreamProfiles::get();
             QQmlEngine::setObjectOwnership(profiles, QQmlEngine::CppOwnership);
             return profiles;
+        });
+        qmlRegisterSingletonType<ForkSfSymbols>("SfSymbols", 1, 0, "SfSymbols",
+                                                [](QQmlEngine* engine, QJSEngine*) -> QObject* {
+            ForkSfSymbols* symbols = ForkSfSymbols::get(engine);
+            QQmlEngine::setObjectOwnership(symbols, QQmlEngine::CppOwnership);
+            return symbols;
         });
         qmlRegisterSingletonType<ForkWindowChrome>("WindowChrome", 1, 0, "WindowChrome",
                                                    [](QQmlEngine*, QJSEngine*) -> QObject* {

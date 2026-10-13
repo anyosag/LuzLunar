@@ -1,6 +1,7 @@
 import QtQuick 2.9
 import QtQuick.Controls 2.2
 import QtQuick.Controls.impl 2.15 // [fork] IconImage for tinted, theme-aware icons
+import SfSymbols 1.0 // [fork]
 import QtQuick.Layouts 1.3
 
 import ComputerModel 1.0
@@ -120,8 +121,7 @@ CenteredGridView {
             id: pcIcon
             anchors.horizontalCenter: parent.horizontalCenter
             y: 16
-            name: "desktopcomputer"
-            source: "qrc:/res/desktop_windows-48px.svg"
+            source: SfSymbols.available ? SfSymbols.url("desktopcomputer") : "qrc:/res/desktop_windows-48px.svg"
             color: palette.windowText
             sourceSize {
                 width: 128
@@ -136,8 +136,8 @@ CenteredGridView {
             anchors.verticalCenter: pcIcon.verticalCenter
             anchors.verticalCenterOffset: -10
             visible: !model.statusUnknown && (!model.online || !model.paired)
-            name: !model.online ? "exclamationmark.triangle.fill" : "lock.fill"
-            source: !model.online ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg" : "qrc:/res/baseline-lock-24px.svg"
+            source: SfSymbols.available ? SfSymbols.url(!model.online ? "exclamationmark.triangle.fill" : "lock.fill")
+                                        : (!model.online ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg" : "qrc:/res/baseline-lock-24px.svg")
             color: !model.online ? "#FF9F0A" : palette.windowText
             sourceSize {
                 width: 40
