@@ -15,6 +15,7 @@
     NSArray<NSString*>* m_ToolbarOrder;     // the same with the system spacers
     // Per item id: label, symbol, image (built once per symbol), toolTip, navigational, hidden, focused
     NSMutableDictionary<NSString*, NSMutableDictionary*>* m_State;
+    NSView* m_Backdrop;                     // the translucent window background
 }
 - (instancetype)initWithOwner:(ForkWindowChrome*)owner;
 - (void)applyItems:(const QVariantList&)items
@@ -42,7 +43,51 @@
     [m_ItemIds release];
     [m_ToolbarOrder release];
     [m_State release];
+    [m_Backdrop removeFromSuperview];
+    [m_Backdrop release];
     [super dealloc];
+}
+
+// A translucent background for the whole window, title bar included: Liquid Glass on macOS 26,
+// a behind-window blur before. It sits below Qt's content view, which draws on a transparent
+// background while the native chrome is active (main.qml), so the desktop shows through.
+- (void)installBackdropInWindow:(NSWindow*)window
+{
+    NSView* frameView = window.contentView.superview;
+    if (frameView == nil || (m_Backdrop != nil && m_Backdrop.superview == frameView)) {
+        return;
+    }
+    [m_Backdrop removeFromSuperview];
+    [m_Backdrop release];
+
+    if (@available(macOS 26.0, *)) {
+        NSGlassEffectView* glass = [[NSGlassEffectView alloc] initWithFrame:frameView.bounds];
+        glass.style = NSGlassEffectViewStyleRegular;
+        // Plain glass shows too much of the desktop to read the window's content over, so tint it
+        // toward the window background (resolved for light or dark mode)
+        glass.tintColor = [NSColor colorWithName:nil dynamicProvider:^NSColor*(NSAppearance* appearance) {
+            __block NSColor* tint = nil;
+            [appearance performAsCurrentDrawingAppearance:^{
+                tint = [NSColor.windowBackgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+            }];
+            return [tint colorWithAlphaComponent:0.7];
+        }];
+        m_Backdrop = glass;
+    }
+    else {
+        NSVisualEffectView* effect = [[NSVisualEffectView alloc] initWithFrame:frameView.bounds];
+        effect.material = NSVisualEffectMaterialUnderWindowBackground;
+        effect.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+        effect.state = NSVisualEffectStateFollowsWindowActiveState;
+        m_Backdrop = effect;
+    }
+    m_Backdrop.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [frameView addSubview:m_Backdrop positioned:NSWindowBelow relativeTo:window.contentView];
+
+    window.opaque = NO;
+    window.backgroundColor = NSColor.clearColor;
+    window.titlebarAppearsTransparent = YES;
+    window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
 }
 
 // Creates a fresh toolbar for this set of item ids
@@ -130,6 +175,7 @@
     }
     window.toolbarStyle = NSWindowToolbarStyleUnified;
     window.titleVisibility = NSWindowTitleVisible;
+    [self installBackdropInWindow:window];
     m_Toolbar.visible = visible;
     window.subtitle = subtitle ?: @"";
 }

@@ -34,7 +34,7 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 | `app/gui/AppView.qml` | "Stream Settings..." menu item after "Hide Game", and the `StreamProfileDialog` next to `quitAppDialog` |
 | `app/streaming/video/ffmpeg.cpp` | `ForkStreamStats::publish()` in the once-a-second stats block of `submitDecodeUnit()` |
 | `app/main.cpp` | The native `macOS` Quick Controls style on macOS instead of Material |
-| `app/gui/main.qml` | No Material import or background override; `ForkNativeToolbar` before the header, with each button's `focused` state; while it's active the header is clipped to zero height but its buttons stay in the focus chain; Escape on a toolbar button returns to the page; the Settings button leaves the chain on the Settings page and the Update tooltip stays hidden with the native toolbar; `id: backButton`; `symbolName` on the toolbar buttons; title size |
+| `app/gui/main.qml` | No Material import or background override; a transparent window `color` while the native chrome is active; `ForkNativeToolbar` before the header, with each button's `focused` state; while it's active the header is clipped to zero height but its buttons stay in the focus chain; Escape on a toolbar button returns to the page; the Settings button leaves the chain on the Settings page and the Update tooltip stays hidden with the native toolbar; `id: backButton`; `symbolName` on the toolbar buttons; title size |
 | `app/gui/NavigableToolButton.qml` | `symbolName` (an SF Symbol from the image provider, `iconSource` as fallback), 20 pt tinted icons, hidden from VoiceOver while the native toolbar shows them |
 | `app/gui/NavigableItemDelegate.qml` | Rounded card background on `QtQuick.Templates` |
 | `app/gui/NavigableDialog.qml` | `ForkDialogBackground` as the background, padding, and the style's header and footer panels hidden |
@@ -72,6 +72,10 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 - **Native macOS look** (`app/gui/Fork*.qml`, `app/fork/windowchrome.*`, `app/fork/mac/windowchrome_mac.mm`):
   - The app uses Qt's native `macOS` style, so controls follow the system appearance and accent color. `main.cpp` still picks Material elsewhere, but the QML look changes aren't gated, since LuzLunar is macOS-only.
   - On macOS 15 and later the main window gets a real `NSToolbar` (Liquid Glass buttons on macOS 26) with SF Symbols. `ForkNativeToolbar.qml` mirrors main.qml's toolbar buttons into it and clicks the QML button when a native one is clicked, so upstream's behavior and shortcuts stay. While the native toolbar is active, the QML toolbar is clipped to zero height but stays in the focus chain. Keyboard and gamepad navigation still reach its buttons (Up from a grid's top row, Tab on Settings), and the native item of the focused button is highlighted: prominent on macOS 26, selected before. The delegate builds a new `NSToolbarItem` each time AppKit asks, from per-item state.
+  - The window is translucent while the native chrome is active. A full-window backdrop sits in the window frame below Qt's content view, title bar included:
+    - macOS 26: Liquid Glass (`NSGlassEffectView`), tinted 70% toward the window background color so content stays readable.
+    - Earlier macOS: a behind-window blur.
+    - To show it, `forkqml.cpp` turns on Qt's alpha buffer and main.qml's window `color` is transparent.
   - Rounded tiles with hover, press and focus states; dialogs are rounded panels with a shadow.
   - Menus and combo box lists open inside the main window (`Popup.Item`), because gamepad navigation sends its keys to the main window.
   - Spinners use `ForkBusyIndicator`, which has a fixed size. The style's spinner is an animated WebP, so builds need the `qtimageformats` plugin (CI installs it).

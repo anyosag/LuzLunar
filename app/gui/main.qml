@@ -22,6 +22,10 @@ ApplicationWindow {
     width: 1280
     height: 600
 
+    // [fork] With the native chrome, a translucent (Liquid Glass) backdrop sits behind the window,
+    // so the window itself draws no background
+    color: nativeToolbar.active ? "transparent" : palette.window
+
     // This function runs prior to creation of the initial StackView item
     function doEarlyInit() {
         // [fork] The Material 2 background override is gone with the native macOS style

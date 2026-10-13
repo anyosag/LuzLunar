@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlEngine>
+#include <QQuickWindow>
 
 #include "forkpreferences.h"
 #include "sfsymbols.h"
@@ -16,6 +17,12 @@ namespace
         // Only the name people see. The application name stays "Moonlight", because it locates
         // Moonlight's settings (paired PCs, preferences), which LuzLunar shares.
         QGuiApplication::setApplicationDisplayName(QStringLiteral("LuzLunar"));
+
+#ifdef Q_OS_DARWIN
+        // Windows need an alpha channel from the start for the translucent (Liquid Glass) window
+        // background that ForkWindowChrome puts behind the main window's content
+        QQuickWindow::setDefaultAlphaBuffer(true);
+#endif
 
         qmlRegisterSingletonType<ForkPreferences>("ForkPreferences", 1, 0, "ForkPreferences",
                                                   [](QQmlEngine*, QJSEngine*) -> QObject* {
