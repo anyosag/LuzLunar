@@ -1,6 +1,6 @@
 #include "windowchrome.h"
 
-// The platform parts (attach, apply and the destructor) are in mac/windowchrome.mm on macOS
+// The platform parts (attach, apply and the destructor) are in mac/windowchrome_mac.mm on macOS (a different name, so qmake doesn't give both files the same object file)
 
 ForkWindowChrome* ForkWindowChrome::get()
 {

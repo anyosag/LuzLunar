@@ -33,7 +33,7 @@ macx {
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/sfsymbolprovider.mm \
-        $$PWD/mac/windowchrome.mm
+        $$PWD/mac/windowchrome_mac.mm
 }
 
 RESOURCES += \

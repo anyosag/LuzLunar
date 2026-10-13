@@ -64,8 +64,10 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
   - macOS keeps a fullscreen window below the notch, so the bar is a separate non-activating panel above the stream's level that joins its fullscreen Space. It uses Liquid Glass (`NSGlassEffectView`) on macOS 26 and vibrancy before that.
   - Stats come from the decoder's once-a-second stats tick, computed only while the bar is listening.
   - The bar shows only while the stream is fullscreen on the active Space of a display with a notch. Turn it off in Settings › Keyboard & Clipboard.
-- **Native macOS look** (`app/gui/Fork*.qml`, `app/fork/windowchrome.*`, `app/fork/mac/windowchrome.mm`):
+- **Native macOS look** (`app/gui/Fork*.qml`, `app/fork/windowchrome.*`, `app/fork/mac/windowchrome_mac.mm`):
   - On macOS the app uses Qt's native `macOS` style, so controls follow the system appearance and accent color. Other platforms keep Material.
   - On macOS 15 and later the main window gets a real `NSToolbar` (Liquid Glass buttons on macOS 26) with SF Symbols. `ForkNativeToolbar.qml` mirrors main.qml's toolbar buttons into it and clicks the QML button when a native one is clicked, so upstream's behavior and shortcuts stay. The QML toolbar collapses while the native one is active.
   - Rounded tiles with hover, press and focus states; dialogs are rounded panels with a shadow.
+  - SF Symbols in QML come from an image provider (`image://sfsymbol/<name>`, `app/fork/sfsymbols.*`, `app/fork/mac/sfsymbolprovider.mm`), because Qt Quick's `icon.name` can't reach them. Elsewhere `SfSymbols.available` is false and the SVGs stay.
+  - The app icon is an Icon Composer icon (`scripts/fork/LuzLunar.icon`: a crescent moon behind sparkles), which macOS 26 renders in Liquid Glass. `build-mac.sh` compiles it with `actool` into `Assets.car` plus a flattened `LuzLunar.icns` for older macOS.
   - CI saves screenshots of the main views in light and dark (`app/fork/screenshotharness.cpp`, the `LuzLunar-screenshots-*` artifact).
