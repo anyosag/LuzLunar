@@ -10,7 +10,12 @@ namespace MacIntegration
     // the host instead of quitting, hiding or opening settings. SDL has already read each key
     // event by the time AppKit dispatches it, so the host still receives the keys.
     void setStreamShortcutGuard(bool enabled);
+
+    // True if the clipboard holds something marked as concealed or transient, like a password copied
+    // from a password manager (nspasteboard.org conventions), which shouldn't be synced automatically.
+    bool clipboardHasConcealedContent();
 #else
     inline void setStreamShortcutGuard(bool) {}
+    inline bool clipboardHasConcealedContent() { return false; }
 #endif
 }

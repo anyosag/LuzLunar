@@ -1,6 +1,8 @@
 # Fork-only sources and resources (anyosag/moonlight-qt), included from app.pro. See FORK.md.
 
 SOURCES += \
+    $$PWD/apolloclient.cpp \
+    $$PWD/clipboardsync.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
     $$PWD/forkpreferences.cpp \
@@ -9,6 +11,8 @@ SOURCES += \
     $$PWD/streamprofiles.cpp
 
 HEADERS += \
+    $$PWD/apolloclient.h \
+    $$PWD/clipboardsync.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
     $$PWD/forkpreferences.h \

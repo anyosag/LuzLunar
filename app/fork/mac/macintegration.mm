@@ -27,3 +27,12 @@ void MacIntegration::setStreamShortcutGuard(bool enabled)
         s_ShortcutMonitor = nil;
     }
 }
+
+bool MacIntegration::clipboardHasConcealedContent()
+{
+    @autoreleasepool {
+        NSArray<NSPasteboardType>* types = [[NSPasteboard generalPasteboard] types];
+        return [types containsObject:@"org.nspasteboard.ConcealedType"] ||
+               [types containsObject:@"org.nspasteboard.TransientType"];
+    }
+}
