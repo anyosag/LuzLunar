@@ -85,6 +85,14 @@ jobs:
         shell: bash
         run: echo "CI_VERSION=$(cat app/version.txt)-fork.$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
 
+      - name: Fork unit tests
+        shell: bash
+        run: |
+          python3 setup-deps.py
+          clang++ -std=c++17 -Wall -Iapp -Ilibs/mac/include/SDL2 \
+            tests/fork/keymap_test.cpp app/fork/forkkeymap.cpp -o "$RUNNER_TEMP/keymap_test"
+          "$RUNNER_TEMP/keymap_test"
+
       - name: Build (arm64, ad-hoc signed)
         run: bash scripts/fork/build-mac.sh Release
 

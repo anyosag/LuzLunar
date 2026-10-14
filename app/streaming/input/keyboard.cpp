@@ -2,6 +2,7 @@
 
 #include <Limelight.h>
 #include "SDL_compat.h"
+#include "fork/forkinput.h" // [fork]
 
 #define VK_0 0x30
 #define VK_A 0x41
@@ -226,6 +227,12 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         }
     }
 
+    // [fork] Modifier remapping (e.g. Mac Command -> Ctrl), after the combos above matched the physical keys
+    bool forkForceGui = false;
+    if (ForkInput::preprocessKeyEvent(event, forkForceGui)) {
+        return;
+    }
+
     // Set modifier flags
     modifiers = 0;
     if (event->keysym.mod & KMOD_CTRL) {
@@ -238,7 +245,7 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         modifiers |= MODIFIER_SHIFT;
     }
     if (event->keysym.mod & KMOD_GUI) {
-        if (isSystemKeyCaptureActive()) {
+        if (isSystemKeyCaptureActive() || forkForceGui) { // [fork]
             modifiers |= MODIFIER_META;
         }
     }
@@ -399,14 +406,14 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
                 modifiers |= MODIFIER_EXTENDED;
                 break;
             case SDL_SCANCODE_LGUI:
-                if (!isSystemKeyCaptureActive()) {
+                if (!isSystemKeyCaptureActive() && !forkForceGui) { // [fork]
                     return;
                 }
                 keyCode = 0x5B;
                 modifiers |= MODIFIER_EXTENDED;
                 break;
             case SDL_SCANCODE_RGUI:
-                if (!isSystemKeyCaptureActive()) {
+                if (!isSystemKeyCaptureActive() && !forkForceGui) { // [fork]
                     return;
                 }
                 keyCode = 0x5C;

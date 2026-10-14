@@ -1,0 +1,6 @@
+<RCC>
+    <!-- Fork QML lives in app/gui so upstream QML can use it as a same-folder type -->
+    <qresource prefix="/gui">
+        <file alias="ForkSettingsGroupBox.qml">../gui/ForkSettingsGroupBox.qml</file>
+    </qresource>
+</RCC>
