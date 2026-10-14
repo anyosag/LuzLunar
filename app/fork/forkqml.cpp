@@ -5,6 +5,7 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 
+#include "clienthardware.h"
 #include "forkpreferences.h"
 #include "sfsymbols.h"
 #include "streamprofiles.h"
@@ -41,6 +42,12 @@ namespace
             ForkSfSymbols* symbols = ForkSfSymbols::get(engine);
             QQmlEngine::setObjectOwnership(symbols, QQmlEngine::CppOwnership);
             return symbols;
+        });
+        qmlRegisterSingletonType<ClientHardware>("ClientHardware", 1, 0, "ClientHardware",
+                                                 [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ClientHardware* hardware = ClientHardware::get();
+            QQmlEngine::setObjectOwnership(hardware, QQmlEngine::CppOwnership);
+            return hardware;
         });
         qmlRegisterSingletonType<ForkWindowChrome>("WindowChrome", 1, 0, "WindowChrome",
                                                    [](QQmlEngine*, QJSEngine*) -> QObject* {

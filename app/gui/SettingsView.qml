@@ -666,6 +666,8 @@ Flickable {
                     }
                 }
 
+                ForkHardwareWarnings { width: parent.width } // [fork] stream settings this Mac can't handle
+
                 Label {
                     width: parent.width
                     id: bitrateTitle
@@ -1466,6 +1468,8 @@ Flickable {
                 }
             }
         }
+
+        ForkThisMacGroupBox { width: (parent.width - (parent.leftPadding + parent.rightPadding)) } // [fork] chip, displays and decoders
 
         // [fork] fork settings (Mac keyboard, clipboard, ...)
         ForkSettingsGroupBox {
