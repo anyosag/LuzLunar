@@ -963,6 +963,10 @@ int main(int argc, char *argv[])
     // Create the identity manager on the main thread
     IdentityManager::get();
 
+#ifdef Q_OS_DARWIN
+    // [fork] LuzLunar uses native macOS controls that follow the system appearance and accent color
+    QQuickStyle::setStyle("macOS");
+#else
     // We require the Material theme
     QQuickStyle::setStyle("Material");
 
@@ -982,6 +986,7 @@ int main(int argc, char *argv[])
         // old primary color unless the user overrides it themselves.
         qputenv("QT_QUICK_CONTROLS_MATERIAL_PRIMARY", "#3F51B5");
     }
+#endif
 
     QQmlApplicationEngine engine;
     QString initialView;

@@ -1,5 +1,11 @@
 # Fork-only sources and resources (anyosag/moonlight-qt), included from app.pro. See FORK.md.
 
+# LuzLunar is macOS-only and its QML uses Qt 6.8 APIs (Popup.popupType), which would otherwise
+# only fail at runtime
+!versionAtLeast(QT_VERSION, 6.8.0) {
+    error("LuzLunar needs Qt 6.8 or later (found $$QT_VERSION)")
+}
+
 SOURCES += \
     $$PWD/apolloclient.cpp \
     $$PWD/clipboardsync.cpp \
@@ -8,8 +14,10 @@ SOURCES += \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
     $$PWD/forkstreamextensions.cpp \
+    $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
-    $$PWD/streamstats.cpp
+    $$PWD/streamstats.cpp \
+    $$PWD/windowchrome.cpp
 
 HEADERS += \
     $$PWD/apolloclient.h \
@@ -18,15 +26,20 @@ HEADERS += \
     $$PWD/forkkeymap.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
+    $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
+    $$PWD/windowchrome.h \
     $$PWD/mac/macintegration.h \
     $$PWD/mac/notchbar.h
 
 macx {
     SOURCES += \
+        $$PWD/screenshotharness.cpp \
         $$PWD/mac/macintegration.mm \
-        $$PWD/mac/notchbar.mm
+        $$PWD/mac/notchbar.mm \
+        $$PWD/mac/sfsymbolprovider.mm \
+        $$PWD/mac/windowchrome_mac.mm
 }
 
 RESOURCES += \

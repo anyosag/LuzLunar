@@ -2,7 +2,7 @@ import QtQuick 2.9
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 import QtQuick.Window 2.2
-import QtQuick.Controls.Material 2.2
+// [fork] No explicit Material import: it would override the native macOS style set in main.cpp
 
 import ComputerManager 1.0
 import AutoUpdateChecker 1.0
@@ -22,15 +22,13 @@ ApplicationWindow {
     width: 1280
     height: 600
 
+    // [fork] With the native chrome, a translucent (Liquid Glass) backdrop sits behind the window,
+    // so the window itself draws no background
+    color: nativeToolbar.active ? "transparent" : palette.window
+
     // This function runs prior to creation of the initial StackView item
     function doEarlyInit() {
-        // Override the background color to Material 2 colors for Qt 6.5+
-        // in order to improve contrast between GFE's placeholder box art
-        // and the background of the app grid.
-        if (SystemProperties.usesMaterial3Theme) {
-            Material.background = "#303030"
-        }
-
+        // [fork] The Material 2 background override is gone with the native macOS style
         SdlGamepadKeyNavigation.enable()
     }
 
@@ -233,18 +231,48 @@ ApplicationWindow {
         }
     }
 
+    // [fork] On macOS 15+ the buttons below show in a native toolbar (Liquid Glass on macOS 26).
+    // The QML toolbar is then clipped to nothing but stays in the focus chain, so keyboard and
+    // gamepad navigation still reach its buttons; the native item of the focused one is highlighted.
+    // Clicks on native items go to the QML buttons.
+    ForkNativeToolbar {
+        id: nativeToolbar
+        targetWindow: window
+        shown: toolBar.visible
+        title: stackView.currentItem ? stackView.currentItem.objectName : ""
+        subtitle: stackView.currentItem instanceof SettingsView ? qsTr("Version %1").arg(SystemProperties.versionString) : ""
+        items: [
+            { "id": "back", "button": backButton, "symbol": "chevron.left", "label": qsTr("Back"),
+              "navigational": true, "visible": stackView.depth > 1, "focused": backButton.activeFocus },
+            { "id": "update", "button": updateButton, "symbol": "arrow.down.circle", "label": qsTr("Update"),
+              "toolTip": updateButton.ToolTip.text, "visible": updateButton.browserUrl !== "", "focused": updateButton.activeFocus },
+            { "id": "discord", "button": discordButton, "symbol": "bubble.left.and.bubble.right", "label": qsTr("Discord"),
+              "toolTip": discordButton.ToolTip.text, "visible": SystemProperties.hasBrowser && stackView.currentItem instanceof SettingsView,
+              "focused": discordButton.activeFocus },
+            { "id": "addPc", "button": addPcButton, "symbol": "plus", "label": qsTr("Add PC"),
+              "toolTip": addPcButton.ToolTip.text, "visible": stackView.currentItem instanceof PcView, "focused": addPcButton.activeFocus },
+            { "id": "help", "button": helpButton, "symbol": "questionmark.circle", "label": qsTr("Help"),
+              "toolTip": helpButton.ToolTip.text, "visible": SystemProperties.hasBrowser, "focused": helpButton.activeFocus },
+            { "id": "settings", "button": settingsButton, "symbol": "gearshape", "label": qsTr("Settings"),
+              "toolTip": settingsButton.ToolTip.text, "visible": !(stackView.currentItem instanceof SettingsView),
+              "focused": settingsButton.activeFocus }
+        ]
+    }
+
     header: ToolBar {
         id: toolBar
-        height: 60
+        height: nativeToolbar.active ? 0 : 52 // [fork] macOS toolbar height (was 60), or none with the native toolbar
+        clip: nativeToolbar.active // [fork] draws nothing and takes no clicks, but its buttons keep keyboard focus
         anchors.topMargin: 5
         anchors.bottomMargin: 5
 
         Label {
             id: titleLabel
-            visible: toolBar.width > 700
+            visible: toolBar.width > 700 && !nativeToolbar.active // [fork]
             anchors.fill: parent
             text: stackView.currentItem.objectName
-            font.pointSize: 20
+            font.pointSize: 15 // [fork] macOS title size (was 20)
+            font.bold: true
             elide: Label.ElideRight
             horizontalAlignment: Qt.AlignHCenter
             verticalAlignment: Qt.AlignVCenter
@@ -252,15 +280,27 @@ ApplicationWindow {
 
         RowLayout {
             spacing: 10
+
+            // [fork] Back (Escape, or B on a gamepad) leaves the toolbar for the page below,
+            // which matters while the toolbar is clipped and its focus only shows natively
+            Keys.onEscapePressed: {
+                stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+            }
+            Keys.onBackPressed: {
+                stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+            }
             anchors.leftMargin: 10
             anchors.rightMargin: 10
             anchors.fill: parent
 
             NavigableToolButton {
+                id: backButton // [fork] for the native toolbar
+
                 // Only make the button visible if the user has navigated somewhere.
                 visible: stackView.depth > 1
 
                 iconSource: "qrc:/res/arrow_left.svg"
+                symbolName: "chevron.left" // [fork]
 
                 onClicked: goBack()
 
@@ -319,6 +359,7 @@ ApplicationWindow {
                 visible: stackView.currentItem instanceof PcView
 
                 iconSource:  "qrc:/res/ic_add_to_queue_white_48px.svg"
+                symbolName: "plus" // [fork]
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -346,10 +387,11 @@ ApplicationWindow {
                 id: updateButton
 
                 iconSource: "qrc:/res/update.svg"
+                symbolName: "arrow.down.circle" // [fork]
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
-                ToolTip.visible: hovered || visible
+                ToolTip.visible: hovered || (visible && !nativeToolbar.active) // [fork] the native item has the tooltip
 
                 // Invisible until we get a callback notifying us that
                 // an update is available
@@ -383,6 +425,7 @@ ApplicationWindow {
                 visible: SystemProperties.hasBrowser
 
                 iconSource: "qrc:/res/question_mark.svg"
+                symbolName: "questionmark.circle" // [fork]
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -413,6 +456,7 @@ ApplicationWindow {
                 ToolTip.text: qsTr("Gamepad Mapper")
 
                 iconSource: "qrc:/res/ic_videogame_asset_white_48px.svg"
+                symbolName: "gamecontroller" // [fork]
 
                 onClicked: navigateTo("qrc:/gui/GamepadMapper.qml", GamepadMapper)
 
@@ -424,7 +468,11 @@ ApplicationWindow {
             NavigableToolButton {
                 id: settingsButton
 
+                // [fork] The native toolbar has no Settings item on the Settings page, so focus shouldn't land here
+                visible: !nativeToolbar.active || !(stackView.currentItem instanceof SettingsView)
+
                 iconSource:  "qrc:/res/settings.svg"
+                symbolName: "gearshape" // [fork]
 
                 onClicked: navigateTo("qrc:/gui/SettingsView.qml", SettingsView)
 

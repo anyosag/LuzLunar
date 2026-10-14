@@ -14,6 +14,14 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner. Upstream's default; macos-15 when GitHub is short of macOS 26 machines.
+        type: choice
+        options:
+          - upstream
+          - macos-15
+        default: upstream
   # Used by sync-upstream.yml, since pushes made with GITHUB_TOKEN don't trigger workflows.
   workflow_call:
     inputs:
@@ -45,11 +53,17 @@ jobs:
       - name: Read build-win-mac.yml
         id: read
         shell: bash
+        env:
+          RUNNER_OVERRIDE: ${{ inputs.runner }}
         run: |
           f=.github/workflows/build-win-mac.yml
           os=$(grep -oE 'os: macos-[0-9A-Za-z.-]+' "$f" | head -n1 | cut -d' ' -f2)
           qt=$(grep -A1 -E 'os: macos-' "$f" | grep -oE 'qt_version: [0-9.]+' | head -n1 | cut -d' ' -f2)
           aqt=$(grep -oE "aqtsource: '[^']+'" "$f" | head -n1 | sed -E "s/aqtsource: '(.*)'/\1/")
+          # A manual run can pick another runner when GitHub has no macOS 26 machines free
+          if [ -n "$RUNNER_OVERRIDE" ] && [ "$RUNNER_OVERRIDE" != "upstream" ]; then
+            os=$RUNNER_OVERRIDE
+          fi
           echo "os=${os:-macos-26}" >> "$GITHUB_OUTPUT"
           echo "qt_version=${qt:-6.11.2}" >> "$GITHUB_OUTPUT"
           echo "aqtsource=${aqt:-aqtinstall}" >> "$GITHUB_OUTPUT"
@@ -67,6 +81,21 @@ jobs:
           submodules: 'recursive'
           fetch-depth: 1
 
+      # The macOS 26 SDK is needed for Liquid Glass and Icon Composer icons. Older runners have
+      # Xcode 26 installed but not as the default.
+      - name: Use Xcode 26 or later
+        shell: bash
+        run: |
+          # Read the whole output first: xcodebuild crashes if a pipe closes early (head)
+          version=$(xcodebuild -version)
+          major=$(echo "$version" | grep -oE '[0-9]+' | head -n1)
+          if [ "${major:-0}" -lt 26 ]; then
+            xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
+            [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+            sudo xcode-select -s "$xcode"
+          fi
+          xcodebuild -version
+
       - name: Install create-dmg
         run: |
           brew install node
@@ -80,6 +109,9 @@ jobs:
           add-tools-to-path: true
           version: ${{ needs.setup.outputs.qt_version }}
           aqtsource: ${{ needs.setup.outputs.aqtsource }}
+          # The macOS Controls style draws BusyIndicator from an animated WebP, which needs the
+          # qtimageformats plugin; macdeployqt then bundles it.
+          modules: 'qtimageformats'
 
       - name: Set version
         shell: bash
@@ -121,3 +153,25 @@ jobs:
           name: zDevDbgSyms-LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
           path: build/installer-Release/*.dsym/*
           if-no-files-found: error
+
+      # Screenshots of the main views and dialogs in dark and light mode, taken by the app itself
+      # (app/fork/screenshotharness.cpp), so UI changes can be reviewed without a Mac.
+      - name: UI screenshots
+        shell: bash
+        continue-on-error: true
+        run: |
+          app=build/build-Release/app/LuzLunar.app/Contents/MacOS/LuzLunar
+          for scheme in dark light; do
+            LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
+              perl -e 'alarm 120; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
+          done
+          # The app icon as older macOS shows it (actool's flattened .icns)
+          sips -s format png build/build-Release/app/LuzLunar.app/Contents/Resources/LuzLunar.icns --out "$RUNNER_TEMP/screenshots/app-icon.png" || true
+          ls -R "$RUNNER_TEMP/screenshots" || true
+
+      - name: Upload UI screenshots
+        uses: actions/upload-artifact@v6
+        with:
+          name: LuzLunar-screenshots-${{ env.CI_VERSION }}
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn

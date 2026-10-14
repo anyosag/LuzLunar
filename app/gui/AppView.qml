@@ -1,6 +1,7 @@
 import QtQuick 2.9
 import QtQuick.Controls 2.2
-import QtQuick.Controls.Material 2.2
+import QtQuick.Effects // [fork] MultiEffect, for the rounded box art
+// [fork] No explicit Material import: it would override the native macOS style set in main.cpp
 
 import AppModel 1.0
 import ComputerManager 1.0
@@ -73,6 +74,7 @@ CenteredGridView {
     delegate: NavigableItemDelegate {
         width: 220; height: 287;
         grid: appGrid
+        cornerRadius: appIconMask.radius + appIcon.y // [fork] nests around the rounded box art
 
         property alias appContextMenu: appContextMenuLoader.item
         property alias appNameText: appNameTextLoader.item
@@ -114,6 +116,28 @@ CenteredGridView {
             ToolTip.delay: 1000
             ToolTip.timeout: 5000
             ToolTip.visible: (parent.hovered || parent.highlighted) && (!appNameText || appNameText.truncated)
+
+            // [fork] Rounded corners, like artwork in macOS apps
+            layer.enabled: true
+            layer.smooth: true
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: appIconMask
+                // Antialiased edges
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1.0
+            }
+        }
+
+        // [fork] The shape the box art is cut to (only used as a mask, never drawn)
+        Rectangle {
+            id: appIconMask
+            width: appIcon.width
+            height: appIcon.height
+            radius: 12
+            visible: false
+            layer.enabled: true
+            layer.smooth: true
         }
 
         Loader {
@@ -144,8 +168,6 @@ CenteredGridView {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 3000
                     ToolTip.visible: hovered
-
-                    Material.background: "#D0808080"
                 }
 
                 RoundButton {
@@ -170,8 +192,6 @@ CenteredGridView {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 3000
                     ToolTip.visible: hovered
-
-                    Material.background: "#D0808080"
                 }
             }
         }
@@ -193,7 +213,7 @@ CenteredGridView {
             sourceComponent: Label {
                 id: appNameText
                 text: model.name
-                font.pointSize: 22
+                font.pointSize: 17 // [fork] was 22
                 leftPadding: 20
                 rightPadding: 20
                 verticalAlignment: Text.AlignVCenter
@@ -344,7 +364,7 @@ CenteredGridView {
 
         Label {
             text: qsTr("This computer doesn't seem to have any applications or some applications are hidden")
-            font.pointSize: 20
+            font.pointSize: 15 // [fork] was 20
             verticalAlignment: Text.AlignVCenter
             wrapMode: Text.Wrap
         }

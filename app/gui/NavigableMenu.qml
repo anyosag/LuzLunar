@@ -1,8 +1,12 @@
-import QtQuick 2.0
-import QtQuick.Controls 2.2
+import QtQuick
+import QtQuick.Controls // [fork] versionless, for popupType (Qt 6.8)
 
 Menu {
     property var initiator
+
+    // [fork] Keep menus in the main window (Popup.Item). Gamepad navigation sends its key events
+    // to the main window, so a menu in its own window (Popup.Window) or a native one wouldn't get them.
+    popupType: Popup.Item
 
     onOpened: {
         // If the initiating object currently has keyboard focus,
