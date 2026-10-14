@@ -7,6 +7,7 @@
 #include "backend/computermanager.h"
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
+#include "forkaspect.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/session.h"
 #include "SDL_compat.h"
@@ -157,6 +158,19 @@ Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, Streami
                 bitrateInputsChanged = true;
             }
         }
+    }
+
+    // Apollo makes its virtual display at exactly this size, and moonlight-common-c only rounds
+    // the height to even after the launch request, so send even sizes (a command line size can
+    // be odd)
+    int evenWidth = ForkAspect::evenDown(prefs->width);
+    int evenHeight = ForkAspect::evenDown(prefs->height);
+    if ((evenWidth != prefs->width || evenHeight != prefs->height) && evenWidth > 0 && evenHeight > 0) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] Rounded the stream size %dx%d to %dx%d",
+                    prefs->width, prefs->height, evenWidth, evenHeight);
+        prefs->width = evenWidth;
+        prefs->height = evenHeight;
     }
 
     // Scale the bitrate with a profile's resolution or frame rate, unless a custom bitrate is in use

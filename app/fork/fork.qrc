@@ -9,5 +9,7 @@
         <file alias="ForkNativeToolbar.qml">../gui/ForkNativeToolbar.qml</file>
         <file alias="ForkDialogBackground.qml">../gui/ForkDialogBackground.qml</file>
         <file alias="ForkBusyIndicator.qml">../gui/ForkBusyIndicator.qml</file>
+        <file alias="ForkAspectRatioPicker.qml">../gui/ForkAspectRatioPicker.qml</file>
+        <file alias="ForkCustomResolutionDialog.qml">../gui/ForkCustomResolutionDialog.qml</file>
     </qresource>
 </RCC>

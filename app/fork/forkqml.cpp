@@ -6,6 +6,7 @@
 #include <QQuickWindow>
 
 #include "clienthardware.h"
+#include "forkaspectratios.h"
 #include "forkpreferences.h"
 #include "sfsymbols.h"
 #include "streamprofiles.h"
@@ -48,6 +49,12 @@ namespace
             ClientHardware* hardware = ClientHardware::get();
             QQmlEngine::setObjectOwnership(hardware, QQmlEngine::CppOwnership);
             return hardware;
+        });
+        qmlRegisterSingletonType<AspectRatios>("AspectRatios", 1, 0, "AspectRatios",
+                                               [](QQmlEngine*, QJSEngine*) -> QObject* {
+            AspectRatios* ratios = AspectRatios::get();
+            QQmlEngine::setObjectOwnership(ratios, QQmlEngine::CppOwnership);
+            return ratios;
         });
         qmlRegisterSingletonType<ForkWindowChrome>("WindowChrome", 1, 0, "WindowChrome",
                                                    [](QQmlEngine*, QJSEngine*) -> QObject* {

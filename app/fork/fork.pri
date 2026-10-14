@@ -16,6 +16,8 @@ SOURCES += \
     $$PWD/clienthardware.cpp \
     $$PWD/clipbundle.cpp \
     $$PWD/clipboardsync.cpp \
+    $$PWD/forkaspect.cpp \
+    $$PWD/forkaspectratios.cpp \
     $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
@@ -34,6 +36,8 @@ HEADERS += \
     $$PWD/clienthardware.h \
     $$PWD/clipbundle.h \
     $$PWD/clipboardsync.h \
+    $$PWD/forkaspect.h \
+    $$PWD/forkaspectratios.h \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \

@@ -126,6 +126,13 @@ Flickable {
                     wrapMode: Text.Wrap
                 }
 
+                // [fork] aspect ratio picker; it fills the resolution list below
+                ForkAspectRatioPicker {
+                    id: forkAspectRatioPicker
+                    width: parent.width
+                    resolutionCombo: resolutionComboBox
+                }
+
                 Row {
                     spacing: 5
                     width: parent.width
@@ -296,7 +303,8 @@ Flickable {
                         // ::onActivated must be used, as it only listens for when the index is changed by a human
                         onActivated : {
                             if (resolutionListModel.get(currentIndex).is_custom) {
-                                customResolutionDialog.open()
+                                // [fork] the fork's dialog instead of customResolutionDialog
+                                forkCustomResolutionDialog.openFor(StreamingPreferences.width, StreamingPreferences.height, forkAspectRatioPicker.ratio)
                             }
                             else {
                                 updateBitrateForSelection()
@@ -436,6 +444,19 @@ Flickable {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // [fork] Replaces customResolutionDialog above, which is no longer opened: even
+                        // sizes, an aspect ratio lock and no GeForce Experience warning. The picker
+                        // selects the size and updates the bitrate, like that dialog's onAccepted.
+                        ForkCustomResolutionDialog {
+                            id: forkCustomResolutionDialog
+
+                            onAccepted: forkAspectRatioPicker.useSize(chosenWidth, chosenHeight)
+
+                            onRejected: {
+                                resolutionComboBox.currentIndex = resolutionComboBox.lastIndexValue
                             }
                         }
                     }
