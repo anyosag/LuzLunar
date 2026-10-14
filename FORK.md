@@ -41,3 +41,9 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
   - Each session gets its own copy of the settings with the profile applied, so the global settings never change. Command line flags win over the profile.
   - Profiles are stored under `fork/profiles/<host uuid>/<hex app name>`.
   - CI warns if streaming code starts reading the global settings directly, which would bypass profiles.
+- **Apollo clipboard sync** (`app/fork/clipboardsync.*`, `apolloclient.*`):
+  - Text is shared through Apollo's HTTPS `GET`/`POST /actions/clipboard?type=text`, using the paired client certificate.
+  - Modes are Off, Shortcuts only (Ctrl+Option+Shift+U sends, G fetches) and Automatic (the default). Automatic sends the clipboard when a stream starts or regains focus, and fetches the PC's when it loses focus or ends.
+  - Requests run one at a time on a worker thread and report back through an SDL event, because the Qt event loop is paused while streaming.
+  - Sync never wipes the local clipboard with empty text and never sends back text that came from the host. It skips password-manager clips (`org.nspasteboard.ConcealedType`/`TransientType`) and never logs clipboard contents.
+  - The host must be Apollo, and Apollo must give this device its Clipboard permissions. Sync checks this through serverinfo `<Permission>`.

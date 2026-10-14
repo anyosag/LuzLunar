@@ -8,9 +8,8 @@ import SystemProperties 1.0
 GroupBox {
     id: forkSettingsGroupBox
     padding: 12
-    title: "<font color=\"skyblue\">" + qsTr("Mac Keyboard") + "</font>"
+    title: "<font color=\"skyblue\">" + qsTr("Keyboard & Clipboard") + "</font>"
     font.pointSize: 12
-    visible: SystemProperties.isDarwin
 
     Column {
         anchors.fill: parent
@@ -18,17 +17,18 @@ GroupBox {
 
         Label {
             width: parent.width
+            visible: SystemProperties.isDarwin
             text: qsTr("Choose what each Mac modifier key sends to the host PC. Moonlight's own shortcuts (Ctrl+Option+Shift+…) always use the physical keys.")
             font.pointSize: 9
             wrapMode: Text.Wrap
         }
 
         Repeater {
-            model: [
+            model: SystemProperties.isDarwin ? [
                 { "label": qsTr("Command (⌘) sends"), "property": "commandKeyTarget" },
                 { "label": qsTr("Control (⌃) sends"), "property": "controlKeyTarget" },
                 { "label": qsTr("Option (⌥) sends"), "property": "optionKeyTarget" }
-            ]
+            ] : []
 
             delegate: Row {
                 spacing: 5
@@ -61,7 +61,43 @@ GroupBox {
 
         Label {
             width: parent.width
+            visible: SystemProperties.isDarwin
             text: qsTr("While streaming with Command not set to the Windows key, Cmd+Q and Cmd+H go to the host instead of quitting or hiding Moonlight. End a stream with Ctrl+Option+Shift+Q.")
+            font.pointSize: 9
+            wrapMode: Text.Wrap
+        }
+
+        Row {
+            spacing: 5
+            width: parent.width
+
+            Label {
+                width: 180
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Clipboard sync")
+                font.pointSize: 12
+            }
+
+            AutoResizingComboBox {
+                // Item order matches ForkPreferences.ClipboardSyncMode
+                model: [qsTr("Off"), qsTr("Shortcuts only"), qsTr("Automatic")]
+                font.pointSize: 12
+
+                Component.onCompleted: {
+                    currentIndex = ForkPreferences.clipboardSyncMode
+                    recalculateWidth()
+                }
+
+                // ::onActivated must be used, as it only listens for when the index is changed by a human
+                onActivated: {
+                    ForkPreferences.clipboardSyncMode = currentIndex
+                }
+            }
+        }
+
+        Label {
+            width: parent.width
+            text: qsTr("Shares copied text with Apollo hosts while streaming. Automatic sends your clipboard when you switch to the stream and fetches the PC's when you switch away. Ctrl+Option+Shift+U sends and Ctrl+Option+Shift+G fetches at any time. Apollo must give this device its Clipboard permissions.")
             font.pointSize: 9
             wrapMode: Text.Wrap
         }

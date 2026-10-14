@@ -3,6 +3,7 @@
 #include <QSettings>
 
 #define SER_KEYTARGETS "fork/keyTargets"
+#define SER_CLIPBOARDSYNC "fork/clipboardSync"
 
 namespace
 {
@@ -34,7 +35,8 @@ ForkPreferences* ForkPreferences::get()
 
 ForkPreferences::ForkPreferences(QObject* parent)
     : QObject(parent),
-      m_KeyMap(defaultKeyMap())
+      m_KeyMap(defaultKeyMap()),
+      m_ClipboardSyncMode(CSM_AUTOMATIC)
 {
     QSettings settings;
 
@@ -46,6 +48,22 @@ ForkPreferences::ForkPreferences(QObject* parent)
         }
     }
     settings.endGroup();
+
+    int mode = settings.value(SER_CLIPBOARDSYNC, m_ClipboardSyncMode).toInt();
+    if (mode >= CSM_OFF && mode <= CSM_AUTOMATIC) {
+        m_ClipboardSyncMode = mode;
+    }
+}
+
+void ForkPreferences::setClipboardSyncMode(int mode)
+{
+    if (mode < CSM_OFF || mode > CSM_AUTOMATIC || mode == m_ClipboardSyncMode) {
+        return;
+    }
+
+    m_ClipboardSyncMode = mode;
+    QSettings().setValue(SER_CLIPBOARDSYNC, mode);
+    emit clipboardSyncModeChanged();
 }
 
 void ForkPreferences::setKeyTarget(ForkKeymap::Physical key, int target)
