@@ -3,9 +3,30 @@
 #include "fork/streamstats.h"
 #include "SDL_compat.h"
 
+#include <atomic>
+
+#include <QCoreApplication>
+
 #include <SDL_syswm.h>
 
 #import <AppKit/AppKit.h>
+#import <QuartzCore/QuartzCore.h>
+
+namespace
+{
+    const CGFloat k_Margin = 10;      // between a pill and the edge of its area
+    const CGFloat k_Padding = 12;     // inside a pill, around its content
+    const CGFloat k_IconGap = 6;      // between the message icon and its text
+    const CGFloat k_TitleGap = 8;     // between the title and a message beside it
+    const CGFloat k_DotSize = 8;
+    const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
+
+    // The message pill in the bottom-left corner of a windowed stream
+    const CGFloat k_CornerMargin = 16;      // from the window's left and bottom edges
+    const CGFloat k_CornerHeight = 30;
+    const CGFloat k_CornerMaxWidth = 480;
+    const CGFloat k_CornerRise = 6;         // how far it rises as it appears
+}
 
 // A panel that can never take focus from the stream window: if it became key, SDL would treat
 // it as the stream losing focus.
@@ -24,17 +45,76 @@
 }
 @end
 
+// Messages in the bottom-left corner of a windowed stream, in a pill like the notch bar's. It's in a
+// child window of the stream window, so it moves, resizes and changes Spaces with it.
+@interface ForkCornerMessage : NSObject
+{
+    NSWindow* m_StreamWindow;
+    ForkNotchPanel* m_Panel;
+    NSView* m_Pill;
+    NSImageView* m_Icon;
+    NSTextField* m_Label;
+    NSString* m_Text;           // the message shown or appearing; nil while hidden or hiding
+    BOOL m_Warning;
+    unsigned m_Generation;      // completion handlers of older animations do nothing
+}
+- (instancetype)initWithStreamWindow:(NSWindow*)window;
+// Shows the message, or another one in its place, or hides it for nil
+- (void)showMessage:(NSString*)text warning:(BOOL)warning;
+- (void)hideNow;
+// Follows the stream window's size
+- (void)layout;
+- (void)invalidate;
+@end
+
+typedef NS_ENUM(NSInteger, ForkMessageState) {
+    ForkMessageHidden,
+    ForkMessageBlinking,    // the red dot blinks beside the notch
+    ForkMessageExpanding,   // the dot grows into the pill
+    ForkMessageShown,
+    ForkMessageChanging,    // another message replaces the one shown
+    ForkMessageCollapsing,  // the pill shrinks away
+};
+
 @interface ForkNotchBarController : NSObject
 {
-    NSWindow* m_StreamWindow;   // not retained; SDL owns it and it outlives this controller
+    NSWindow* m_StreamWindow;   // retained: SDL destroys the window before the stream's fork extensions go away
     ForkNotchPanel* m_Panel;
     NSView* m_LeftPill;
     NSView* m_RightPill;
     NSTextField* m_LeftLabel;
     NSTextField* m_RightLabel;
+
+    // Messages beside the notch, in a pill that grows out of a blinking red dot
+    NSView* m_MessagePill;
+    NSImageView* m_MessageIcon;
+    NSTextField* m_MessageLabel;
+    NSView* m_Dot;
+    NSString* m_Warning;            // the connection warning, until the connection recovers
+    NSString* m_Toast;              // a clipboard message, shown for a few seconds
+    unsigned m_ToastGeneration;
+    unsigned m_ToastTimerGeneration;
+    BOOL m_ShowsWarning;            // the pill holds the warning rather than a clipboard message
+    ForkMessageState m_MessageState;
+    unsigned m_AnimationGeneration; // completion handlers of older animations do nothing
+    ForkCornerMessage* m_Corner;    // shows the messages instead while the stream is windowed
+    BOOL m_BarOnScreen;
+    BOOL m_CornerOnScreen;
+    std::atomic<bool> m_ShowsMessages; // the bar or the corner pill is on screen
+    BOOL m_FullScreenTransition;    // the stream window is entering or leaving its fullscreen Space
+    unsigned m_TransitionGeneration;
+
+    // The area left of the notch and the pill size, in panel coordinates, from the last refresh
+    BOOL m_HasGeometry;
+    NSRect m_LeftArea;
+    CGFloat m_PillHeight;
+    CGFloat m_PillY;
 }
 - (instancetype)initWithStreamWindow:(NSWindow*)window title:(NSString*)title;
 - (void)setStatsText:(NSString*)text;
+- (void)setWarning:(NSString*)text;
+- (void)showToast:(NSString*)text;
+- (BOOL)showsMessages;
 - (void)invalidate;
 @end
 
@@ -50,11 +130,24 @@ static NSTextField* makeLabel(NSString* text)
     return label;
 }
 
-// A capsule of Liquid Glass (macOS 26) or vibrancy holding the label. Returns a +1 reference.
-static NSView* makePill(NSTextField* label)
+static NSImage* symbolImage(NSString* name)
+{
+    if (@available(macOS 11.0, *)) {
+        NSImage* image = [NSImage imageWithSystemSymbolName:name accessibilityDescription:nil];
+        return [image imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:12
+                                                                                                   weight:NSFontWeightMedium]];
+    }
+    return nil;
+}
+
+// A capsule of Liquid Glass (macOS 26) or vibrancy holding the views. Returns a +1 reference.
+static NSView* makePill(NSArray<NSView*>* views)
 {
     NSView* container = [[[NSView alloc] initWithFrame:NSZeroRect] autorelease];
-    [container addSubview:label];
+    container.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    for (NSView* view in views) {
+        [container addSubview:view];
+    }
 
     if (@available(macOS 26.0, *)) {
         NSGlassEffectView* glass = [[NSGlassEffectView alloc] initWithFrame:NSZeroRect];
@@ -72,6 +165,110 @@ static NSView* makePill(NSTextField* label)
     return effect;
 }
 
+static void setCapsuleShape(NSView* pill, CGFloat height)
+{
+    if (@available(macOS 26.0, *)) {
+        if ([pill isKindOfClass:NSGlassEffectView.class]) {
+            ((NSGlassEffectView*)pill).cornerRadius = height / 2;
+        }
+    }
+    if (pill.layer != nil) {
+        pill.layer.cornerRadius = height / 2;
+    }
+}
+
+// Sets a standalone layer's opacity, animated over the duration, or at once for 0
+static void setLayerOpacity(CALayer* layer, float opacity, CFTimeInterval duration)
+{
+    [CATransaction begin];
+    if (duration > 0) {
+        [CATransaction setAnimationDuration:duration];
+    }
+    else {
+        [CATransaction setDisableActions:YES];
+    }
+    layer.opacity = opacity;
+    [CATransaction commit];
+}
+
+static BOOL reduceMotion()
+{
+    return NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
+}
+
+// A clear panel for pills that clicks pass through. Returns a +1 reference.
+static ForkNotchPanel* makePanel(NSWindowLevel level, NSWindowCollectionBehavior behavior)
+{
+    ForkNotchPanel* panel = [[ForkNotchPanel alloc] initWithContentRect:NSZeroRect
+                                                              styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+                                                                backing:NSBackingStoreBuffered
+                                                                  defer:NO];
+    panel.releasedWhenClosed = NO;
+    panel.opaque = NO;
+    panel.backgroundColor = NSColor.clearColor;
+    panel.hasShadow = NO;
+    panel.ignoresMouseEvents = YES;
+    panel.hidesOnDeactivate = NO;
+    panel.becomesKeyOnlyIfNeeded = YES;
+    panel.level = level;
+    panel.collectionBehavior = behavior;
+    // Over the black strip beside the notch and over video, light-on-dark like macOS's video controls
+    panel.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    return panel;
+}
+
+// The panel over the strip beside the notch: above the stream window's level, and allowed into its
+// fullscreen Space. Returns a +1 reference.
+static ForkNotchPanel* makeNotchPanel()
+{
+    return makePanel(NSMainMenuWindowLevel + 2,
+                     NSWindowCollectionBehaviorFullScreenAuxiliary |
+                     NSWindowCollectionBehaviorStationary |
+                     NSWindowCollectionBehaviorIgnoresCycle);
+}
+
+// Puts a message in a pill's icon and label: a yellow warning sign for the connection warning, a
+// clipboard for clipboard messages
+static void setMessageContent(NSImageView* icon, NSTextField* label, NSString* text, BOOL warning)
+{
+    label.stringValue = text != nil ? text : @"";
+    icon.image = symbolImage(warning ? @"wifi.exclamationmark" : @"doc.on.clipboard");
+    icon.contentTintColor = warning ? NSColor.systemYellowColor : NSColor.labelColor;
+    [icon setFrameSize:icon.image != nil ? icon.image.size : NSZeroSize];
+}
+
+// The width a message pill needs for its icon and text
+static CGFloat messageWidth(NSImageView* icon, NSTextField* label)
+{
+    [label sizeToFit];
+    CGFloat iconWidth = NSWidth(icon.frame);
+    return k_Padding + (iconWidth > 0 ? iconWidth + k_IconGap : 0) + NSWidth(label.frame) + k_Padding;
+}
+
+// Lays out a message's icon and text for a pill of this size
+static void layoutMessageContent(NSImageView* icon, NSTextField* label, NSSize size)
+{
+    label.superview.frame = NSMakeRect(0, 0, size.width, size.height);
+
+    NSSize iconSize = icon.frame.size;
+    CGFloat x = k_Padding;
+    [icon setFrameOrigin:NSMakePoint(x, (size.height - iconSize.height) / 2)];
+    if (iconSize.width > 0) {
+        x += iconSize.width + k_IconGap;
+    }
+
+    CGFloat labelHeight = NSHeight(label.frame);
+    label.frame = NSMakeRect(x, (size.height - labelHeight) / 2, MAX(size.width - x - k_Padding, 0), labelHeight);
+}
+
+static NSString* connectionWarningText(bool suggestLowerBitrate)
+{
+    QString message = suggestLowerBitrate ?
+                          QCoreApplication::translate("NotchBar", "Slow connection to PC · reduce your bitrate") :
+                          QCoreApplication::translate("NotchBar", "Poor connection to PC");
+    return message.toNSString();
+}
+
 - (instancetype)initWithStreamWindow:(NSWindow*)window title:(NSString*)title
 {
     self = [super init];
@@ -79,41 +276,56 @@ static NSView* makePill(NSTextField* label)
         return nil;
     }
 
-    m_StreamWindow = window;
-
-    m_Panel = [[ForkNotchPanel alloc] initWithContentRect:NSZeroRect
-                                                styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
-                                                  backing:NSBackingStoreBuffered
-                                                    defer:NO];
-    m_Panel.releasedWhenClosed = NO;
-    m_Panel.opaque = NO;
-    m_Panel.backgroundColor = NSColor.clearColor;
-    m_Panel.hasShadow = NO;
-    m_Panel.ignoresMouseEvents = YES;
-    m_Panel.hidesOnDeactivate = NO;
-    m_Panel.becomesKeyOnlyIfNeeded = YES;
-    // Above the stream window's level, and allowed into its fullscreen Space
-    m_Panel.level = NSMainMenuWindowLevel + 2;
-    m_Panel.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary |
-                                 NSWindowCollectionBehaviorStationary |
-                                 NSWindowCollectionBehaviorIgnoresCycle;
-    // The strip beside the notch is black, so always use light-on-dark text
-    m_Panel.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    m_StreamWindow = [window retain];
+    m_Panel = makeNotchPanel();
+    m_Corner = [[ForkCornerMessage alloc] initWithStreamWindow:window];
 
     m_LeftLabel = makeLabel(title);
     m_RightLabel = makeLabel(@"—");
-    m_LeftPill = makePill(m_LeftLabel);
-    m_RightPill = makePill(m_RightLabel);
+    m_LeftPill = makePill(@[ m_LeftLabel ]);
+    m_RightPill = makePill(@[ m_RightLabel ]);
+
+    m_MessageLabel = makeLabel(@"");
+    m_MessageIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
+    m_MessageIcon.imageScaling = NSImageScaleNone;
+    m_MessagePill = makePill(@[ m_MessageIcon, m_MessageLabel ]);
+    m_MessagePill.alphaValue = 0;
+
+    // A layer-hosting view, so AppKit leaves the layer's color and shape alone
+    m_Dot = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, k_DotSize, k_DotSize)];
+    CALayer* dot = [CALayer layer];
+    dot.backgroundColor = NSColor.systemRedColor.CGColor;
+    dot.cornerRadius = k_DotSize / 2;
+    m_Dot.layer = dot;
+    m_Dot.wantsLayer = YES;
+    m_Dot.hidden = YES;
+
+    m_MessageState = ForkMessageHidden;
+    m_ShowsMessages = false;
+
     [m_Panel.contentView addSubview:m_LeftPill];
     [m_Panel.contentView addSubview:m_RightPill];
+    // The dot sits under the pill that grows out of it
+    [m_Panel.contentView addSubview:m_Dot];
+    [m_Panel.contentView addSubview:m_MessagePill];
 
     NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+    for (NSNotificationName name in @[ NSWindowWillEnterFullScreenNotification,
+                                       NSWindowWillExitFullScreenNotification ]) {
+        [center addObserver:self selector:@selector(fullScreenTransitionStarted:) name:name object:m_StreamWindow];
+    }
     for (NSNotificationName name in @[ NSWindowDidEnterFullScreenNotification,
-                                       NSWindowDidExitFullScreenNotification,
-                                       NSWindowDidMiniaturizeNotification,
+                                       NSWindowDidExitFullScreenNotification ]) {
+        [center addObserver:self selector:@selector(fullScreenTransitionEnded:) name:name object:m_StreamWindow];
+    }
+    for (NSNotificationName name in @[ NSWindowDidMiniaturizeNotification,
                                        NSWindowDidDeminiaturizeNotification,
                                        NSWindowDidChangeScreenNotification ]) {
         [center addObserver:self selector:@selector(stateChanged:) name:name object:m_StreamWindow];
+    }
+    for (NSNotificationName name in @[ NSWindowDidResizeNotification,
+                                       NSWindowDidMoveNotification ]) {
+        [center addObserver:self selector:@selector(streamWindowFrameChanged:) name:name object:m_StreamWindow];
     }
     [center addObserver:self selector:@selector(stateChanged:) name:NSApplicationDidChangeScreenParametersNotification object:nil];
     [NSWorkspace.sharedWorkspace.notificationCenter addObserver:self
@@ -127,11 +339,19 @@ static NSView* makePill(NSTextField* label)
 
 - (void)dealloc
 {
+    [m_StreamWindow release];
     [m_Panel release];
     [m_LeftPill release];
     [m_RightPill release];
     [m_LeftLabel release];
     [m_RightLabel release];
+    [m_MessagePill release];
+    [m_MessageIcon release];
+    [m_MessageLabel release];
+    [m_Dot release];
+    [m_Warning release];
+    [m_Toast release];
+    [m_Corner release];
     [super dealloc];
 }
 
@@ -139,15 +359,83 @@ static NSView* makePill(NSTextField* label)
 {
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
+    // Animations and timers still queued find the controller invalidated and do nothing
+    m_AnimationGeneration++;
+    m_ShowsMessages = false;
+    [m_Corner invalidate];
+    [m_Dot.layer removeAllAnimations];
     [m_Panel orderOut:nil];
     [m_Panel close];
+    [m_StreamWindow release];
     m_StreamWindow = nil;
 }
 
 - (void)stateChanged:(NSNotification*)notification
 {
     (void)notification;
+    // The geometry may change under a running animation, so jump to where it was heading
+    [self finishMessageAnimation];
     [self refresh];
+}
+
+- (void)streamWindowFrameChanged:(NSNotification*)notification
+{
+    (void)notification;
+    [m_Corner layout];
+}
+
+// Moves the pills to a new panel in the same place
+- (void)replacePanel
+{
+    ForkNotchPanel* panel = makeNotchPanel();
+    [panel setFrame:m_Panel.frame display:NO];
+    // In their order in the old panel, so the dot stays under the message pill
+    for (NSView* view in @[ m_LeftPill, m_RightPill, m_Dot, m_MessagePill ]) {
+        [panel.contentView addSubview:view];
+    }
+
+    [m_Panel orderOut:nil];
+    [m_Panel close];
+    [m_Panel release];
+    m_Panel = panel;
+}
+
+// The bar stays hidden while the stream window moves between Spaces (see refresh)
+- (void)fullScreenTransitionStarted:(NSNotification*)notification
+{
+    m_FullScreenTransition = YES;
+    unsigned generation = ++m_TransitionGeneration;
+    [self stateChanged:notification];
+
+    // AppKit has no notification for a transition that fails, so don't wait for one forever
+    [self retain];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (generation == m_TransitionGeneration && m_StreamWindow != nil) {
+            m_FullScreenTransition = NO;
+            [self refresh];
+        }
+        [self release];
+    });
+}
+
+- (void)fullScreenTransitionEnded:(NSNotification*)notification
+{
+    m_FullScreenTransition = NO;
+    m_TransitionGeneration++;
+    [self stateChanged:notification];
+}
+
+// A poor connection warning follows the messages: in the bar or the corner pill while one is on
+// screen, in Moonlight's status overlay otherwise. The connection listener only hears about changes,
+// so this moves a warning that's already up when they come or go.
+- (void)takeConnectionWarning:(BOOL)take
+{
+    if (take) {
+        bool suggestLowerBitrate;
+        bool poor = ForkStreamStats::connectionPoor(&suggestLowerBitrate);
+        [self setWarning:poor ? connectionWarningText(suggestLowerBitrate) : nil];
+    }
+    ForkStreamStats::setConnectionWarningInOverlay(!take);
 }
 
 - (void)setStatsText:(NSString*)text
@@ -160,33 +448,52 @@ static NSView* makePill(NSTextField* label)
     [self refresh];
 }
 
+- (void)setWarning:(NSString*)text
+{
+    if (m_StreamWindow == nil || text == m_Warning || [text isEqualToString:m_Warning]) {
+        return;
+    }
+
+    [m_Warning release];
+    m_Warning = [text copy];
+    [self updateMessage];
+}
+
+- (void)showToast:(NSString*)text
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+
+    [m_Toast release];
+    m_Toast = [text copy];
+    m_ToastGeneration++;
+    [self updateMessage];
+}
+
+- (BOOL)showsMessages
+{
+    return m_ShowsMessages.load();
+}
+
 - (void)layoutPill:(NSView*)pill label:(NSTextField*)label area:(NSRect)area alignRight:(BOOL)alignRight height:(CGFloat)height y:(CGFloat)y
 {
-    const CGFloat margin = 10;
-    const CGFloat padding = 12;
-
     [label sizeToFit];
-    CGFloat maxWidth = MAX(NSWidth(area) - 2 * margin, 0);
-    CGFloat width = MIN(NSWidth(label.frame) + 2 * padding, maxWidth);
-    CGFloat x = alignRight ? NSMaxX(area) - margin - width : NSMinX(area) + margin;
+    CGFloat maxWidth = MAX(NSWidth(area) - 2 * k_Margin, 0);
+    CGFloat width = MIN(NSWidth(label.frame) + 2 * k_Padding, maxWidth);
+    CGFloat x = alignRight ? NSMaxX(area) - k_Margin - width : NSMinX(area) + k_Margin;
 
     pill.frame = NSMakeRect(x, y, width, height);
-    if (@available(macOS 26.0, *)) {
-        if ([pill isKindOfClass:NSGlassEffectView.class]) {
-            ((NSGlassEffectView*)pill).cornerRadius = height / 2;
-        }
-    }
-    if (pill.layer != nil) {
-        pill.layer.cornerRadius = height / 2;
-    }
+    setCapsuleShape(pill, height);
 
     NSView* container = label.superview;
     container.frame = pill.bounds;
     CGFloat labelHeight = NSHeight(label.frame);
-    label.frame = NSMakeRect(padding, (height - labelHeight) / 2, MAX(width - 2 * padding, 0), labelHeight);
+    label.frame = NSMakeRect(k_Padding, (height - labelHeight) / 2, MAX(width - 2 * k_Padding, 0), labelHeight);
 }
 
-// Shows the bar while the stream window is fullscreen on the active Space of a display with a notch
+// Shows the bar while the stream window is fullscreen on the active Space of a display with a notch,
+// and the messages in the corner pill while it's windowed on the active Space
 - (void)refresh
 {
     NSScreen* screen = m_StreamWindow.screen;
@@ -201,28 +508,661 @@ static NSView* makePill(NSTextField* label)
         }
     }
 
-    BOOL show = m_StreamWindow != nil && screen != nil && inset > 0 &&
-                (m_StreamWindow.styleMask & NSWindowStyleMaskFullScreen) != 0 &&
-                !m_StreamWindow.isMiniaturized && m_StreamWindow.isOnActiveSpace &&
+    // Not during a fullscreen transition, while the window still counts as on the Space it's leaving,
+    // so neither shows over that Space
+    BOOL visible = !m_FullScreenTransition && m_StreamWindow != nil && m_StreamWindow.isVisible &&
+                   !m_StreamWindow.isMiniaturized && m_StreamWindow.isOnActiveSpace;
+    BOOL fullScreen = (m_StreamWindow.styleMask & NSWindowStyleMaskFullScreen) != 0;
+    BOOL show = visible && fullScreen && screen != nil && inset > 0 &&
                 !NSIsEmptyRect(leftArea) && !NSIsEmptyRect(rightArea);
-    if (!show) {
-        [m_Panel orderOut:nil];
-        return;
+    BOOL corner = visible && !fullScreen;
+    if (show != m_BarOnScreen) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, show ? "[fork] Notch bar shown" : "[fork] Notch bar hidden");
+    }
+    if (corner != m_CornerOnScreen) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, corner ? "[fork] Messages in the window's corner" : "[fork] Messages no longer in the window's corner");
+    }
+    m_BarOnScreen = show;
+    m_CornerOnScreen = corner;
+
+    BOOL showsMessages = show || corner;
+    BOOL changed = showsMessages != m_ShowsMessages.load();
+    m_ShowsMessages = showsMessages;
+
+    if (!corner) {
+        [m_Corner hideNow];
     }
 
+    if (!show) {
+        // A clipboard message that hasn't appeared yet would be stale by the time it could
+        if (!showsMessages && m_MessageState == ForkMessageHidden && m_Toast != nil) {
+            [m_Toast release];
+            m_Toast = nil;
+        }
+        [m_Panel orderOut:nil];
+    }
+    else {
+        [self layoutBarOnScreen:screen inset:inset leftArea:leftArea rightArea:rightArea];
+    }
+
+    if (changed) {
+        [self takeConnectionWarning:showsMessages];
+    }
+
+    // Shows a message that arrived while neither was on screen, or moves one between them
+    [self updateMessage];
+}
+
+- (void)layoutBarOnScreen:(NSScreen*)screen inset:(CGFloat)inset leftArea:(NSRect)leftArea rightArea:(NSRect)rightArea
+{
     NSRect screenFrame = screen.frame;
     NSRect strip = NSMakeRect(NSMinX(screenFrame), NSMaxY(screenFrame) - inset, NSWidth(screenFrame), inset);
     [m_Panel setFrame:strip display:NO];
 
     // Left pill at the left screen edge, right pill at the right edge, each kept to its side of the notch
-    CGFloat height = MAX(inset - 8, 16);
-    CGFloat y = (inset - height) / 2;
-    [self layoutPill:m_LeftPill label:m_LeftLabel area:NSOffsetRect(leftArea, -NSMinX(strip), 0)
-          alignRight:NO height:height y:y];
+    m_PillHeight = MAX(inset - 8, 16);
+    m_PillY = (inset - m_PillHeight) / 2;
+    m_LeftArea = NSOffsetRect(leftArea, -NSMinX(strip), 0);
+    m_HasGeometry = YES;
+    [self layoutPill:m_LeftPill label:m_LeftLabel area:m_LeftArea
+          alignRight:NO height:m_PillHeight y:m_PillY];
     [self layoutPill:m_RightPill label:m_RightLabel area:NSOffsetRect(rightArea, -NSMinX(strip), 0)
-          alignRight:YES height:height y:y];
+          alignRight:YES height:m_PillHeight y:m_PillY];
+    [self layoutMessage];
 
     [m_Panel orderFrontRegardless];
+    if (!m_Panel.isOnActiveSpace) {
+        // Once its first fullscreen Space is gone, the panel belongs to the desktop's Space and goes
+        // back there whenever it's ordered in. A new panel joins the active Space, beside the stream.
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar moved to a new panel on the stream's Space");
+        [self replacePanel];
+        [m_Panel orderFrontRegardless];
+    }
+}
+
+// Message pill
+
+- (NSString*)currentMessage
+{
+    return m_Toast != nil ? m_Toast : m_Warning;
+}
+
+- (BOOL)pillShowsCurrentMessage
+{
+    NSString* message = [self currentMessage];
+    return message != nil && m_ShowsWarning == (m_Toast == nil) && [message isEqualToString:m_MessageLabel.stringValue];
+}
+
+// Puts the current message in the pill: the clipboard message if there is one, else the warning
+- (void)applyMessageContent
+{
+    BOOL warning = m_Toast == nil;
+    setMessageContent(m_MessageIcon, m_MessageLabel, [self currentMessage], warning);
+    m_ShowsWarning = warning;
+}
+
+// The pill hugs the notch and grows away from it, up to the whole area left of the notch
+- (NSRect)messageFrame
+{
+    CGFloat width = messageWidth(m_MessageIcon, m_MessageLabel);
+    width = MAX(MIN(width, NSWidth(m_LeftArea) - 2 * k_Margin), m_PillHeight);
+    return NSMakeRect(NSMaxX(m_LeftArea) - k_Margin - width, m_PillY, width, m_PillHeight);
+}
+
+// The circle the pill grows out of and shrinks back into
+- (NSRect)collapsedFrame
+{
+    return NSMakeRect(NSMaxX(m_LeftArea) - k_Margin - m_PillHeight, m_PillY, m_PillHeight, m_PillHeight);
+}
+
+- (BOOL)titleFitsBesideMessageWidth:(CGFloat)width
+{
+    return NSWidth(m_LeftPill.frame) + k_TitleGap + width <= NSWidth(m_LeftArea) - 2 * k_Margin;
+}
+
+// Lays out the icon and text for the pill's final size. They're hidden whenever the size animates.
+- (void)layoutMessageContentForFrame:(NSRect)frame
+{
+    layoutMessageContent(m_MessageIcon, m_MessageLabel, frame.size);
+}
+
+// Keeps the pill in place between animations; the animations place it themselves
+- (void)layoutMessage
+{
+    if (m_MessageState == ForkMessageShown) {
+        NSRect frame = [self messageFrame];
+        m_MessagePill.frame = frame;
+        setCapsuleShape(m_MessagePill, m_PillHeight);
+        [self layoutMessageContentForFrame:frame];
+        m_LeftPill.alphaValue = [self titleFitsBesideMessageWidth:NSWidth(frame)] ? 1 : 0;
+    }
+    else if (m_MessageState == ForkMessageHidden) {
+        m_LeftPill.alphaValue = 1;
+    }
+}
+
+// Starts showing, changing or hiding the pill to match the current message
+- (void)updateMessage
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+
+    NSString* message = [self currentMessage];
+
+    // While the stream is windowed, the corner pill shows the message instead of the bar
+    if (m_CornerOnScreen) {
+        [m_Corner showMessage:message warning:m_Toast == nil];
+        if (m_Toast != nil) {
+            // The clipboard message is on screen, so its time starts now
+            [self startToastTimer];
+        }
+    }
+
+    switch (m_MessageState) {
+    case ForkMessageHidden:
+        if (message != nil && m_BarOnScreen && m_HasGeometry) {
+            [self appear];
+        }
+        break;
+    case ForkMessageShown:
+        if (message == nil) {
+            [self collapse];
+        }
+        else if (![self pillShowsCurrentMessage]) {
+            [self change];
+        }
+        else if (m_Toast != nil) {
+            // The clipboard message is on screen, so its time starts now
+            [self startToastTimer];
+        }
+        break;
+    default:
+        // Every animation checks the message again when it ends
+        break;
+    }
+}
+
+- (void)startToastTimer
+{
+    if (m_ToastTimerGeneration == m_ToastGeneration) {
+        return;
+    }
+    unsigned generation = m_ToastTimerGeneration = m_ToastGeneration;
+
+    [self retain];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, k_ToastDurationNs), dispatch_get_main_queue(), ^{
+        if (generation == m_ToastGeneration && m_StreamWindow != nil) {
+            [m_Toast release];
+            m_Toast = nil;
+            [self updateMessage];
+        }
+        [self release];
+    });
+}
+
+// A red dot blinks beside the notch, then grows into the pill
+- (void)appear
+{
+    unsigned generation = ++m_AnimationGeneration;
+
+    NSRect circle = [self collapsedFrame];
+    m_MessagePill.frame = circle;
+    setCapsuleShape(m_MessagePill, m_PillHeight);
+    m_MessagePill.alphaValue = 0;
+    m_MessageIcon.alphaValue = 0;
+    m_MessageLabel.alphaValue = 0;
+
+    if (reduceMotion()) {
+        [self expandWithGeneration:generation];
+        return;
+    }
+
+    m_MessageState = ForkMessageBlinking;
+    m_Dot.frame = NSMakeRect(NSMidX(circle) - k_DotSize / 2, NSMidY(circle) - k_DotSize / 2, k_DotSize, k_DotSize);
+    setLayerOpacity(m_Dot.layer, 1, 0);
+    m_Dot.hidden = NO;
+
+    CAKeyframeAnimation* blink = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+    blink.values = @[ @0.0, @1.0, @0.2, @1.0, @0.2, @1.0 ];
+    blink.duration = 0.8;
+
+    [self retain];
+    [CATransaction begin];
+    [CATransaction setCompletionBlock:^{
+        if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
+            [self expandWithGeneration:generation];
+        }
+        [self release];
+    }];
+    [m_Dot.layer addAnimation:blink forKey:@"blink"];
+    [CATransaction commit];
+}
+
+- (void)expandWithGeneration:(unsigned)generation
+{
+    // The message may have ended while the dot blinked
+    if ([self currentMessage] == nil) {
+        [self enterHidden];
+        return;
+    }
+
+    m_MessageState = ForkMessageExpanding;
+    [self applyMessageContent];
+    NSRect target = [self messageFrame];
+    [self layoutMessageContentForFrame:target];
+    BOOL hideTitle = ![self titleFitsBesideMessageWidth:NSWidth(target)];
+
+    BOOL simple = reduceMotion();
+    if (simple) {
+        // Just fades in
+        m_MessagePill.frame = target;
+        m_MessageIcon.alphaValue = 1;
+        m_MessageLabel.alphaValue = 1;
+    }
+    else {
+        setLayerOpacity(m_Dot.layer, 0, 0.35);
+    }
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.allowsImplicitAnimation = YES;
+        if (simple) {
+            context.duration = 0.2;
+        }
+        else {
+            context.duration = 0.35;
+            // Eases out with a slight overshoot; only x and width change, so the ends stay round
+            context.timingFunction = [CAMediaTimingFunction functionWithControlPoints:0.2 :0.9 :0.3 :1.15];
+            m_MessagePill.animator.frame = target;
+        }
+        m_MessagePill.animator.alphaValue = 1;
+        if (hideTitle) {
+            m_LeftPill.animator.alphaValue = 0;
+        }
+    } completionHandler:^{
+        if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
+            [self enterShown];
+        }
+        [self release];
+    }];
+}
+
+// Swaps in another message: the text fades out, the pill takes its new width, the new text fades in
+- (void)change
+{
+    unsigned generation = ++m_AnimationGeneration;
+    m_MessageState = ForkMessageChanging;
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.duration = 0.1;
+        m_MessageIcon.animator.alphaValue = 0;
+        m_MessageLabel.animator.alphaValue = 0;
+    } completionHandler:^{
+        if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
+            [self resizeWithGeneration:generation];
+        }
+        [self release];
+    }];
+}
+
+- (void)resizeWithGeneration:(unsigned)generation
+{
+    if ([self currentMessage] == nil) {
+        [self collapse];
+        return;
+    }
+
+    [self applyMessageContent];
+    NSRect target = [self messageFrame];
+    [self layoutMessageContentForFrame:target];
+    BOOL hideTitle = ![self titleFitsBesideMessageWidth:NSWidth(target)];
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.duration = 0.2;
+        context.allowsImplicitAnimation = YES;
+        m_MessagePill.animator.frame = target;
+        m_LeftPill.animator.alphaValue = hideTitle ? 0 : 1;
+    } completionHandler:^{
+        if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
+            [self enterShown];
+        }
+        [self release];
+    }];
+}
+
+// The text fades out, then the pill shrinks back into a circle and fades away
+- (void)collapse
+{
+    unsigned generation = ++m_AnimationGeneration;
+    m_MessageState = ForkMessageCollapsing;
+
+    if (reduceMotion()) {
+        [self shrinkWithGeneration:generation];
+        return;
+    }
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.duration = 0.12;
+        m_MessageIcon.animator.alphaValue = 0;
+        m_MessageLabel.animator.alphaValue = 0;
+    } completionHandler:^{
+        if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
+            [self shrinkWithGeneration:generation];
+        }
+        [self release];
+    }];
+}
+
+- (void)shrinkWithGeneration:(unsigned)generation
+{
+    BOOL simple = reduceMotion();
+    NSRect circle = [self collapsedFrame];
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.allowsImplicitAnimation = YES;
+        if (simple) {
+            context.duration = 0.2;
+        }
+        else {
+            context.duration = 0.25;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn];
+            m_MessagePill.animator.frame = circle;
+        }
+        m_MessagePill.animator.alphaValue = 0;
+        m_LeftPill.animator.alphaValue = 1;
+    } completionHandler:^{
+        if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
+            [self enterHidden];
+        }
+        [self release];
+    }];
+}
+
+- (void)enterShown
+{
+    m_MessageState = ForkMessageShown;
+    m_Dot.hidden = YES;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.duration = 0.15;
+        m_MessageIcon.animator.alphaValue = 1;
+        m_MessageLabel.animator.alphaValue = 1;
+    } completionHandler:nil];
+
+    // The message may have changed or ended during the animation
+    [self updateMessage];
+}
+
+- (void)enterHidden
+{
+    m_MessageState = ForkMessageHidden;
+    m_Dot.hidden = YES;
+    m_MessagePill.alphaValue = 0;
+    m_LeftPill.alphaValue = 1;
+
+    // Another message may have arrived during the animation
+    [self updateMessage];
+}
+
+// Jumps to where a running animation was heading, for when the screen changes under it
+- (void)finishMessageAnimation
+{
+    switch (m_MessageState) {
+    case ForkMessageBlinking:
+    case ForkMessageExpanding:
+    case ForkMessageChanging:
+        m_AnimationGeneration++;
+        [m_Dot.layer removeAllAnimations];
+        m_Dot.hidden = YES;
+        if ([self currentMessage] == nil) {
+            m_MessageState = ForkMessageHidden;
+            m_MessagePill.alphaValue = 0;
+            m_LeftPill.alphaValue = 1;
+        }
+        else {
+            [self applyMessageContent];
+            m_MessageState = ForkMessageShown;
+            m_MessagePill.alphaValue = 1;
+            m_MessageIcon.alphaValue = 1;
+            m_MessageLabel.alphaValue = 1;
+        }
+        break;
+    case ForkMessageCollapsing:
+        m_AnimationGeneration++;
+        m_MessageState = ForkMessageHidden;
+        m_MessagePill.alphaValue = 0;
+        m_LeftPill.alphaValue = 1;
+        break;
+    default:
+        break;
+    }
+}
+
+@end
+
+@implementation ForkCornerMessage
+
+- (instancetype)initWithStreamWindow:(NSWindow*)window
+{
+    self = [super init];
+    if (self == nil) {
+        return nil;
+    }
+
+    m_StreamWindow = [window retain];
+    // As the stream window's child it stays just above it
+    m_Panel = makePanel(NSNormalWindowLevel, NSWindowCollectionBehaviorIgnoresCycle);
+
+    m_Label = makeLabel(@"");
+    m_Icon = [[NSImageView alloc] initWithFrame:NSZeroRect];
+    m_Icon.imageScaling = NSImageScaleNone;
+    m_Pill = makePill(@[ m_Icon, m_Label ]);
+    m_Pill.alphaValue = 0;
+    [m_Panel.contentView addSubview:m_Pill];
+    return self;
+}
+
+- (void)dealloc
+{
+    [m_StreamWindow release];
+    [m_Panel release];
+    [m_Pill release];
+    [m_Icon release];
+    [m_Label release];
+    [m_Text release];
+    [super dealloc];
+}
+
+- (void)invalidate
+{
+    [self hideNow];
+    [m_Panel close];
+    [m_StreamWindow release];
+    m_StreamWindow = nil;
+}
+
+// The panel spans the widest pill the window has room for, plus the distance the pill rises
+- (void)layoutPanel
+{
+    NSRect window = m_StreamWindow.frame;
+    CGFloat width = MAX(MIN(NSWidth(window) - 2 * k_CornerMargin, k_CornerMaxWidth), k_CornerHeight);
+    [m_Panel setFrame:NSMakeRect(NSMinX(window) + k_CornerMargin, NSMinY(window) + k_CornerMargin - k_CornerRise,
+                                 width, k_CornerHeight + k_CornerRise)
+              display:NO];
+}
+
+// Where the pill rests, sized for its message
+- (NSRect)pillFrame
+{
+    CGFloat width = MAX(MIN(messageWidth(m_Icon, m_Label), NSWidth(m_Panel.frame)), k_CornerHeight);
+    return NSMakeRect(0, k_CornerRise, width, k_CornerHeight);
+}
+
+- (void)showMessage:(NSString*)text warning:(BOOL)warning
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+    if (text == nil) {
+        [self hide];
+        return;
+    }
+    if (m_Text != nil && warning == m_Warning && [text isEqualToString:m_Text]) {
+        return;
+    }
+
+    BOOL replacing = m_Text != nil;
+    [m_Text release];
+    m_Text = [text copy];
+    m_Warning = warning;
+    if (replacing) {
+        [self change];
+    }
+    else {
+        [self appear];
+    }
+}
+
+// Fades in while rising into place, like macOS's HUDs. With Reduce Motion it only fades.
+- (void)appear
+{
+    ++m_Generation;
+
+    setMessageContent(m_Icon, m_Label, m_Text, m_Warning);
+    m_Icon.alphaValue = 1;
+    m_Label.alphaValue = 1;
+    [self layoutPanel];
+    NSRect target = [self pillFrame];
+    layoutMessageContent(m_Icon, m_Label, target.size);
+
+    BOOL simple = reduceMotion();
+    // A pill still fading out comes back from where it is
+    if (m_Pill.alphaValue == 0) {
+        m_Pill.frame = simple ? target : NSOffsetRect(target, 0, -k_CornerRise);
+    }
+    setCapsuleShape(m_Pill, k_CornerHeight);
+    if (m_Panel.parentWindow == nil) {
+        [m_StreamWindow addChildWindow:m_Panel ordered:NSWindowAbove];
+    }
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.allowsImplicitAnimation = YES;
+        context.duration = simple ? 0.2 : 0.3;
+        context.timingFunction = [CAMediaTimingFunction functionWithControlPoints:0.2 :0.9 :0.3 :1];
+        m_Pill.animator.alphaValue = 1;
+        m_Pill.animator.frame = target;
+    } completionHandler:^{
+        [self release];
+    }];
+}
+
+// Swaps in another message: the text fades out, the pill takes its new width, the new text fades in
+- (void)change
+{
+    unsigned generation = ++m_Generation;
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.duration = 0.1;
+        m_Icon.animator.alphaValue = 0;
+        m_Label.animator.alphaValue = 0;
+    } completionHandler:^{
+        if (generation == m_Generation && m_StreamWindow != nil) {
+            [self resizeWithGeneration:generation];
+        }
+        [self release];
+    }];
+}
+
+- (void)resizeWithGeneration:(unsigned)generation
+{
+    setMessageContent(m_Icon, m_Label, m_Text, m_Warning);
+    NSRect target = [self pillFrame];
+    layoutMessageContent(m_Icon, m_Label, target.size);
+
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.duration = 0.2;
+        context.allowsImplicitAnimation = YES;
+        m_Pill.animator.frame = target;
+        m_Pill.animator.alphaValue = 1;
+    } completionHandler:^{
+        if (generation == m_Generation && m_StreamWindow != nil) {
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+                context.duration = 0.12;
+                m_Icon.animator.alphaValue = 1;
+                m_Label.animator.alphaValue = 1;
+            } completionHandler:nil];
+        }
+        [self release];
+    }];
+}
+
+// Fades out while sinking back a little, then leaves the stream window
+- (void)hide
+{
+    if (m_Text == nil) {
+        return;
+    }
+    [m_Text release];
+    m_Text = nil;
+    unsigned generation = ++m_Generation;
+
+    BOOL simple = reduceMotion();
+    NSRect from = m_Pill.frame;
+    [self retain];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext* context) {
+        context.allowsImplicitAnimation = YES;
+        context.duration = 0.2;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn];
+        m_Pill.animator.alphaValue = 0;
+        if (!simple) {
+            m_Pill.animator.frame = NSMakeRect(NSMinX(from), 0, NSWidth(from), NSHeight(from));
+        }
+    } completionHandler:^{
+        if (generation == m_Generation && m_StreamWindow != nil) {
+            [self leaveStreamWindow];
+        }
+        [self release];
+    }];
+}
+
+- (void)hideNow
+{
+    if (m_Text == nil && m_Panel.parentWindow == nil) {
+        return;
+    }
+
+    ++m_Generation;
+    [m_Text release];
+    m_Text = nil;
+    m_Pill.alphaValue = 0;
+    [self leaveStreamWindow];
+}
+
+- (void)leaveStreamWindow
+{
+    if (m_Panel.parentWindow != nil) {
+        [m_Panel.parentWindow removeChildWindow:m_Panel];
+    }
+    [m_Panel orderOut:nil];
+}
+
+- (void)layout
+{
+    if (m_StreamWindow == nil || m_Text == nil) {
+        return;
+    }
+
+    [self layoutPanel];
+    NSRect target = [self pillFrame];
+    m_Pill.frame = target;
+    layoutMessageContent(m_Icon, m_Label, target.size);
 }
 
 @end
@@ -250,14 +1190,48 @@ namespace
                     });
                 }
             });
+
+            ForkStreamStats::setConnectionListener([controller](bool poor, bool suggestLowerBitrate) -> bool {
+                // Runs on moonlight-common-c's receive thread
+                bool shown = poor && [controller showsMessages];
+                if (poor && !shown) {
+                    // Moonlight's status overlay shows it instead
+                    return false;
+                }
+
+                @autoreleasepool {
+                    // Nil clears the warning once the connection is okay again
+                    NSString* text = shown ? [connectionWarningText(suggestLowerBitrate) retain] : nil;
+                    [controller retain];
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [controller setWarning:text];
+                        [text release];
+                        [controller release];
+                    });
+                }
+                return shown;
+            });
         }
 
         ~MacNotchBar() override
         {
-            // No listener runs after this returns; queued updates hold their own reference
+            // No listener runs after these return; queued updates hold their own reference
             ForkStreamStats::setListener(nullptr);
+            ForkStreamStats::setConnectionListener(nullptr);
             [m_Controller invalidate];
             [m_Controller release];
+        }
+
+        bool showToast(const QString& text) override
+        {
+            if (![m_Controller showsMessages]) {
+                return false;
+            }
+
+            @autoreleasepool {
+                [m_Controller showToast:text.toNSString()];
+            }
+            return true;
         }
 
     private:

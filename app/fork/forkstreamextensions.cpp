@@ -39,12 +39,25 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         m_NotchBar = NotchBar::create(window, app.name + QString::fromUtf8(" · ") + hostName);
     }
 
+    if (m_Clipboard && m_NotchBar) {
+        // Clipboard messages appear beside the notch while the bar is on screen
+        NotchBar* notchBar = m_NotchBar.get();
+        m_Clipboard->setMessageSink([notchBar](const QString& text) {
+            return notchBar->showToast(text);
+        });
+    }
+
     s_Active = this;
 }
 
 ForkStreamExtensions::~ForkStreamExtensions()
 {
     s_Active = nullptr;
+
+    // The notch bar goes away before the clipboard sync
+    if (m_Clipboard) {
+        m_Clipboard->setMessageSink(nullptr);
+    }
 
     if (m_ShortcutGuard) {
         MacIntegration::setStreamShortcutGuard(false);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 
 #include <QString>
@@ -33,6 +34,10 @@ public:
 
     void sendToHost();
     void receiveFromHost();
+
+    // Messages go to the sink first, like LuzLunar's notch bar. When it returns false, they show
+    // in Moonlight's status overlay.
+    void setMessageSink(std::function<bool(const QString&)> sink);
 
     enum class Kind { Permissions, Upload, Download, Notice };
 
@@ -72,4 +77,5 @@ private:
     QString m_ToastText;
     unsigned m_ToastGeneration;
     bool m_ToastShowing;
+    std::function<bool(const QString&)> m_MessageSink;
 };

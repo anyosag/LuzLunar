@@ -71,7 +71,7 @@ GroupBox {
             width: parent.width
             visible: SystemProperties.isDarwin
             hoverEnabled: true
-            text: qsTr("Show the app and stream stats beside the notch")
+            text: qsTr("Show the app, stream stats and messages beside the notch")
             font.pointSize: 12
             checked: ForkPreferences.notchBar
             onCheckedChanged: {
@@ -81,7 +81,7 @@ GroupBox {
             ToolTip.delay: 1000
             ToolTip.timeout: 10000
             ToolTip.visible: hovered
-            ToolTip.text: qsTr("On a MacBook with a camera notch, fullscreen streams leave the strip beside the notch empty. This shows the app's name on the left and frame rate, latency, bitrate, codec and loss on the right.")
+            ToolTip.text: qsTr("On a MacBook with a camera notch, fullscreen streams leave the strip beside the notch empty. This shows the app's name on the left and frame rate, latency, bitrate, codec and loss on the right. Connection warnings and clipboard messages appear beside the notch, or in a pill in the corner of a windowed stream, instead of over the stream.")
         }
 
         Row {
@@ -117,6 +117,14 @@ GroupBox {
             text: qsTr("Shares the clipboard with Apollo hosts while streaming: text, formatted text from Word, Excel, PowerPoint and other apps, and images. Formatting and images need LuzLunar's Apollo build; other Apollo versions share text only. Automatic sends your clipboard when you switch to the stream and fetches the PC's when you switch away, transferring only what changed. Ctrl+Option+Shift+U sends and Ctrl+Option+Shift+G fetches at any time. Apollo must give this device its Clipboard permissions.")
             font.pointSize: 9
             wrapMode: Text.Wrap
+        }
+
+        Label {
+            width: parent.width
+            topPadding: 6
+            text: qsTr("LuzLunar build %1").arg(ForkPreferences.buildId)
+            font.pointSize: 9
+            opacity: 0.6
         }
     }
 }

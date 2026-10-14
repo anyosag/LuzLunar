@@ -33,10 +33,12 @@ APP_NAME=LuzLunar
 QMAKE=${QMAKE:-$(command -v qmake || command -v qmake6)}
 [ -n "$QMAKE" ] || fail "qmake not found! Put Qt's bin folder on PATH."
 
+# The build ID, like 6.2.0-fork.ee5b3ba: the version plus the commit. CI sets it; local builds make
+# the same. The app shows it in Settings and as the bundle version, so copies can be told apart.
 if [ -n "$CI_VERSION" ]; then
   VERSION=$CI_VERSION
 else
-  VERSION=$(cat "$SOURCE_ROOT/app/version.txt")
+  VERSION="$(cat "$SOURCE_ROOT/app/version.txt")-fork.$(git -C "$SOURCE_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo local)"
 fi
 
 echo Updating dependencies
@@ -55,7 +57,7 @@ export LDFLAGS=-flto=thin
 
 echo Configuring the project for arm64
 pushd "$BUILD_FOLDER"
-"$QMAKE" "$SOURCE_ROOT/moonlight-qt.pro" QMAKE_APPLE_DEVICE_ARCHS="arm64" || fail "Qmake failed!"
+"$QMAKE" "$SOURCE_ROOT/moonlight-qt.pro" QMAKE_APPLE_DEVICE_ARCHS="arm64" FORK_BUILD_ID="$VERSION" || fail "Qmake failed!"
 popd
 
 echo Compiling Moonlight in $BUILD_CONFIG configuration
@@ -89,6 +91,8 @@ PLIST="$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_NAME" -c "Set :CFBundleDisplayName $APP_NAME" "$PLIST" || fail "Updating Info.plist failed!"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$PLIST" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Add :CFBundleName string $APP_NAME" "$PLIST" || fail "Setting CFBundleName failed!"
+# The build ID as the bundle version, shown by Finder's Get Info and the About panel
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST" || fail "Setting CFBundleVersion failed!"
 
 # A layered Icon Composer icon, which macOS 26 renders in Liquid Glass instead of boxing a legacy
 # icon. actool also writes LuzLunar.icns, the same icon flattened, for older macOS.

@@ -6,6 +6,11 @@
     error("LuzLunar needs Qt 6.8 or later (found $$QT_VERSION)")
 }
 
+# The build ID from scripts/fork/build-mac.sh (qmake FORK_BUILD_ID=...), shown in Settings
+!isEmpty(FORK_BUILD_ID) {
+    DEFINES += FORK_BUILD_ID=\\\"$$FORK_BUILD_ID\\\"
+}
+
 SOURCES += \
     $$PWD/apolloclient.cpp \
     $$PWD/clipbundle.cpp \

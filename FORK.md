@@ -10,13 +10,14 @@ It ships as `LuzLunar.app`, but keeps Moonlight's bundle ID (`com.moonlight-stre
 - Locally, run `bash scripts/fork/build-mac.sh Release` from the repo root (paths with spaces are fine). It needs Qt's tools on `PATH`; with Homebrew that's `qtbase`, `qtdeclarative`, `qtsvg` and `qtimageformats`, the last for the WebP the native spinner uses. Two optional switches, both off in CI:
   - `LUZLUNAR_SKIP_DMG=1` skips the DMG, so `create-dmg` isn't needed.
   - `LUZLUNAR_INSTALL=1` quits LuzLunar, moves `/Applications/LuzLunar.app` to the Trash and installs the new build.
+- Every build has a build ID: the version plus the commit, like `6.2.0-fork.ee5b3ba`, the same as in the artifact and DMG names. It's shown at the bottom of Settings › Keyboard & Clipboard (`ForkPreferences.buildId`, from qmake's `FORK_BUILD_ID`) and is the bundle's `CFBundleVersion`, so Finder's Get Info tells copies apart.
 - Upstream's `build.yml` (every platform) is disabled in this repo's Actions settings. The file stays unchanged so upstream merges stay clean.
 - `.github/workflows/sync-upstream.yml` merges upstream `master` daily and builds when anything new arrives. To sync upstream workflow changes, it needs a `SYNC_TOKEN` secret: a fine-grained token for this repo with Contents and Workflows read/write.
 
 ## Installing a build
 
 1. Download the `LuzLunar-macOS-arm64-…` artifact from the workflow run, then unzip it and open the DMG.
-2. Drag LuzLunar to Applications and delete the official `Moonlight.app`. Both share a bundle ID and settings, so keep only one. Paired PCs and settings carry over.
+2. Drag LuzLunar to Applications and delete the official `Moonlight.app`. Both share a bundle ID and settings, so keep only one. Paired PCs and settings carry over. Also delete older LuzLunar copies outside Applications (an unzipped artifact folder, a mounted DMG), or Spotlight and Launchpad may open one of them; the build ID in Settings shows which build is running.
 3. The app is ad-hoc signed, not notarized. Open it the first time with right-click → Open, or run `xattr -dr com.apple.quarantine /Applications/LuzLunar.app`.
 
 ## Keeping upstream merges clean
@@ -27,12 +28,13 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 |---|---|
 | `app/app.pro` | `include(fork/fork.pri)` at the end; `$$shell_quote()` around the Info.plist `cp`/`sed` paths, so builds work from paths with spaces |
 | `app/streaming/input/keyboard.cpp` | `ForkInput::preprocessKeyEvent()` right after the special key combos; `forkForceGui` in the META modifier check and the LGUI/RGUI cases |
-| `app/streaming/session.cpp` | `ForkStreamExtensions` created after `RichPresenceManager` in `exec()`, and `handleEvent()` before the event `switch` |
+| `app/streaming/session.cpp` | `ForkStreamExtensions` created after `RichPresenceManager` in `exec()`, and `handleEvent()` before the event `switch`; `ForkStreamStats::reportConnectionStatus()` in `clConnectionStatusUpdate()`, after the `connectionWarnings` check |
 | `app/gui/SettingsView.qml` | `ForkSettingsGroupBox` between the Input and Gamepad groups |
 | `app/settings/streamingpreferences.h` | `friend class StreamProfiles` next to the private constructor |
 | `app/gui/appmodel.cpp`, `app/gui/computermodel.cpp`, `app/cli/startstream.cpp` | `new Session(...)` replaced with `StreamProfiles::createSession(...)` |
 | `app/gui/AppView.qml` | "Stream Settings..." menu item after "Hide Game", and the `StreamProfileDialog` next to `quitAppDialog` |
 | `app/streaming/video/ffmpeg.cpp` | `ForkStreamStats::publish()` in the once-a-second stats block of `submitDecodeUnit()` |
+| `app/streaming/video/overlaymanager.cpp` | `setOverlayRenderer()` notifies a new renderer of the overlays already on, so they survive a fullscreen toggle |
 | `app/main.cpp` | The native `macOS` Quick Controls style on macOS instead of Material |
 | `app/gui/main.qml` | No Material import or background override; a transparent window `color` while the native chrome is active; `ForkNativeToolbar` before the header, with each button's `focused` state; while it's active the header is clipped to zero height but its buttons stay in the focus chain; Escape on a toolbar button returns to the page; the Settings button leaves the chain on the Settings page and the Update tooltip stays hidden with the native toolbar; `id: backButton`; `symbolName` on the toolbar buttons; title size |
 | `app/gui/NavigableToolButton.qml` | `symbolName` (an SF Symbol from the image provider, `iconSource` as fallback), 20 pt tinted icons, hidden from VoiceOver while the native toolbar shows them |
@@ -71,11 +73,19 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
   - Requests run one at a time on a worker thread and report back through an SDL event, because the Qt event loop is paused while streaming.
   - Sync never wipes the local clipboard with an empty one and never sends back content that came from the host. Password-manager clips (`org.nspasteboard.ConcealedType`/`TransientType`, or Windows' `ExcludeClipboardContentFromMonitorProcessing`) are never synced automatically, and when sent with the shortcut they're marked private on the other side. Logs show types and sizes, never content.
   - The host must be Apollo, and Apollo must give this device its Clipboard permissions. Sync checks this through serverinfo `<Permission>`.
+  - Messages ("Clipboard sent to the PC", errors) appear beside the notch while the notch bar is on screen, and in Moonlight's status overlay otherwise.
 - **Notch info bar** (`app/fork/mac/notchbar.*`, `app/fork/streamstats.*`):
   - In fullscreen on a MacBook with a camera notch, the strip beside the notch shows the app and PC name on the left. On the right it shows the frame rate, network latency, bitrate, codec and loss.
   - macOS keeps a fullscreen window below the notch, so the bar is a separate non-activating panel above the stream's level that joins its fullscreen Space. It uses Liquid Glass (`NSGlassEffectView`) on macOS 26 and vibrancy before that.
   - Stats come from the decoder's once-a-second stats tick, computed only while the bar is listening.
   - The bar shows only while the stream is fullscreen on the active Space of a display with a notch. Turn it off in Settings › Keyboard & Clipboard.
+  - Messages appear in a third pill beside the notch. A red dot blinks twice, then grows into the pill; the app name fades out if they don't both fit. With Reduce Motion the pill just fades in and out.
+    - Moonlight's poor connection warning ("Slow connection to PC · reduce your bitrate") stays until the connection recovers. It arrives on moonlight-common-c's receive thread through `ForkStreamStats::reportConnectionStatus()`, which tells `Session` whether the bar showed it.
+    - Clipboard messages come through `ClipboardSync::setMessageSink()` and stay 3 seconds. One that arrives during the warning shows, then the warning returns.
+    - While the stream is windowed, both appear in a pill in the window's bottom-left corner instead (`ForkCornerMessage`): the same glass capsule, icon and text, fading in as it rises 6 pt (only fading with Reduce Motion). It's a child window of the stream window, so it moves, resizes and changes Spaces with it, and clicks pass through it.
+    - Fullscreen on a display without a notch, or with the bar turned off, they stay in Moonlight's red status overlay as before.
+    - A warning that's up moves along: between the bar and the corner pill, into the overlay when neither is on screen, and back out when one returns. The connection status only arrives when it changes, so `ForkStreamStats` keeps the last one for `connectionPoor()` and `setConnectionWarningInOverlay()`.
+  - The bar stays hidden while the stream window enters or leaves fullscreen. Once the panel's first fullscreen Space is gone (the stream went windowed), macOS keeps it on the desktop's Space, and ordering it in again doesn't move it. So when the shown panel isn't on the active Space, its pills move to a new panel, which joins the stream's Space.
 - **Native macOS look** (`app/gui/Fork*.qml`, `app/fork/windowchrome.*`, `app/fork/mac/windowchrome_mac.mm`):
   - The app uses Qt's native `macOS` style, so controls follow the system appearance and accent color. `main.cpp` still picks Material elsewhere, but the QML look changes aren't gated, since LuzLunar is macOS-only.
   - On macOS 15 and later the main window gets a real `NSToolbar` (Liquid Glass buttons on macOS 26) with SF Symbols. `ForkNativeToolbar.qml` mirrors main.qml's toolbar buttons into it and clicks the QML button when a native one is clicked, so upstream's behavior and shortcuts stay. While the native toolbar is active, the QML toolbar is clipped to zero height but stays in the focus chain. Keyboard and gamepad navigation still reach its buttons (Up from a grid's top row, Tab on Settings), and the native item of the focused button is highlighted: prominent on macOS 26, selected before. The delegate builds a new `NSToolbarItem` each time AppKit asks, from per-item state.

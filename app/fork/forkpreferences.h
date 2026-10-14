@@ -36,7 +36,12 @@ public:
     // The app name and stream stats beside the camera notch in fullscreen (macOS)
     Q_PROPERTY(bool notchBar READ notchBar WRITE setNotchBar NOTIFY notchBarChanged)
 
+    // This build, like "6.2.0-fork.ee5b3ba" (not a preference; shown in Settings)
+    Q_PROPERTY(QString buildId READ buildId CONSTANT)
+
     static ForkPreferences* get();
+
+    QString buildId() const;
 
     int clipboardSyncMode() const { return m_ClipboardSyncMode; }
     void setClipboardSyncMode(int mode);
