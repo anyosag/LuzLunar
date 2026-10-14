@@ -77,6 +77,21 @@ int main()
     // No notch: upstream decides
     CHECK(!useSpacesFullscreen(false, false, true, NotchFit::Other));
 
+    // keepBelowNotch is the notch bar or stretch, so a stretched 16:9 stream goes below the notch
+    // even with the bar off, and never draws under it. A stream with the full panel's ratio
+    // has nothing to stretch, so it still fills the panel.
+    auto keepBelow = [](bool barOn, bool stretchOn) { return barOn || stretchOn; };
+    CHECK(useSpacesFullscreen(false, true, keepBelow(false, true), fit(2560, 1440)));
+    CHECK(useSpacesFullscreen(false, true, keepBelow(false, true), fit(3440, 1440)));
+    CHECK(!useSpacesFullscreen(false, true, keepBelow(false, true), fit(1512, 982)));
+    CHECK(!useSpacesFullscreen(false, true, keepBelow(false, false), fit(2560, 1440)));
+
+    // Stretch needs both the preference and a fullscreen window
+    CHECK(stretchActive(true, true));
+    CHECK(!stretchActive(true, false));
+    CHECK(!stretchActive(false, true));
+    CHECK(!stretchActive(false, false));
+
     // A borderless window the size of the screen covers it
     const Rect screen = { 0, 0, 1512, 982 };
     CHECK(coversScreen(screen, screen, false));

@@ -6,31 +6,34 @@
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
 #include "forkpreferences.h"
+#include "forkvideoscaling.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
+#include "settings/streamingpreferences.h"
 
 namespace
 {
     ForkStreamExtensions* s_Active = nullptr;
 }
 
-ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window)
+ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
+                                           const StreamingPreferences& prefs)
     : m_ShortcutGuard(false)
 {
-    ForkPreferences* prefs = ForkPreferences::get();
+    ForkPreferences* forkPrefs = ForkPreferences::get();
 
     // When Command sends something other than the Windows key, Command shortcuts are meant
     // for the host, so keep the app menu from quitting or hiding Moonlight on Cmd+Q / Cmd+H.
-    if (prefs->commandKeyTarget() != ForkPreferences::MT_WIN) {
+    if (forkPrefs->commandKeyTarget() != ForkPreferences::MT_WIN) {
         MacIntegration::setStreamShortcutGuard(true);
         m_ShortcutGuard = true;
     }
 
-    if (prefs->clipboardSyncMode() != ForkPreferences::CSM_OFF) {
-        m_Clipboard = std::make_unique<ClipboardSync>(computer, prefs->clipboardSyncMode() == ForkPreferences::CSM_AUTOMATIC);
+    if (forkPrefs->clipboardSyncMode() != ForkPreferences::CSM_OFF) {
+        m_Clipboard = std::make_unique<ClipboardSync>(computer, forkPrefs->clipboardSyncMode() == ForkPreferences::CSM_AUTOMATIC);
     }
 
-    if (prefs->notchBar()) {
+    if (forkPrefs->notchBar()) {
         QString hostName;
         {
             QReadLocker lock(&computer->lock);
@@ -48,10 +51,15 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     }
 
     s_Active = this;
+
+    // Renderers and the mouse mapping read this through StreamUtils::scaleSourceToDestinationSurface()
+    ForkVideoScaling::activate(window, prefs.fullscreenStretch);
 }
 
 ForkStreamExtensions::~ForkStreamExtensions()
 {
+    ForkVideoScaling::deactivate();
+
     s_Active = nullptr;
 
     // The notch bar goes away before the clipboard sync

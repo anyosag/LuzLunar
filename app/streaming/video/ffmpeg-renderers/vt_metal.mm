@@ -9,6 +9,7 @@
 #include <Limelight.h>
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
+#include "fork/forkvideoscaling.h" // [fork]
 #include "path.h"
 
 #import <Cocoa/Cocoa.h>
@@ -78,7 +79,8 @@ public:
           m_LastFrameWidth(-1),
           m_LastFrameHeight(-1),
           m_LastDrawableWidth(-1),
-          m_LastDrawableHeight(-1)
+          m_LastDrawableHeight(-1),
+          m_LastStretch(false) // [fork]
     {
     }
 
@@ -143,11 +145,13 @@ public:
     {
         int drawableWidth, drawableHeight;
         SDL_Metal_GetDrawableSize(m_Window, &drawableWidth, &drawableHeight);
+        bool stretch = ForkVideoScaling::stretchActive(); // [fork] a fullscreen change flips it without a size change
 
         // Check if anything has changed since the last vertex buffer upload
         if (m_VideoVertexBuffer &&
                 frame->width == m_LastFrameWidth && frame->height == m_LastFrameHeight &&
-                drawableWidth == m_LastDrawableWidth && drawableHeight == m_LastDrawableHeight) {
+                drawableWidth == m_LastDrawableWidth && drawableHeight == m_LastDrawableHeight &&
+                stretch == m_LastStretch) { // [fork]
             // Nothing to do
             return true;
         }
@@ -187,6 +191,7 @@ public:
         m_LastFrameHeight = frame->height;
         m_LastDrawableWidth = drawableWidth;
         m_LastDrawableHeight = drawableHeight;
+        m_LastStretch = stretch; // [fork]
 
         return true;
     }
@@ -961,6 +966,7 @@ private:
     int m_LastFrameHeight;
     int m_LastDrawableWidth;
     int m_LastDrawableHeight;
+    bool m_LastStretch; // [fork]
 };
 
 @implementation DisplayLinkDelegate {

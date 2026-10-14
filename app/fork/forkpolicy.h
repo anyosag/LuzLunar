@@ -21,9 +21,14 @@ namespace ForkPolicy
     // than in a borderless window the size of the screen (video under the notch). upstream is
     // Moonlight's own choice, which only matches the two native sizes exactly. On a notched
     // display a stream with either shape's aspect ratio fills that shape, at any size. Any other
-    // ratio goes below the notch while keepBelowNotch (the notch bar is on), because only a Space
-    // leaves the strip beside the notch for the bar.
+    // ratio goes below the notch while keepBelowNotch (the notch bar is on, or the stream is
+    // stretched), because only a Space leaves the strip beside the notch for the bar, and a
+    // stretched picture must never be drawn under the notch.
     bool useSpacesFullscreen(bool upstream, bool displayHasNotch, bool keepBelowNotch, NotchFit fit);
+
+    // Whether the video is stretched to fill the window instead of fitted with black bars. Only
+    // in fullscreen; a windowed stream always fits.
+    bool stretchActive(bool enabled, bool windowFullscreen);
 
     // A frame in screen coordinates; all that matters is that both rects use the same ones
     struct Rect {

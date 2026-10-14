@@ -48,6 +48,11 @@ bool useSpacesFullscreen(bool upstream, bool displayHasNotch, bool keepBelowNotc
     return upstream || keepBelowNotch;
 }
 
+bool stretchActive(bool enabled, bool windowFullscreen)
+{
+    return enabled && windowFullscreen;
+}
+
 bool coversScreen(const Rect& window, const Rect& screen, bool hasTitleBar, double tolerance)
 {
     if (hasTitleBar) {

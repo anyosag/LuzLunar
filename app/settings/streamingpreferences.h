@@ -147,6 +147,7 @@ public:
     Q_PROPERTY(VideoDecoderSelection videoDecoderSelection MEMBER videoDecoderSelection NOTIFY videoDecoderSelectionChanged)
     Q_PROPERTY(RendererSelection rendererSelection MEMBER rendererSelection NOTIFY rendererSelectionChanged)
     Q_PROPERTY(WindowMode windowMode MEMBER windowMode NOTIFY windowModeChanged)
+    Q_PROPERTY(bool fullscreenStretch MEMBER fullscreenStretch NOTIFY fullscreenStretchChanged) // [fork]
     Q_PROPERTY(WindowMode recommendedFullScreenMode MEMBER recommendedFullScreenMode CONSTANT)
     Q_PROPERTY(UIDisplayMode uiDisplayMode MEMBER uiDisplayMode NOTIFY uiDisplayModeChanged)
     Q_PROPERTY(bool swapMouseButtons MEMBER swapMouseButtons NOTIFY mouseButtonsChanged)
@@ -195,6 +196,7 @@ public:
     bool enableYUV444;
     VideoDecoderSelection videoDecoderSelection;
     WindowMode windowMode;
+    bool fullscreenStretch; // [fork] fill the screen in fullscreen instead of letterboxing
     WindowMode recommendedFullScreenMode;
     UIDisplayMode uiDisplayMode;
     Language language;
@@ -222,6 +224,7 @@ signals:
     void videoDecoderSelectionChanged();
     void uiDisplayModeChanged();
     void windowModeChanged();
+    void fullscreenStretchChanged(); // [fork]
     void framePacingChanged();
     void connectionWarningsChanged();
     void configurationWarningsChanged();

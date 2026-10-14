@@ -1964,8 +1964,8 @@ void Session::exec()
     // Start rich presence to indicate we're in game
     RichPresenceManager presence(*m_Preferences, m_App.name);
 
-    // [fork] Per-stream fork features (shortcut guard, clipboard sync, notch bar, ...)
-    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window);
+    // [fork] Per-stream fork features (shortcut guard, clipboard sync, notch bar, fullscreen stretch, ...)
+    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences);
 
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);

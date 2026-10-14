@@ -1,5 +1,7 @@
 #include "streamutils.h"
 
+#include "fork/forkvideoscaling.h" // [fork]
+
 #include <Qt>
 #include <QDir>
 
@@ -127,6 +129,8 @@ SDL_Window* StreamUtils::createTestWindow()
 
 void StreamUtils::scaleSourceToDestinationSurface(SDL_Rect* src, SDL_Rect* dst)
 {
+    if (ForkVideoScaling::stretchActive()) { return; } // [fork] dst is the whole surface, which is a stretch
+
     int dstH = SDL_ceilf((float)dst->w * src->h / src->w);
     int dstW = SDL_ceilf((float)dst->h * src->w / src->h);
 

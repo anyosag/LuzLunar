@@ -120,6 +120,10 @@ NavigableDialog {
                            { "text": qsTr("Games (cursor captured)"), "value": false } ] },
             { "key": "enableVsync", "label": qsTr("V-Sync"), "current": onOff(StreamingPreferences.enableVsync), "options": onOffOptions() },
             { "key": "framePacing", "label": qsTr("Frame pacing"), "current": onOff(StreamingPreferences.framePacing), "options": onOffOptions() },
+            { "key": "fullscreenStretch", "label": qsTr("Fullscreen fill"),
+              "current": StreamingPreferences.fullscreenStretch ? qsTr("Stretch") : qsTr("Fit"),
+              "options": [ { "text": qsTr("Fit (black bars)"), "value": false },
+                           { "text": qsTr("Stretch"), "value": true } ] },
             { "key": "resolution", "label": qsTr("Resolution"), "current": StreamingPreferences.width + "x" + StreamingPreferences.height,
               "options": resolutionOptions() },
             { "key": "fps", "label": qsTr("Frame rate"), "current": StreamingPreferences.fps + " FPS",
@@ -240,7 +244,7 @@ NavigableDialog {
 
         Label {
             width: 420
-            text: qsTr("Frame pacing only applies when V-Sync is on. Settings left on Global follow LuzLunar's settings.")
+            text: qsTr("Frame pacing only applies when V-Sync is on, and Fullscreen fill only in fullscreen. Settings left on Global follow LuzLunar's settings.")
             font.pointSize: 9
             wrapMode: Text.Wrap
         }

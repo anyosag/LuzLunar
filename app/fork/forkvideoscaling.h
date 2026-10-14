@@ -2,6 +2,7 @@
 
 class QWindow;
 class StreamingPreferences;
+struct SDL_Window;
 
 // The stream's fullscreen and scaling rules: where the fork departs from Moonlight's choices
 // for how the video fills the screen. Session calls into here at the few points it decides.
@@ -13,4 +14,15 @@ namespace ForkVideoScaling
     // ForkPolicy::useSpacesFullscreen()). Uses the display the stream will open on, which is the
     // one qtWindow is on. Returns upstream where it can't tell, or off macOS.
     bool useSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWindow* qtWindow);
+
+    // Called by ForkStreamExtensions around a stream: window is the stream's window, and stretch is
+    // the session's fullscreenStretch preference. Stretching is off outside that span.
+    void activate(SDL_Window* window, bool stretch);
+    void deactivate();
+
+    // Whether the video fills the window, distorted, rather than fitting with black bars. True
+    // while the session's stretch preference is on and the window is fullscreen (either kind), so
+    // a windowed stream always fits. Cheap and thread safe: renderers call it from their render
+    // threads and the main thread calls it for the mouse mapping. Logs when the value changes.
+    bool stretchActive();
 }

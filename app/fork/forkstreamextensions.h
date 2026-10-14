@@ -8,13 +8,16 @@ class ClipboardSync;
 class NotchBar;
 class NvComputer;
 class NvApp;
+class StreamingPreferences;
 
 // Fork features that live for the length of one stream. Session::exec() creates one on
 // the stack before its event loop and passes it every SDL event.
 class ForkStreamExtensions
 {
 public:
-    ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window);
+    // prefs is the session's own copy, with the app's stream profile applied
+    ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
+                         const StreamingPreferences& prefs);
     ~ForkStreamExtensions();
 
     ForkStreamExtensions(const ForkStreamExtensions&) = delete;
