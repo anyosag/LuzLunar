@@ -118,5 +118,13 @@ GroupBox {
             font.pointSize: 9
             wrapMode: Text.Wrap
         }
+
+        Label {
+            width: parent.width
+            topPadding: 6
+            text: qsTr("LuzLunar build %1").arg(ForkPreferences.buildId)
+            font.pointSize: 9
+            opacity: 0.6
+        }
     }
 }

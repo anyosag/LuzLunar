@@ -34,6 +34,15 @@ ForkPreferences* ForkPreferences::get()
     return s_Instance;
 }
 
+QString ForkPreferences::buildId() const
+{
+#ifdef FORK_BUILD_ID
+    return QStringLiteral(FORK_BUILD_ID);
+#else
+    return QStringLiteral(VERSION_STR);
+#endif
+}
+
 ForkPreferences::ForkPreferences(QObject* parent)
     : QObject(parent),
       m_KeyMap(defaultKeyMap()),

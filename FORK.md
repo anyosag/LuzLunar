@@ -10,13 +10,14 @@ It ships as `LuzLunar.app`, but keeps Moonlight's bundle ID (`com.moonlight-stre
 - Locally, run `bash scripts/fork/build-mac.sh Release` from the repo root (paths with spaces are fine). It needs Qt's tools on `PATH`; with Homebrew that's `qtbase`, `qtdeclarative`, `qtsvg` and `qtimageformats`, the last for the WebP the native spinner uses. Two optional switches, both off in CI:
   - `LUZLUNAR_SKIP_DMG=1` skips the DMG, so `create-dmg` isn't needed.
   - `LUZLUNAR_INSTALL=1` quits LuzLunar, moves `/Applications/LuzLunar.app` to the Trash and installs the new build.
+- Every build has a build ID: the version plus the commit, like `6.2.0-fork.ee5b3ba`, the same as in the artifact and DMG names. It's shown at the bottom of Settings › Keyboard & Clipboard (`ForkPreferences.buildId`, from qmake's `FORK_BUILD_ID`) and is the bundle's `CFBundleVersion`, so Finder's Get Info tells copies apart.
 - Upstream's `build.yml` (every platform) is disabled in this repo's Actions settings. The file stays unchanged so upstream merges stay clean.
 - `.github/workflows/sync-upstream.yml` merges upstream `master` daily and builds when anything new arrives. To sync upstream workflow changes, it needs a `SYNC_TOKEN` secret: a fine-grained token for this repo with Contents and Workflows read/write.
 
 ## Installing a build
 
 1. Download the `LuzLunar-macOS-arm64-…` artifact from the workflow run, then unzip it and open the DMG.
-2. Drag LuzLunar to Applications and delete the official `Moonlight.app`. Both share a bundle ID and settings, so keep only one. Paired PCs and settings carry over.
+2. Drag LuzLunar to Applications and delete the official `Moonlight.app`. Both share a bundle ID and settings, so keep only one. Paired PCs and settings carry over. Also delete older LuzLunar copies outside Applications (an unzipped artifact folder, a mounted DMG), or Spotlight and Launchpad may open one of them; the build ID in Settings shows which build is running.
 3. The app is ad-hoc signed, not notarized. Open it the first time with right-click → Open, or run `xattr -dr com.apple.quarantine /Applications/LuzLunar.app`.
 
 ## Keeping upstream merges clean
