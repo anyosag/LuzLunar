@@ -114,7 +114,7 @@ GroupBox {
 
         Label {
             width: parent.width
-            text: qsTr("Shares copied text with Apollo hosts while streaming. Automatic sends your clipboard when you switch to the stream and fetches the PC's when you switch away. Ctrl+Option+Shift+U sends and Ctrl+Option+Shift+G fetches at any time. Apollo must give this device its Clipboard permissions.")
+            text: qsTr("Shares the clipboard with Apollo hosts while streaming: text, formatted text from Word, Excel, PowerPoint and other apps, and images. Formatting and images need LuzLunar's Apollo build; other Apollo versions share text only. Automatic sends your clipboard when you switch to the stream and fetches the PC's when you switch away, transferring only what changed. Ctrl+Option+Shift+U sends and Ctrl+Option+Shift+G fetches at any time. Apollo must give this device its Clipboard permissions.")
             font.pointSize: 9
             wrapMode: Text.Wrap
         }

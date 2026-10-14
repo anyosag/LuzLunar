@@ -124,6 +124,15 @@ jobs:
           clang++ -std=c++17 -Wall -Iapp -Ilibs/mac/include/SDL2 \
             tests/fork/keymap_test.cpp app/fork/forkkeymap.cpp -o "$RUNNER_TEMP/keymap_test"
           "$RUNNER_TEMP/keymap_test"
+          # The clipboard bundle, shared with anyosag/Apollo (the same test runs in its CI)
+          clang++ -std=c++17 -Wall -Wextra -DCLIPBUNDLE_WITH_ZLIB -Iapp/fork \
+            tests/fork/clipbundle_test.cpp app/fork/clipbundle.cpp -lz -o "$RUNNER_TEMP/clipbundle_test"
+          "$RUNNER_TEMP/clipbundle_test"
+          # The Mac pasteboard in the bundle's formats, on a private pasteboard
+          clang++ -std=c++17 -Wall -DCLIPBUNDLE_WITH_ZLIB -Iapp \
+            tests/fork/pasteboard_test.mm app/fork/mac/pasteboard_mac.mm app/fork/clipbundle.cpp \
+            -framework AppKit -framework ImageIO -lz -o "$RUNNER_TEMP/pasteboard_test"
+          "$RUNNER_TEMP/pasteboard_test"
 
       # Stream profiles give each Session its own StreamingPreferences copy. Streaming code that
       # reads the global settings directly would bypass the profile, so flag any new such read.

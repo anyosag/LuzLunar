@@ -8,6 +8,7 @@
 
 SOURCES += \
     $$PWD/apolloclient.cpp \
+    $$PWD/clipbundle.cpp \
     $$PWD/clipboardsync.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
@@ -21,6 +22,7 @@ SOURCES += \
 
 HEADERS += \
     $$PWD/apolloclient.h \
+    $$PWD/clipbundle.h \
     $$PWD/clipboardsync.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
@@ -31,15 +33,21 @@ HEADERS += \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
     $$PWD/mac/macintegration.h \
-    $$PWD/mac/notchbar.h
+    $$PWD/mac/notchbar.h \
+    $$PWD/mac/pasteboard.h
 
 macx {
     SOURCES += \
         $$PWD/screenshotharness.cpp \
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/notchbar.mm \
+        $$PWD/mac/pasteboard_mac.mm \
         $$PWD/mac/sfsymbolprovider.mm \
         $$PWD/mac/windowchrome_mac.mm
+
+    # Rich clipboard sync: images through ImageIO, and zlib for the clipboard bundle (clipbundle.cpp)
+    LIBS += -framework ImageIO -lz
+    DEFINES += CLIPBUNDLE_WITH_ZLIB
 }
 
 RESOURCES += \
