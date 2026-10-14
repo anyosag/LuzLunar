@@ -33,6 +33,10 @@ NavigableDialog {
         "framePacing": false
     })
 
+    // The width and height the stream will use: the profile's where it sets a resolution, else the global one
+    readonly property var effectiveSize: selection.resolution !== undefined ? selection.resolution.split("x").map(Number)
+                                                                            : [StreamingPreferences.width, StreamingPreferences.height]
+
     title: qsTr("Stream settings for %1").arg(appName)
     standardButtons: Dialog.Save | Dialog.Cancel
 
@@ -247,6 +251,17 @@ NavigableDialog {
             text: qsTr("Frame pacing only applies when V-Sync is on, and Fullscreen fill only in fullscreen. Settings left on Global follow LuzLunar's settings.")
             font.pointSize: 9
             wrapMode: Text.Wrap
+        }
+
+        // What this Mac can't handle in these settings: the profile's choices, and the global setting for rows left on Global
+        ForkHardwareWarnings {
+            width: 420
+            streamWidth: streamProfileDialog.effectiveSize[0]
+            streamHeight: streamProfileDialog.effectiveSize[1]
+            streamFps: streamProfileDialog.selection.fps !== undefined ? streamProfileDialog.selection.fps : StreamingPreferences.fps
+            codecConfig: streamProfileDialog.selection.videoCodecConfig !== undefined ? streamProfileDialog.selection.videoCodecConfig
+                                                                                      : StreamingPreferences.videoCodecConfig
+            hdr: streamProfileDialog.selection.enableHdr !== undefined ? streamProfileDialog.selection.enableHdr : StreamingPreferences.enableHdr
         }
     }
 }

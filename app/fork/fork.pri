@@ -13,8 +13,10 @@
 
 SOURCES += \
     $$PWD/apolloclient.cpp \
+    $$PWD/clienthardware.cpp \
     $$PWD/clipbundle.cpp \
     $$PWD/clipboardsync.cpp \
+    $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
     $$PWD/forkpolicy.cpp \
@@ -29,8 +31,10 @@ SOURCES += \
 
 HEADERS += \
     $$PWD/apolloclient.h \
+    $$PWD/clienthardware.h \
     $$PWD/clipbundle.h \
     $$PWD/clipboardsync.h \
+    $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
     $$PWD/forkpolicy.h \
@@ -48,6 +52,7 @@ HEADERS += \
 macx {
     SOURCES += \
         $$PWD/screenshotharness.cpp \
+        $$PWD/mac/clienthardware_mac.mm \
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/pasteboard_mac.mm \

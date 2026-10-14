@@ -128,6 +128,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/policy_test.cpp app/fork/forkpolicy.cpp -o "$RUNNER_TEMP/policy_test"
           "$RUNNER_TEMP/policy_test"
+          # The stream warnings for this Mac's hardware and the aspect ratio names
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/hwrules_test.cpp app/fork/forkhwrules.cpp -o "$RUNNER_TEMP/hwrules_test"
+          "$RUNNER_TEMP/hwrules_test"
           # The clipboard bundle, shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -DCLIPBUNDLE_WITH_ZLIB -Iapp/fork \
             tests/fork/clipbundle_test.cpp app/fork/clipbundle.cpp -lz -o "$RUNNER_TEMP/clipbundle_test"

@@ -2,6 +2,8 @@
     <!-- Fork QML lives in app/gui so upstream QML can use it as a same-folder type -->
     <qresource prefix="/gui">
         <file alias="ForkSettingsGroupBox.qml">../gui/ForkSettingsGroupBox.qml</file>
+        <file alias="ForkThisMacGroupBox.qml">../gui/ForkThisMacGroupBox.qml</file>
+        <file alias="ForkHardwareWarnings.qml">../gui/ForkHardwareWarnings.qml</file>
         <file alias="StreamProfileDialog.qml">../gui/StreamProfileDialog.qml</file>
         <file alias="ForkStretchOption.qml">../gui/ForkStretchOption.qml</file>
         <file alias="ForkNativeToolbar.qml">../gui/ForkNativeToolbar.qml</file>
