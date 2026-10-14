@@ -51,14 +51,14 @@ Item {
         spacing: 5
         id: stageIndicator
 
-        BusyIndicator {
+        ForkBusyIndicator { // [fork] was BusyIndicator
             id: stageSpinner
             running: visible
         }
 
         Label {
             id: stageLabel
-            height: stageSpinner.height
+            height: Math.max(stageSpinner.height, implicitHeight) // [fork] was stageSpinner.height
             font.pointSize: 20
             verticalAlignment: Text.AlignVCenter
 

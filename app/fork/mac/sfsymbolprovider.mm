@@ -18,12 +18,17 @@ namespace
 
         QImage requestImage(const QString& id, QSize* size, const QSize& requestedSize) override
         {
+            // requestedSize is in pixels. A control's icon (IconLabel) already asks for its size
+            // times the screen scale; a plain Image/IconImage gets exactly its sourceSize, so QML
+            // asks for twice the drawn size to stay sharp on Retina (see PcView.qml).
             int width = requestedSize.width() > 0 ? requestedSize.width() : 128;
             int height = requestedSize.height() > 0 ? requestedSize.height() : width;
             if (size != nullptr) {
                 *size = QSize(width, height);
             }
 
+            // Drawing goes into this call's own bitmap context, so it is also safe if an image
+            // using the provider is ever loaded asynchronously (off the GUI thread)
             @autoreleasepool {
                 NSImage* symbol = [NSImage imageWithSystemSymbolName:id.toNSString() accessibilityDescription:nil];
                 if (symbol == nil) {

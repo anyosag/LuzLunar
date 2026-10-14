@@ -1,5 +1,5 @@
 import QtQuick 2.9
-import QtQuick.Controls 2.2
+import QtQuick.Controls // [fork] versionless, for popupType (Qt 6.8)
 
 import SdlGamepadKeyNavigation 1.0
 import SystemProperties 1.0
@@ -12,6 +12,10 @@ ComboBox {
     property int maximumWidth : parent.width
 
     implicitWidth: desiredWidth < maximumWidth ? desiredWidth : maximumWidth
+
+    // [fork] The macOS style opens the list in its own window, which doesn't get the key events
+    // that gamepad navigation sends to the main window. Keep it in-window, like upstream's Material.
+    popup.popupType: Popup.Item
 
     TextMetrics {
         id: popupMetrics

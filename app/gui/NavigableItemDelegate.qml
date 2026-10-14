@@ -7,12 +7,14 @@ T.ItemDelegate {
     id: delegate
 
     property GridView grid
+    // Views with rounded artwork set this to the artwork's radius plus its inset, so the corners nest
+    property real cornerRadius: 14
 
     hoverEnabled: true
     highlighted: grid.activeFocus && grid.currentItem === this
 
     background: Rectangle {
-        radius: 14
+        radius: delegate.cornerRadius
         color: {
             var tint = delegate.highlighted ? delegate.palette.highlight : delegate.palette.windowText
             var alpha = delegate.highlighted ? 0.22 : (delegate.down ? 0.14 : (delegate.hovered ? 0.07 : 0.0))
