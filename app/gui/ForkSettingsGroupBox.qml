@@ -81,7 +81,7 @@ GroupBox {
             ToolTip.delay: 1000
             ToolTip.timeout: 10000
             ToolTip.visible: hovered
-            ToolTip.text: qsTr("On a MacBook with a camera notch, fullscreen streams leave the strip beside the notch empty. This shows the app's name on the left and frame rate, latency, bitrate, codec and loss on the right. Connection warnings and clipboard messages appear beside the notch instead of over the stream.")
+            ToolTip.text: qsTr("On a MacBook with a camera notch, fullscreen streams leave the strip beside the notch empty. This shows the app's name on the left and frame rate, latency, bitrate, codec and loss on the right. Connection warnings and clipboard messages appear beside the notch, or in a pill in the corner of a windowed stream, instead of over the stream.")
         }
 
         Row {

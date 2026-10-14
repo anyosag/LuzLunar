@@ -1,9 +1,12 @@
 #include "streamstats.h"
 
 #include <atomic>
+#include <cstring>
 #include <mutex>
 
 #include <Limelight.h>
+
+#include "streaming/session.h"
 
 namespace ForkStreamStats
 {
@@ -16,6 +19,14 @@ namespace
 
     std::mutex s_ConnectionListenerMutex;
     std::function<bool(bool, bool)> s_ConnectionListener;
+    bool s_ConnectionPoor = false;
+    bool s_SuggestLowerBitrate = false;
+
+    // Moonlight's own warning text, as in Session::clConnectionStatusUpdate()
+    const char* overlayWarningText(bool suggestLowerBitrate)
+    {
+        return suggestLowerBitrate ? "Slow connection to PC\nReduce your bitrate" : "Poor connection to PC";
+    }
 }
 
 bool wanted()
@@ -48,6 +59,8 @@ void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
 bool reportConnectionStatus(bool poor, bool suggestLowerBitrate)
 {
     std::lock_guard<std::mutex> lock(s_ConnectionListenerMutex);
+    s_ConnectionPoor = poor;
+    s_SuggestLowerBitrate = suggestLowerBitrate;
     return s_ConnectionListener && s_ConnectionListener(poor, suggestLowerBitrate);
 }
 
@@ -55,6 +68,44 @@ void setConnectionListener(std::function<bool(bool poor, bool suggestLowerBitrat
 {
     std::lock_guard<std::mutex> lock(s_ConnectionListenerMutex);
     s_ConnectionListener = std::move(listener);
+    s_ConnectionPoor = false;
+    s_SuggestLowerBitrate = false;
+}
+
+bool connectionPoor(bool* suggestLowerBitrate)
+{
+    std::lock_guard<std::mutex> lock(s_ConnectionListenerMutex);
+    *suggestLowerBitrate = s_SuggestLowerBitrate;
+    return s_ConnectionPoor;
+}
+
+void setConnectionWarningInOverlay(bool inOverlay)
+{
+    bool suggestLowerBitrate;
+    if (!connectionPoor(&suggestLowerBitrate)) {
+        return;
+    }
+
+    Session* session = Session::get();
+    if (session == nullptr) {
+        return;
+    }
+
+    Overlay::OverlayManager& overlays = session->getOverlayManager();
+    const char* text = overlayWarningText(suggestLowerBitrate);
+    if (inOverlay) {
+        // Doesn't cover a status message that's up, like gamepad mouse mode's
+        if (!overlays.isOverlayEnabled(Overlay::OverlayStatusUpdate)) {
+            overlays.updateOverlayText(Overlay::OverlayStatusUpdate, text);
+            overlays.setOverlayState(Overlay::OverlayStatusUpdate, true);
+        }
+    }
+    else {
+        const char* current = overlays.getOverlayText(Overlay::OverlayStatusUpdate);
+        if (overlays.isOverlayEnabled(Overlay::OverlayStatusUpdate) && current != nullptr && strcmp(current, text) == 0) {
+            overlays.setOverlayState(Overlay::OverlayStatusUpdate, false);
+        }
+    }
 }
 
 QString codecName(int videoFormat)

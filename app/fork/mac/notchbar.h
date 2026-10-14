@@ -13,7 +13,8 @@ struct SDL_Window;
 //
 // Messages appear beside the notch too, growing out of a blinking red dot: Moonlight's poor
 // connection warning (through ForkStreamStats::reportConnectionStatus()) and clipboard messages
-// (through showToast()). While the bar isn't on screen, they stay in Moonlight's status overlay.
+// (through showToast()). While the stream is windowed, they appear in a pill in the window's
+// bottom-left corner instead. Otherwise they stay in Moonlight's status overlay.
 class NotchBar
 {
 public:
@@ -22,8 +23,8 @@ public:
 
     virtual ~NotchBar() = default;
 
-    // Shows a message beside the notch for a few seconds. Returns false, showing nothing, while
-    // the bar isn't on screen. Call on the main thread.
+    // Shows a message beside the notch, or in the corner of a windowed stream, for a few seconds.
+    // Returns false, showing nothing, while neither is on screen. Call on the main thread.
     virtual bool showToast(const QString& text) = 0;
 
 protected:

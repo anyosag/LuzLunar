@@ -35,7 +35,15 @@ namespace ForkStreamStats
     bool reportConnectionStatus(bool poor, bool suggestLowerBitrate);
 
     // Same rules as setListener(): once it returns, a previous listener is no longer running or called.
+    // Also forgets the last reported status, so a new stream starts with an okay connection.
     void setConnectionListener(std::function<bool(bool poor, bool suggestLowerBitrate)> listener);
+
+    // Whether the connection was poor at the last report, and if so whether a lower bitrate would help
+    bool connectionPoor(bool* suggestLowerBitrate);
+
+    // Moves a poor connection warning that's already up into Moonlight's status overlay, or out of it,
+    // for a listener that starts or stops showing the warning itself between reports. Main thread.
+    void setConnectionWarningInOverlay(bool inOverlay);
 
     QString codecName(int videoFormat);
 }
