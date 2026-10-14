@@ -28,7 +28,7 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 |---|---|
 | `app/app.pro` | `include(fork/fork.pri)` at the end; `$$shell_quote()` around the Info.plist `cp`/`sed` paths, so builds work from paths with spaces |
 | `app/streaming/input/keyboard.cpp` | `ForkInput::preprocessKeyEvent()` right after the special key combos; `forkForceGui` in the META modifier check and the LGUI/RGUI cases |
-| `app/streaming/session.cpp` | `ForkStreamExtensions` created after `RichPresenceManager` in `exec()`, and `handleEvent()` before the event `switch`; `ForkStreamStats::reportConnectionStatus()` in `clConnectionStatusUpdate()`, after the `connectionWarnings` check |
+| `app/streaming/session.cpp` | `ForkStreamExtensions` created after `RichPresenceManager` in `exec()`, and `handleEvent()` before the event `switch`; `ForkStreamStats::reportConnectionStatus()` in `clConnectionStatusUpdate()`, after the `connectionWarnings` check; `ForkVideoScaling::useSpacesFullscreen()` on the `shouldUseFullScreenSpaces` result in `initialize()`, before it sets the fullscreen Spaces hint (picks by aspect ratio on a notched display) |
 | `app/gui/SettingsView.qml` | `ForkSettingsGroupBox` between the Input and Gamepad groups |
 | `app/settings/streamingpreferences.h` | `friend class StreamProfiles` next to the private constructor |
 | `app/gui/appmodel.cpp`, `app/gui/computermodel.cpp`, `app/cli/startstream.cpp` | `new Session(...)` replaced with `StreamProfiles::createSession(...)` |
@@ -79,6 +79,11 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
   - macOS keeps a fullscreen window below the notch, so the bar is a separate non-activating panel above the stream's level that joins its fullscreen Space. It uses Liquid Glass (`NSGlassEffectView`) on macOS 26 and vibrancy before that.
   - Stats come from the decoder's once-a-second stats tick, computed only while the bar is listening.
   - The bar shows only while the stream is fullscreen on the active Space of a display with a notch. Turn it off in Settings › Keyboard & Clipboard.
+  - A notched display has two shapes: the full panel, including the strip beside the notch (3024×1964, about 1.54:1, on a 14" MacBook Pro), and the area below the notch (3024×1890, 16:10). Fullscreen picks by the stream's aspect ratio, at any size (`ForkVideoScaling::useSpacesFullscreen()` in `app/fork/forkvideoscaling.*`, with the rule in `forkpolicy.*` and tests in `tests/fork/policy_test.cpp`):
+    - The full panel's ratio (3024×1964, 1512×982…): a borderless window the size of the screen, video under the notch. The bar can't show, and the controller notices the window covers its screen and keeps the corner pill off it, so messages use Moonlight's red overlay.
+    - The ratio below the notch (3024×1890, 2560×1600, 1920×1200…): a macOS fullscreen Space below the notch, with the bar.
+    - Any other ratio (16:9, 21:9, 4:3…): a Space below the notch while the bar is on, because only a Space leaves the strip beside the notch for the bar; with the bar off, upstream's choice.
+    - Upstream matched only the two exact native sizes. In Fullscreen mode every other size got the borderless window, which lacks the fullscreen style, so the bar never showed.
   - Messages appear in a third pill beside the notch. A red dot blinks twice, then grows into the pill; the app name fades out if they don't both fit. With Reduce Motion the pill just fades in and out.
     - Moonlight's poor connection warning ("Slow connection to PC · reduce your bitrate") stays until the connection recovers. It arrives on moonlight-common-c's receive thread through `ForkStreamStats::reportConnectionStatus()`, which tells `Session` whether the bar showed it.
     - Clipboard messages come through `ClipboardSync::setMessageSink()` and stay 3 seconds. One that arrives during the warning shows, then the warning returns.
