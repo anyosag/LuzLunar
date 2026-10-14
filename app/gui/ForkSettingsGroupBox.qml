@@ -18,7 +18,7 @@ GroupBox {
         Label {
             width: parent.width
             visible: SystemProperties.isDarwin
-            text: qsTr("Choose what each Mac modifier key sends to the host PC. Moonlight's own shortcuts (Ctrl+Option+Shift+…) always use the physical keys.")
+            text: qsTr("Choose what each Mac modifier key sends to the host PC. LuzLunar's own shortcuts (Ctrl+Option+Shift+…) always use the physical keys.")
             font.pointSize: 9
             wrapMode: Text.Wrap
         }
@@ -62,7 +62,7 @@ GroupBox {
         Label {
             width: parent.width
             visible: SystemProperties.isDarwin
-            text: qsTr("While streaming with Command not set to the Windows key, Cmd+Q and Cmd+H go to the host instead of quitting or hiding Moonlight. End a stream with Ctrl+Option+Shift+Q.")
+            text: qsTr("While streaming with Command not set to the Windows key, Cmd+Q and Cmd+H go to the host instead of quitting or hiding LuzLunar. End a stream with Ctrl+Option+Shift+Q.")
             font.pointSize: 9
             wrapMode: Text.Wrap
         }

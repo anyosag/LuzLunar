@@ -1,18 +1,20 @@
-# anyosag/moonlight-qt
+# LuzLunar
 
-A personal fork of [moonlight-stream/moonlight-qt](https://github.com/moonlight-stream/moonlight-qt) for an Apple Silicon Mac streaming from [Apollo](https://github.com/anyosag/Apollo).
+**LuzLunar** ("moonlight" in Spanish) is a personal fork of [moonlight-stream/moonlight-qt](https://github.com/moonlight-stream/moonlight-qt) for an Apple Silicon Mac streaming from [Apollo](https://github.com/anyosag/Apollo).
+
+It ships as `LuzLunar.app`, but keeps Moonlight's bundle ID (`com.moonlight-stream.Moonlight`) and settings domain, so paired PCs and settings carry over from the official app. Upstream code and upstream strings still say "Moonlight"; only the app bundle, the display name and the fork's own UI use LuzLunar.
 
 ## Builds
 
-- `.github/workflows/fork-macos.yml` builds an arm64-only, ad-hoc signed DMG with `scripts/fork/build-mac.sh`. It runs on pushes to `master` and `claude/**` and on pull requests. It takes its runner, Qt version and aqtinstall pin from upstream's `build-win-mac.yml`.
+- `.github/workflows/fork-macos.yml` builds an arm64-only, ad-hoc signed `LuzLunar.app` and DMG with `scripts/fork/build-mac.sh`. The script renames the bundle after `macdeployqt`. The workflow runs on pushes to `master` and `claude/**` and on pull requests. It takes its runner, Qt version and aqtinstall pin from upstream's `build-win-mac.yml`.
 - Upstream's `build.yml` (every platform) is disabled in this repo's Actions settings. The file stays unchanged so upstream merges stay clean.
 - `.github/workflows/sync-upstream.yml` merges upstream `master` daily and builds when anything new arrives. To sync upstream workflow changes, it needs a `SYNC_TOKEN` secret: a fine-grained token for this repo with Contents and Workflows read/write.
 
 ## Installing a build
 
-1. Download the `Moonlight-macOS-arm64-…` artifact from the workflow run, then unzip it and open the DMG.
-2. Drag Moonlight to Applications, replacing the official app. The bundle ID is unchanged, so paired PCs and settings carry over.
-3. The app is ad-hoc signed, not notarized. Open it the first time with right-click → Open, or run `xattr -dr com.apple.quarantine /Applications/Moonlight.app`.
+1. Download the `LuzLunar-macOS-arm64-…` artifact from the workflow run, then unzip it and open the DMG.
+2. Drag LuzLunar to Applications and delete the official `Moonlight.app`. Both share a bundle ID and settings, so keep only one. Paired PCs and settings carry over.
+3. The app is ad-hoc signed, not notarized. Open it the first time with right-click → Open, or run `xattr -dr com.apple.quarantine /Applications/LuzLunar.app`.
 
 ## Keeping upstream merges clean
 
