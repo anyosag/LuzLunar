@@ -2,6 +2,7 @@
 #include "ffmpeg.h"
 #include "utils.h"
 #include "streaming/session.h"
+#include "fork/streamstats.h" // [fork]
 
 #include <h264_stream.h>
 
@@ -2130,6 +2131,14 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
                                 Session::get()->getOverlayManager().getOverlayText(Overlay::OverlayDebug),
                                 Session::get()->getOverlayManager().getOverlayMaxTextLength());
             Session::get()->getOverlayManager().setOverlayTextUpdated(Overlay::OverlayDebug);
+        }
+
+        // [fork] Live stats for the notch info bar
+        if (ForkStreamStats::wanted()) {
+            VIDEO_STATS lastTwoWndStats = {};
+            addVideoStats(m_LastWndVideoStats, lastTwoWndStats);
+            addVideoStats(m_ActiveWndVideoStats, lastTwoWndStats);
+            ForkStreamStats::publish(lastTwoWndStats, m_VideoFormat, m_BwTracker.GetAverageMbps());
         }
 
         // Accumulate these values into the global stats

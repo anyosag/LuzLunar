@@ -27,6 +27,7 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 | `app/settings/streamingpreferences.h` | `friend class StreamProfiles` next to the private constructor |
 | `app/gui/appmodel.cpp`, `app/gui/computermodel.cpp`, `app/cli/startstream.cpp` | `new Session(...)` replaced with `StreamProfiles::createSession(...)` |
 | `app/gui/AppView.qml` | "Stream Settings..." menu item after "Hide Game", and the `StreamProfileDialog` next to `quitAppDialog` |
+| `app/streaming/video/ffmpeg.cpp` | `ForkStreamStats::publish()` in the once-a-second stats block of `submitDecodeUnit()` |
 
 ## Fork features
 
@@ -47,3 +48,8 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
   - Requests run one at a time on a worker thread and report back through an SDL event, because the Qt event loop is paused while streaming.
   - Sync never wipes the local clipboard with empty text and never sends back text that came from the host. It skips password-manager clips (`org.nspasteboard.ConcealedType`/`TransientType`) and never logs clipboard contents.
   - The host must be Apollo, and Apollo must give this device its Clipboard permissions. Sync checks this through serverinfo `<Permission>`.
+- **Notch info bar** (`app/fork/mac/notchbar.*`, `app/fork/streamstats.*`):
+  - In fullscreen on a MacBook with a camera notch, the strip beside the notch shows the app and PC name on the left. On the right it shows the frame rate, network latency, bitrate, codec and loss.
+  - macOS keeps a fullscreen window below the notch, so the bar is a separate non-activating panel above the stream's level that joins its fullscreen Space. It uses Liquid Glass (`NSGlassEffectView`) on macOS 26 and vibrancy before that.
+  - Stats come from the decoder's once-a-second stats tick, computed only while the bar is listening.
+  - The bar shows only while the stream is fullscreen on the active Space of a display with a notch. Turn it off in Settings › Keyboard & Clipboard.

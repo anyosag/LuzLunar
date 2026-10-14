@@ -67,6 +67,23 @@ GroupBox {
             wrapMode: Text.Wrap
         }
 
+        CheckBox {
+            width: parent.width
+            visible: SystemProperties.isDarwin
+            hoverEnabled: true
+            text: qsTr("Show the app and stream stats beside the notch")
+            font.pointSize: 12
+            checked: ForkPreferences.notchBar
+            onCheckedChanged: {
+                ForkPreferences.notchBar = checked
+            }
+
+            ToolTip.delay: 1000
+            ToolTip.timeout: 10000
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("On a MacBook with a camera notch, fullscreen streams leave the strip beside the notch empty. This shows the app's name on the left and frame rate, latency, bitrate, codec and loss on the right.")
+        }
+
         Row {
             spacing: 5
             width: parent.width

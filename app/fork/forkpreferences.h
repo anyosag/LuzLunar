@@ -33,10 +33,16 @@ public:
     // Clipboard sync with Apollo hosts
     Q_PROPERTY(int clipboardSyncMode READ clipboardSyncMode WRITE setClipboardSyncMode NOTIFY clipboardSyncModeChanged)
 
+    // The app name and stream stats beside the camera notch in fullscreen (macOS)
+    Q_PROPERTY(bool notchBar READ notchBar WRITE setNotchBar NOTIFY notchBarChanged)
+
     static ForkPreferences* get();
 
     int clipboardSyncMode() const { return m_ClipboardSyncMode; }
     void setClipboardSyncMode(int mode);
+
+    bool notchBar() const { return m_NotchBar; }
+    void setNotchBar(bool enabled);
 
     int commandKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalGui]; }
     int controlKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalCtrl]; }
@@ -51,6 +57,7 @@ public:
 signals:
     void keyTargetsChanged();
     void clipboardSyncModeChanged();
+    void notchBarChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -59,4 +66,5 @@ private:
 
     ForkKeymap::Map m_KeyMap;
     int m_ClipboardSyncMode;
+    bool m_NotchBar;
 };
