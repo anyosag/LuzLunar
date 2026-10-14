@@ -63,11 +63,16 @@ bool useSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWind
     }
 
     bool hasNotch = nativeMode.w != safeArea.w || nativeMode.h != safeArea.h;
-    bool exactNative = prefs.width == nativeMode.w && prefs.height == nativeMode.h;
-    bool useSpaces = ForkPolicy::useSpacesFullscreen(upstream, hasNotch, ForkPreferences::get()->notchBar(), exactNative);
+    ForkPolicy::NotchFit fit = ForkPolicy::notchFit(prefs.width, prefs.height, nativeMode.w, nativeMode.h,
+                                                    safeArea.w, safeArea.h);
+    bool useSpaces = ForkPolicy::useSpacesFullscreen(upstream, hasNotch, ForkPreferences::get()->notchBar(), fit);
     if (useSpaces != upstream) {
+        const char* reason = fit == ForkPolicy::NotchFit::FullDisplay ? "it has the full display's aspect ratio" :
+                             fit == ForkPolicy::NotchFit::BelowNotch ? "it has the aspect ratio below the notch" :
+                                                                       "the notch bar needs the strip beside the notch";
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "[fork] Using a fullscreen Space below the notch, so the notch bar has its strip");
+                    "[fork] Streaming %dx%d fullscreen %s the notch: %s",
+                    prefs.width, prefs.height, useSpaces ? "below" : "under", reason);
     }
     return useSpaces;
 #else
