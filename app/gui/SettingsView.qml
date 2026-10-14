@@ -812,6 +812,8 @@ Flickable {
                     ToolTip.text: qsTr("Fullscreen generally provides the best performance, but borderless windowed may work better with features like macOS Spaces, Alt+Tab, screenshot tools, on-screen overlays, etc.")
                 }
 
+                ForkStretchOption { width: parent.width } // [fork] fit or stretch in fullscreen
+
                 Row {
                     spacing: 5
                     width: parent.width

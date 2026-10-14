@@ -17,7 +17,7 @@ namespace
 {
     // Keys whose values are booleans; the rest are integers (including the codec enum)
     const QStringList k_BoolKeys = {
-        "enableHdr", "enableYUV444", "absoluteMouseMode", "enableVsync", "framePacing",
+        "enableHdr", "enableYUV444", "absoluteMouseMode", "enableVsync", "framePacing", "fullscreenStretch",
     };
 
     QString groupFor(const QString& hostUuid, const QString& appName)
@@ -62,7 +62,7 @@ const QStringList& StreamProfiles::overridableKeys()
 {
     static const QStringList keys = {
         "videoCodecConfig", "enableHdr", "enableYUV444", "absoluteMouseMode", "enableVsync", "framePacing",
-        "width", "height", "fps", "bitrateKbps",
+        "fullscreenStretch", "width", "height", "fps", "bitrateKbps",
     };
     return keys;
 }

@@ -8,6 +8,7 @@
 #include <SDL_syswm.h>
 #include <Limelight.h>
 #include <streaming/session.h>
+#include "fork/forkvideoscaling.h" // [fork]
 
 #include <mach/mach_time.h>
 #import <Cocoa/Cocoa.h>
@@ -355,7 +356,7 @@ public:
             m_DisplayLayer = [[AVSampleBufferDisplayLayer alloc] init];
             m_DisplayLayer.bounds = m_StreamView.bounds;
             m_DisplayLayer.position = CGPointMake(CGRectGetMidX(m_StreamView.bounds), CGRectGetMidY(m_StreamView.bounds));
-            m_DisplayLayer.videoGravity = AVLayerVideoGravityResizeAspect;
+            m_DisplayLayer.videoGravity = ForkVideoScaling::stretchActive() ? AVLayerVideoGravityResize : AVLayerVideoGravityResizeAspect; // [fork]
             m_DisplayLayer.opaque = YES;
 
             // This workaround prevents the image from going through processing that causes some
