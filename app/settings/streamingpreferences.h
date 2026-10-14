@@ -240,6 +240,7 @@ signals:
     void rendererSelectionChanged();
 
 private:
+    friend class StreamProfiles; // [fork] per-session copies for app stream profiles
     explicit StreamingPreferences(QQmlEngine *qmlEngine);
 
     QString getSuffixFromLanguage(Language lang);

@@ -1,4 +1,5 @@
 #include "computermodel.h"
+#include "fork/streamprofiles.h" // [fork]
 
 #include <QThreadPool>
 
@@ -125,7 +126,7 @@ Session* ComputerModel::createSessionForCurrentGame(int computerIndex)
 
     for (NvApp& app : computer->appList) {
         if (app.id == computer->currentGameId) {
-            return new Session(computer, app);
+            return StreamProfiles::createSession(computer, app); // [fork]
         }
     }
 

@@ -5,13 +5,15 @@ SOURCES += \
     $$PWD/forkkeymap.cpp \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
-    $$PWD/forkstreamextensions.cpp
+    $$PWD/forkstreamextensions.cpp \
+    $$PWD/streamprofiles.cpp
 
 HEADERS += \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
+    $$PWD/streamprofiles.h \
     $$PWD/mac/macintegration.h
 
 macx {

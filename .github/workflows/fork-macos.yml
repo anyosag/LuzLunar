@@ -93,6 +93,17 @@ jobs:
             tests/fork/keymap_test.cpp app/fork/forkkeymap.cpp -o "$RUNNER_TEMP/keymap_test"
           "$RUNNER_TEMP/keymap_test"
 
+      # Stream profiles give each Session its own StreamingPreferences copy. Streaming code that
+      # reads the global settings directly would bypass the profile, so flag any new such read.
+      - name: Check streaming code uses the session's preferences
+        shell: bash
+        run: |
+          reads=$(grep -rn "StreamingPreferences::get()" app/streaming | grep -v "app/streaming/session.cpp:.*m_Preferences(preferences ? preferences : StreamingPreferences::get())" || true)
+          if [ -n "$reads" ]; then
+            echo "::warning::Streaming code reads the global StreamingPreferences, bypassing per-app stream profiles:"
+            echo "$reads"
+          fi
+
       - name: Build (arm64, ad-hoc signed)
         run: bash scripts/fork/build-mac.sh Release
 

@@ -1,4 +1,5 @@
 #include "appmodel.h"
+#include "fork/streamprofiles.h" // [fork]
 
 AppModel::AppModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -44,7 +45,7 @@ Session* AppModel::createSessionForApp(int appIndex)
     Q_ASSERT(appIndex < m_VisibleApps.count());
     NvApp app = m_VisibleApps.at(appIndex);
 
-    return new Session(m_Computer, app);
+    return StreamProfiles::createSession(m_Computer, app); // [fork]
 }
 
 int AppModel::getDirectLaunchAppIndex()
