@@ -13,6 +13,9 @@ namespace
     std::atomic<bool> s_Wanted { false };
     std::mutex s_ListenerMutex;
     std::function<void(const Snapshot&)> s_Listener;
+
+    std::mutex s_ConnectionListenerMutex;
+    std::function<bool(bool, bool)> s_ConnectionListener;
 }
 
 bool wanted()
@@ -40,6 +43,18 @@ void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
     if (s_Listener) {
         s_Listener(snapshot);
     }
+}
+
+bool reportConnectionStatus(bool poor, bool suggestLowerBitrate)
+{
+    std::lock_guard<std::mutex> lock(s_ConnectionListenerMutex);
+    return s_ConnectionListener && s_ConnectionListener(poor, suggestLowerBitrate);
+}
+
+void setConnectionListener(std::function<bool(bool poor, bool suggestLowerBitrate)> listener)
+{
+    std::lock_guard<std::mutex> lock(s_ConnectionListenerMutex);
+    s_ConnectionListener = std::move(listener);
 }
 
 QString codecName(int videoFormat)

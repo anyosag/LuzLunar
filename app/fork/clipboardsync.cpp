@@ -823,8 +823,18 @@ void ClipboardSync::downloadBeforeQuit()
     processResults();
 }
 
+void ClipboardSync::setMessageSink(std::function<bool(const QString&)> sink)
+{
+    m_MessageSink = std::move(sink);
+}
+
 void ClipboardSync::showToast(const QString& text)
 {
+    // Shown beside the notch instead while LuzLunar's notch bar is on screen
+    if (m_MessageSink && m_MessageSink(text)) {
+        return;
+    }
+
     Session* session = Session::get();
     if (session == nullptr) {
         return;

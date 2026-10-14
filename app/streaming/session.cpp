@@ -3,6 +3,7 @@
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
 #include "fork/forkstreamextensions.h" // [fork]
+#include "fork/streamstats.h" // [fork]
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -177,6 +178,12 @@ void Session::clConnectionStatusUpdate(int connectionStatus)
                 connectionStatus);
 
     if (!s_ActiveSession->m_Preferences->connectionWarnings) {
+        return;
+    }
+
+    // [fork] LuzLunar's notch bar shows the warning beside the notch while it's on screen
+    if (ForkStreamStats::reportConnectionStatus(connectionStatus == CONN_STATUS_POOR,
+                                                s_ActiveSession->m_StreamConfig.bitrate > 5000)) {
         return;
     }
 
