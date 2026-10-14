@@ -3,6 +3,7 @@
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
 #include "fork/forkstreamextensions.h" // [fork]
+#include "fork/forkvideoscaling.h" // [fork]
 #include "fork/streamstats.h" // [fork]
 
 #include <Limelight.h>
@@ -635,6 +636,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
                 }
             }
         }
+        shouldUseFullScreenSpaces = ForkVideoScaling::useSpacesFullscreen(shouldUseFullScreenSpaces, *m_Preferences, m_QtWindow); // [fork]
 
         // Using modesetting on modern versions of macOS is extremely unreliable
         // and leads to hangs, deadlocks, and other nasty stuff. The only time

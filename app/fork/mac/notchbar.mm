@@ -1,5 +1,6 @@
 #include "notchbar.h"
 
+#include "fork/forkpolicy.h"
 #include "fork/streamstats.h"
 #include "SDL_compat.h"
 
@@ -100,6 +101,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     ForkCornerMessage* m_Corner;    // shows the messages instead while the stream is windowed
     BOOL m_BarOnScreen;
     BOOL m_CornerOnScreen;
+    BOOL m_CoversScreen;            // the stream window fills its screen without being in a fullscreen Space
     std::atomic<bool> m_ShowsMessages; // the bar or the corner pill is on screen
     BOOL m_FullScreenTransition;    // the stream window is entering or leaving its fullscreen Space
     unsigned m_TransitionGeneration;
@@ -382,6 +384,28 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     (void)notification;
     [m_Corner layout];
+
+    // Fullscreen without a Space sends only resize and move notifications
+    if ([self windowCoversScreen] != m_CoversScreen) {
+        [self refresh];
+    }
+}
+
+// SDL's borderless fullscreen (used when a stream isn't in a fullscreen Space) is a plain window
+// the size of the screen, with no fullscreen style. Neither the bar nor the corner pill fits there:
+// the video is under the notch, and a corner pill would sit over it.
+- (BOOL)windowCoversScreen
+{
+    NSScreen* screen = m_StreamWindow.screen;
+    if (screen == nil || (m_StreamWindow.styleMask & NSWindowStyleMaskFullScreen) != 0) {
+        return NO;
+    }
+
+    NSRect frame = m_StreamWindow.frame;
+    NSRect screenFrame = screen.frame;
+    return ForkPolicy::coversScreen({ NSMinX(frame), NSMinY(frame), NSWidth(frame), NSHeight(frame) },
+                                    { NSMinX(screenFrame), NSMinY(screenFrame), NSWidth(screenFrame), NSHeight(screenFrame) },
+                                    (m_StreamWindow.styleMask & NSWindowStyleMaskTitled) != 0);
 }
 
 // Moves the pills to a new panel in the same place
@@ -493,7 +517,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 }
 
 // Shows the bar while the stream window is fullscreen on the active Space of a display with a notch,
-// and the messages in the corner pill while it's windowed on the active Space
+// and the messages in the corner pill while it's windowed on the active Space (not while it covers the screen)
 - (void)refresh
 {
     NSScreen* screen = m_StreamWindow.screen;
@@ -515,7 +539,12 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     BOOL fullScreen = (m_StreamWindow.styleMask & NSWindowStyleMaskFullScreen) != 0;
     BOOL show = visible && fullScreen && screen != nil && inset > 0 &&
                 !NSIsEmptyRect(leftArea) && !NSIsEmptyRect(rightArea);
-    BOOL corner = visible && !fullScreen;
+    BOOL covers = [self windowCoversScreen];
+    BOOL corner = visible && !fullScreen && !covers;
+    if (covers != m_CoversScreen) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, covers ? "[fork] Stream window covers the screen" : "[fork] Stream window no longer covers the screen");
+    }
+    m_CoversScreen = covers;
     if (show != m_BarOnScreen) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, show ? "[fork] Notch bar shown" : "[fork] Notch bar hidden");
     }

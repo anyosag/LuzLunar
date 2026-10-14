@@ -17,9 +17,11 @@ SOURCES += \
     $$PWD/clipboardsync.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
+    $$PWD/forkpolicy.cpp \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
     $$PWD/forkstreamextensions.cpp \
+    $$PWD/forkvideoscaling.cpp \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
     $$PWD/streamstats.cpp \
@@ -31,8 +33,10 @@ HEADERS += \
     $$PWD/clipboardsync.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
+    $$PWD/forkpolicy.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
+    $$PWD/forkvideoscaling.h \
     $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
