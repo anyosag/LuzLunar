@@ -1,10 +1,10 @@
 import QtQuick 2.9
 import QtQuick.Controls 2.2
 
+import AspectRatios 1.0
 import ComputerManager 1.0
 import StreamingPreferences 1.0
 import StreamProfiles 1.0
-import SystemProperties 1.0
 
 // Per-app stream settings, opened from an app's "Stream Settings..." menu item.
 // Every row starts with "Global", which follows the global settings.
@@ -16,6 +16,14 @@ NavigableDialog {
     // The current choices by profile key; a missing key uses the global setting
     property var selection: ({})
     property var fields: []
+
+    // The choices of the Aspect ratio and Resolution rows, which change with the ratio (the other
+    // rows keep the options in their field). "aspectRatio" is only a helper for the resolution
+    // list, like the synthetic "resolution" field: it isn't saved, since a profile has a width
+    // and height. customRatio is the ratio of a size that isn't a standard one.
+    property var ratioChoices: []
+    property var resolutionChoices: []
+    property real customRatio: 0
 
     readonly property var officePreset: ({
         "videoCodecConfig": StreamingPreferences.VCC_FORCE_HEVC,
@@ -53,6 +61,7 @@ NavigableDialog {
         }
         if (profile.width !== undefined && profile.height !== undefined) {
             loaded.resolution = profile.width + "x" + profile.height
+            loaded.aspectRatio = AspectRatios.keyFor(profile.width, profile.height, AspectRatios.defaultDisplay())
         }
 
         selection = loaded
@@ -82,34 +91,138 @@ NavigableDialog {
         return [ { "text": qsTr("On"), "value": true }, { "text": qsTr("Off"), "value": false } ]
     }
 
+    // The aspect ratio the resolution list is for: the chosen one, else the ratio of the size the stream will use
+    function effectiveRatioKey() {
+        if (selection.aspectRatio !== undefined) {
+            return selection.aspectRatio
+        }
+        return AspectRatios.keyFor(effectiveSize[0], effectiveSize[1], AspectRatios.defaultDisplay())
+    }
+
+    // The number of a ratio's key (width over height), 0 if it has none
+    function ratioNumber(key) {
+        if (key === "custom") {
+            return customRatio
+        }
+        var ratios = AspectRatios.ratios(AspectRatios.defaultDisplay())
+        for (var i = 0; i < ratios.length; i++) {
+            if (ratios[i].key === key) {
+                return ratios[i].ratio
+            }
+        }
+        return 0
+    }
+
+    // The ratios of the aspect ratio row. Typing a ratio is left to the Custom... resolution
+    // dialog, so "Custom ratio" is only there while the size has a ratio of its own.
+    function ratioOptions() {
+        var options = []
+        var ratios = AspectRatios.ratios(AspectRatios.defaultDisplay())
+        for (var i = 0; i < ratios.length; i++) {
+            if (ratios[i].key !== "custom") {
+                options.push({ "text": ratios[i].label, "value": ratios[i].key })
+            }
+        }
+        if (effectiveRatioKey() === "custom") {
+            options.push({ "text": qsTr("Custom (%1)").arg(AspectRatios.ratioLabel(effectiveSize[0], effectiveSize[1])), "value": "custom" })
+        }
+        return options
+    }
+
+    // The sizes of the chosen ratio, then a saved size that isn't one of them, then Custom...
     function resolutionOptions() {
         var options = []
         function add(text, width, height) {
             var value = width + "x" + height
             if (width > 0 && height > 0 && !options.some(function(option) { return option.value === value })) {
-                options.push({ "text": text ? text + " (" + value + ")" : value, "value": value })
+                options.push({ "text": text, "value": value })
             }
         }
 
-        SystemProperties.refreshDisplays()
-        var native = SystemProperties.getNativeResolution(0)
-        var safeArea = SystemProperties.getSafeAreaResolution(0)
-        add("", 1280, 720)
-        add("", 1920, 1080)
-        add("", 2560, 1440)
-        add("", 3840, 2160)
-        add(qsTr("Native"), native.width, native.height)
-        add(qsTr("Native (Excluding Notch)"), safeArea.width, safeArea.height)
+        var key = effectiveRatioKey()
+        var presets = AspectRatios.presets(key, key === "custom" ? customRatio : 0, AspectRatios.defaultDisplay())
+        for (var i = 0; i < presets.length; i++) {
+            add(presets[i].text, presets[i].width, presets[i].height)
+        }
 
         // Keep a saved custom resolution selectable
         if (selection.resolution !== undefined) {
             var parts = selection.resolution.split("x")
-            add("", parseInt(parts[0]), parseInt(parts[1]))
+            add(parts[0] + " × " + parts[1], parseInt(parts[0]), parseInt(parts[1]))
         }
+
+        options.push({ "text": qsTr("Custom…"), "value": "custom", "custom": true })
         return options
     }
 
+    // The size to pick for a ratio, as a "WxH" value: the one that fills the display, else the
+    // one nearest the current size by pixel count. Empty if the ratio has no sizes.
+    function fillingSize(key) {
+        var presets = AspectRatios.presets(key, key === "custom" ? customRatio : 0, AspectRatios.defaultDisplay())
+        var best = -1
+        var bestDistance = 0
+        for (var i = 0; i < presets.length; i++) {
+            if (presets[i].fills) {
+                best = i
+                break
+            }
+
+            var distance = Math.abs(Math.log(presets[i].width * presets[i].height / (effectiveSize[0] * effectiveSize[1])))
+            if (best < 0 || distance < bestDistance) {
+                best = i
+                bestDistance = distance
+            }
+        }
+        return best >= 0 ? presets[best].width + "x" + presets[best].height : ""
+    }
+
+    // The options of a row; the aspect ratio and resolution rows change with the ratio
+    function optionsFor(field) {
+        return field.key === "aspectRatio" ? ratioChoices : field.key === "resolution" ? resolutionChoices : field.options
+    }
+
+    // A ratio was picked in the aspect ratio row: the resolution becomes the size that fills the
+    // display, or follows the global one again for Global
+    function ratioChosen() {
+        var updated = Object.assign({}, selection)
+        if (selection.aspectRatio === undefined) {
+            delete updated.resolution
+        }
+        else if (selection.aspectRatio !== "custom") {
+            var size = fillingSize(selection.aspectRatio)
+            if (size !== "") {
+                updated.resolution = size
+            }
+        }
+
+        selection = updated
+        resolutionChoices = resolutionOptions()
+        refresh()
+    }
+
+    function openCustomResolution() {
+        customResolutionDialog.openFor(effectiveSize[0], effectiveSize[1], ratioNumber(effectiveRatioKey()))
+    }
+
+    // A size typed in the Custom... dialog
+    function useCustomResolution(width, height) {
+        var key = AspectRatios.keyFor(width, height, AspectRatios.defaultDisplay())
+        if (key === "custom") {
+            customRatio = width / height
+        }
+
+        selection = Object.assign({}, selection, { "resolution": width + "x" + height, "aspectRatio": key })
+        ratioChoices = ratioOptions()
+        resolutionChoices = resolutionOptions()
+        refresh()
+    }
+
     function buildFields() {
+        // The ratio and resolution rows list the sizes of the ratio the stream will use
+        customRatio = effectiveSize[1] > 0 ? effectiveSize[0] / effectiveSize[1] : 0
+        ratioChoices = ratioOptions()
+        resolutionChoices = resolutionOptions()
+
         return [
             { "key": "videoCodecConfig", "label": qsTr("Video codec"), "current": codecName(StreamingPreferences.videoCodecConfig),
               "options": [ { "text": qsTr("Automatic"), "value": StreamingPreferences.VCC_AUTO },
@@ -128,8 +241,10 @@ NavigableDialog {
               "current": StreamingPreferences.fullscreenStretch ? qsTr("Stretch") : qsTr("Fit"),
               "options": [ { "text": qsTr("Fit (black bars)"), "value": false },
                            { "text": qsTr("Stretch"), "value": true } ] },
+            { "key": "aspectRatio", "label": qsTr("Aspect ratio"),
+              "current": AspectRatios.ratioLabel(StreamingPreferences.width, StreamingPreferences.height), "options": [] },
             { "key": "resolution", "label": qsTr("Resolution"), "current": StreamingPreferences.width + "x" + StreamingPreferences.height,
-              "options": resolutionOptions() },
+              "options": [] },
             { "key": "fps", "label": qsTr("Frame rate"), "current": StreamingPreferences.fps + " FPS",
               "options": [30, 60, 90, 120].map(function(fps) { return { "text": fps + " FPS", "value": fps } }) },
             { "key": "bitrateKbps", "label": qsTr("Bitrate"), "current": (StreamingPreferences.bitrateKbps / 1000) + " Mbps",
@@ -169,7 +284,21 @@ NavigableDialog {
             profile.height = parseInt(parts[1])
         }
         delete profile.resolution
+        delete profile.aspectRatio
         StreamProfiles.saveProfile(hostUuid, appName, profile)
+    }
+
+    // The Custom... resolution choice
+    ForkCustomResolutionDialog {
+        id: customResolutionDialog
+
+        onAccepted: streamProfileDialog.useCustomResolution(chosenWidth, chosenHeight)
+
+        // The row still shows Custom..., so show the selection again
+        onClosed: Qt.callLater(function() {
+            streamProfileDialog.refresh()
+            streamProfileDialog.forceActiveFocus()
+        })
     }
 
     Column {
@@ -211,7 +340,7 @@ NavigableDialog {
 
             delegate: Row {
                 property alias comboBox: fieldComboBox
-                property var choices: [ { "text": qsTr("Global (%1)").arg(modelData.current), "value": null } ].concat(modelData.options)
+                property var choices: [ { "text": qsTr("Global (%1)").arg(modelData.current), "value": null } ].concat(streamProfileDialog.optionsFor(modelData))
 
                 // AutoResizingComboBox limits itself to its parent's width, so the row needs a fixed one
                 width: 460
@@ -232,6 +361,12 @@ NavigableDialog {
 
                     // ::onActivated must be used, as it only listens for when the index is changed by a human
                     onActivated: {
+                        // Custom... asks for a size in its own dialog
+                        if (choices[currentIndex].custom) {
+                            streamProfileDialog.openCustomResolution()
+                            return
+                        }
+
                         var updated = Object.assign({}, streamProfileDialog.selection)
                         var value = choices[currentIndex].value
                         if (value === null) {
@@ -241,6 +376,10 @@ NavigableDialog {
                             updated[modelData.key] = value
                         }
                         streamProfileDialog.selection = updated
+
+                        if (modelData.key === "aspectRatio") {
+                            streamProfileDialog.ratioChosen()
+                        }
                     }
                 }
             }
