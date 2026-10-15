@@ -7,3 +7,12 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+  # Keeps the commit-pinned GitHub Actions in .github/workflows up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"

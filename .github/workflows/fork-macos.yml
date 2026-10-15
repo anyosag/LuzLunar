@@ -44,10 +44,11 @@ jobs:
       aqtsource: ${{ steps.read.outputs.aqtsource }}
     steps:
       - name: Checkout workflows
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           ref: ${{ inputs.ref }}
           sparse-checkout: .github/workflows
+          persist-credentials: false
 
       # Follow upstream's macOS runner, Qt version and aqtinstall pin so Qt bumps don't need fork edits.
       - name: Read build-win-mac.yml
@@ -64,10 +65,16 @@ jobs:
           if [ -n "$RUNNER_OVERRIDE" ] && [ "$RUNNER_OVERRIDE" != "upstream" ]; then
             os=$RUNNER_OVERRIDE
           fi
+          # Upstream pins aqtinstall to a commit. Falling back to whatever PyPI serves would install
+          # an unpinned tool into the build, so stop instead.
+          if [ -z "$aqt" ]; then
+            echo "::error::Couldn't read aqtsource from $f; upstream may have changed its format. Update this step."
+            exit 1
+          fi
           echo "os=${os:-macos-26}" >> "$GITHUB_OUTPUT"
           echo "qt_version=${qt:-6.11.2}" >> "$GITHUB_OUTPUT"
-          echo "aqtsource=${aqt:-aqtinstall}" >> "$GITHUB_OUTPUT"
-          echo "Using ${os:-macos-26}, Qt ${qt:-6.11.2}, ${aqt:-aqtinstall}"
+          echo "aqtsource=$aqt" >> "$GITHUB_OUTPUT"
+          echo "Using ${os:-macos-26}, Qt ${qt:-6.11.2}, $aqt"
 
   build:
     name: macOS arm64
@@ -75,11 +82,12 @@ jobs:
     runs-on: ${{ needs.setup.outputs.os }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           ref: ${{ inputs.ref }}
           submodules: 'recursive'
           fetch-depth: 1
+          persist-credentials: false
 
       # The macOS 26 SDK is needed for Liquid Glass and Icon Composer icons. Older runners have
       # Xcode 26 installed but not as the default.
@@ -96,13 +104,16 @@ jobs:
           fi
           xcodebuild -version
 
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: 22
+
       - name: Install create-dmg
-        run: |
-          brew install node
-          npm install --global create-dmg
+        run: npm install --global create-dmg@8.1.0
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125  # v4.4.1
         with:
           cache: true
           set-env: true
@@ -161,7 +172,7 @@ jobs:
         run: bash scripts/fork/build-mac.sh Release
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
           path: build/installer-Release/*.dmg
@@ -169,7 +180,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Symbols
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: zDevDbgSyms-LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
           path: build/installer-Release/*.dsym/*
@@ -191,7 +202,7 @@ jobs:
           ls -R "$RUNNER_TEMP/screenshots" || true
 
       - name: Upload UI screenshots
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: LuzLunar-screenshots-${{ env.CI_VERSION }}
           path: ${{ runner.temp }}/screenshots
