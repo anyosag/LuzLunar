@@ -75,6 +75,16 @@ CenteredGridView {
         }
     }
 
+    // [fork] A text field's placeholder can't be set to plain, and the host picks its name, so
+    // markup in one is escaped to show as it's spelled. Text without "<" holds no markup and is left alone.
+    function escapeMarkup(text)
+    {
+        if (!text || text.indexOf("<") < 0) {
+            return text
+        }
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
     function createModel()
     {
         var model = Qt.createQmlObject('import ComputerModel 1.0; ComputerModel {}', parent, '')
@@ -162,6 +172,7 @@ CenteredGridView {
         Label {
             id: pcNameText
             text: model.name
+            textFormat: Text.PlainText // [fork] the host picks its name, never markup
 
             width: parent.width
             anchors.top: pcIcon.bottom
@@ -393,7 +404,7 @@ CenteredGridView {
 
             TextField {
                 id: editText
-                placeholderText: renamePcDialog.originalName
+                placeholderText: pcGrid.escapeMarkup(renamePcDialog.originalName) // [fork] was renamePcDialog.originalName
                 Layout.fillWidth: true
                 focus: true
 

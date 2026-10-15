@@ -67,6 +67,7 @@ Item {
             id: stageLabel
             height: Math.max(stageSpinner.height, implicitHeight) // [fork] was stageSpinner.height
             text: stageText
+            textFormat: Text.PlainText // [fork] holds the app name from the host, never markup
             font.pointSize: 20
             verticalAlignment: Text.AlignVCenter
 

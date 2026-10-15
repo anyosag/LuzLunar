@@ -271,6 +271,7 @@ ApplicationWindow {
             visible: toolBar.width > 700 && !nativeToolbar.active // [fork]
             anchors.fill: parent
             text: stackView.currentItem.objectName
+            textFormat: Text.PlainText // [fork] an app grid's title is its host's name, never markup
             font.pointSize: 15 // [fork] macOS title size (was 20)
             font.bold: true
             elide: Label.ElideRight
@@ -323,6 +324,7 @@ ApplicationWindow {
                 // the remaining space in the RowLayout. To "hide" it, we
                 // just set the text to empty string.
                 text: !titleLabel.visible ? stackView.currentItem.objectName : ""
+                textFormat: Text.PlainText // [fork] as titleLabel
             }
 
             Label {
