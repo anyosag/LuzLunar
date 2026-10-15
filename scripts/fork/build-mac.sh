@@ -44,7 +44,7 @@ fi
 echo Updating dependencies
 python3 "$SOURCE_ROOT/setup-deps.py" || fail "Dependency download failed!"
 
-echo Applying the fork's patches to submodules
+echo Applying patches to submodules
 bash "$SOURCE_ROOT/scripts/fork/apply-patches.sh" || fail "A patch in patches/ no longer applies!"
 
 echo Cleaning output directories
