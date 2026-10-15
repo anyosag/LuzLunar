@@ -95,7 +95,6 @@ namespace
 
         NSArray<NSPasteboardType>* types = pasteboard.types;
         std::vector<clipbundle::kind> kinds;
-        size_t firstText = types.count, firstImage = types.count;
         for (NSUInteger i = 0; i < types.count; i++) {
             NSString* type = types[i];
             snapshot.types.push_back(type.UTF8String);
@@ -105,28 +104,35 @@ namespace
             if ([type isEqualToString:NSPasteboardTypeFileURL]) {
                 snapshot.fileCopy = true;
             }
-            clipbundle::kind kind = kindOf(type);
-            kinds.push_back(kind);
-            if (kind == clipbundle::kind::text && firstText == types.count) {
-                firstText = i;
-            }
-            if (kind == clipbundle::kind::image && firstImage == types.count) {
-                firstImage = i;
-            }
+            kinds.push_back(kindOf(type));
         }
-        // Decided before reading, so the app that copied isn't asked to render an image that won't be sent
-        bool wantImage = !snapshot.fileCopy && clipbundle::include_image(kinds);
-        bool imageFirst = wantImage && firstImage < firstText;
 
         std::vector<std::pair<size_t, clipbundle::item>> items;
         auto add = [&items](size_t position, const char* type, std::string data) {
             items.push_back({position, clipbundle::item { type, std::move(data) }});
         };
 
+        std::string plainText;
         NSString* text = [pasteboard stringForType:NSPasteboardTypeString];
         if (text.length > 0) {
-            add(types.count, "text/plain", clipbundle::to_lf(utf8Of(text)));
+            plainText = clipbundle::to_lf(utf8Of(text));
+            add(types.count, "text/plain", plainText);
         }
+
+        // The HTML too, which tells a picture copy (a browser's <img> tag) from a text copy
+        std::string html;
+        bool haveHtml = false;
+        if ([types containsObject:NSPasteboardTypeHTML]) {
+            NSData* data = [pasteboard dataForType:NSPasteboardTypeHTML];
+            if (data != nil) {
+                html = htmlToUtf8(data);
+                haveHtml = !html.empty();
+            }
+        }
+
+        // Decided before reading any image, so the app that copied isn't asked to render one that won't be sent
+        bool wantImage = !snapshot.fileCopy && clipbundle::include_image(kinds, plainText, html);
+        bool imageFirst = wantImage;
 
         bool haveImage = false;
         NSString* convertible = nil;   // a TIFF or HEIC image, converted if there's no PNG or JPEG
@@ -151,19 +157,22 @@ namespace
                     continue;
                 }
 
+                std::string kindName = info->type;
+                if (kindName == "text/html") {
+                    // Already read for the image rule
+                    if (haveHtml) {
+                        add(i, info->type, std::move(html));
+                        haveHtml = false;
+                    }
+                    continue;
+                }
+
                 NSData* data = [pasteboard dataForType:type];
                 if (data == nil) {
                     continue;
                 }
 
-                std::string kindName = info->type;
-                if (kindName == "text/html") {
-                    std::string html = htmlToUtf8(data);
-                    if (!html.empty()) {
-                        add(i, info->type, std::move(html));
-                    }
-                }
-                else if (kindName == "image/png") {
+                if (kindName == "image/png") {
                     std::string png = bytesOf(data);
                     png.resize(clipbundle::png_length(png));
                     add(i, info->type, std::move(png));

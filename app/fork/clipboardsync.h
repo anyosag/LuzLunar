@@ -72,6 +72,7 @@ private:
     bool m_PermissionsKnown;
     bool m_CanSend;
     bool m_CanReceive;
+    bool m_AutoFailureShown;    // an automatic sync failed and said so; once per stream
     QString m_LastKnownHost;    // text sync: what we believe the host's clipboard holds, with LF line endings
     QString m_PendingUpload;    // text sync
     QString m_ToastText;
