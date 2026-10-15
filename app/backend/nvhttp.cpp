@@ -538,7 +538,7 @@ NvHTTP::openConnection(QUrl baseUrl,
     }
 
     bool tooLarge = false; // [fork]
-    connect(reply, &QNetworkReply::downloadProgress, reply, [reply, &tooLarge](qint64 received, qint64 total) {
+    auto sizeConnection = connect(reply, &QNetworkReply::downloadProgress, reply, [reply, &tooLarge](qint64 received, qint64 total) {
         if (received > MAX_RESPONSE_BYTES || total > MAX_RESPONSE_BYTES) {
             tooLarge = true;
             reply->abort();
@@ -572,6 +572,7 @@ NvHTTP::openConnection(QUrl baseUrl,
 #endif
     disconnect(sslErrorsConnection);
     disconnect(encryptedConnection); // [fork]
+    disconnect(sizeConnection); // [fork] both capture locals
 
     // [fork] The pinned-certificate check and the size limit above
     if (pinMismatch) {
