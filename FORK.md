@@ -51,6 +51,13 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 | `app/gui/AutoResizingComboBox.qml` | Indicator null check; the Material popup color only off macOS; versionless Controls import and `popup.popupType: Popup.Item` (in-window, so gamepad keys reach it) |
 | `app/gui/SettingsView.qml` | Plain group box titles instead of sky blue |
 
+### Patches to submodules
+
+Fixes to code the fork doesn't own (`moonlight-common-c`) live in `patches/<name>/*.patch`. `scripts/fork/apply-patches.sh` applies them, and `build-mac.sh` runs it after `setup-deps.py`; a plain `qmake`/`make` build doesn't, so run it first. A patch that no longer applies fails the build, so a submodule update can't drop a fix silently; one that's already applied only warns (drop it once upstream has it). To change one, edit the submodule, then `git -C <submodule> diff > patches/<name>/NNNN-name.patch` and `git -C <submodule> checkout .`.
+
+- `moonlight-common-c/0001`: the RTSP parser read past the end of a message whose last option has no line break after it.
+- `moonlight-common-c/0002`: the control stream's disconnect intercept, which runs before ENet checks a datagram, took a disconnect from anyone; it now checks the peer and session IDs as ENet does.
+
 ## Fork features
 
 - **Mac keyboard remapping** (`app/fork/forkkeymap.*`, `forkinput.*`, `forkpreferences.*`):

@@ -1,0 +1,25 @@
+diff --git a/src/ControlStream.c b/src/ControlStream.c
+index 2b5182e..f11f4d0 100644
+--- a/src/ControlStream.c
++++ b/src/ControlStream.c
+@@ -886,10 +886,20 @@ static bool sendMessageAndDiscardReply(short ptype, short paylen, const void* pa
+ // This intercept function drops disconnect events to allow us to process
+ // pending receives first. It works around what appears to be a bug in ENet
+ // where pending disconnects can cause loss of unprocessed received data.
++//
++// The intercept sees every datagram before ENet validates it, so it checks the peer and session IDs
++// the way ENet would. Otherwise any datagram of this size and command, from anyone, ended the stream.
+ static int ignoreDisconnectIntercept(ENetHost* host, ENetEvent* event) {
+     if (host->receivedDataLength == sizeof(ENetProtocolHeader) + sizeof(ENetProtocolDisconnect)) {
+         ENetProtocolHeader* protoHeader = (ENetProtocolHeader*)host->receivedData;
+         ENetProtocolDisconnect* disconnect = (ENetProtocolDisconnect*)(protoHeader + 1);
++        enet_uint16 peerID = ENET_NET_TO_HOST_16(protoHeader->peerID);
++        enet_uint8 sessionID = (enet_uint8)((peerID & ENET_PROTOCOL_HEADER_SESSION_MASK) >> ENET_PROTOCOL_HEADER_SESSION_SHIFT);
++
++        peerID &= ~(ENET_PROTOCOL_HEADER_FLAG_MASK | ENET_PROTOCOL_HEADER_SESSION_MASK);
++        if (peer == NULL || peerID != peer->incomingPeerID || sessionID != peer->incomingSessionID) {
++            return 0;
++        }
+ 
+         if ((disconnect->header.command & ENET_PROTOCOL_COMMAND_MASK) == ENET_PROTOCOL_COMMAND_DISCONNECT) {
+             Limelog("ENet disconnect event pending\n");
