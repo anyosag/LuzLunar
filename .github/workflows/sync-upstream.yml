@@ -1,10 +1,13 @@
 ---
-# Once a day, merges new commits from moonlight-stream/moonlight-qt into this fork's master
-# and builds a fresh macOS app when there were any.
+# Once a day, merges new commits from moonlight-stream/moonlight-qt into the upstream-sync branch,
+# opens (or updates) a pull request from it into master, and builds the macOS app from the merge.
+# Nothing reaches master until that pull request is merged, so upstream changes get a look first.
+#
+# Needs Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests".
 #
 # Upstream sometimes changes .github/workflows, and GITHUB_TOKEN may not push those changes.
-# Add a fine-grained token with Contents and Workflows read/write on this repo as the
-# SYNC_TOKEN secret to sync them too. Pushes made with it also trigger fork-macos.yml directly.
+# Add a fine-grained token with Contents, Workflows and Pull requests read/write on this repo as
+# the SYNC_TOKEN secret to sync them too. Pull requests opened with it also run fork-macos.yml.
 name: Sync upstream
 
 on:
@@ -24,12 +27,17 @@ concurrency:
   group: sync-upstream
   cancel-in-progress: false
 
+env:
+  UPSTREAM: https://github.com/moonlight-stream/moonlight-qt.git
+  SYNC_BRANCH: upstream-sync
+
 jobs:
   sync:
     name: Merge upstream master
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # push the merge to master
+      contents: write  # push the sync branch
+      pull-requests: write  # open the sync pull request
       actions: write  # keep this schedule enabled
     outputs:
       updated: ${{ steps.merge.outputs.updated }}
@@ -37,7 +45,7 @@ jobs:
       has_pat: ${{ steps.merge.outputs.has_pat }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           ref: master
           fetch-depth: 0
@@ -46,30 +54,44 @@ jobs:
       - name: Merge upstream
         id: merge
         env:
-          UPSTREAM: https://github.com/moonlight-stream/moonlight-qt.git
           HAS_PAT: ${{ secrets.SYNC_TOKEN != '' }}
         run: |
           echo "has_pat=$HAS_PAT" >> "$GITHUB_OUTPUT"
           git fetch --quiet "$UPSTREAM" master
-          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
-            echo "master already contains upstream $(git rev-parse --short FETCH_HEAD)."
+          upstream=$(git rev-parse FETCH_HEAD)
+          if git merge-base --is-ancestor "$upstream" HEAD; then
+            echo "master already contains upstream $(git rev-parse --short "$upstream")."
             echo "updated=false" >> "$GITHUB_OUTPUT"
             echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          # Already proposed: the sync branch has this upstream commit on top of today's master
+          if git rev-parse --quiet --verify "origin/$SYNC_BRANCH" > /dev/null &&
+             git merge-base --is-ancestor "$upstream" "origin/$SYNC_BRANCH" &&
+             git merge-base --is-ancestor HEAD "origin/$SYNC_BRANCH"; then
+            echo "$SYNC_BRANCH already has upstream $(git rev-parse --short "$upstream") on top of master."
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "sha=$(git rev-parse "origin/$SYNC_BRANCH")" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           echo "New upstream commits:"
-          git log --oneline HEAD..FETCH_HEAD
+          git log --oneline HEAD.."$upstream"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if ! git merge --no-edit -m "Merge upstream moonlight-stream/moonlight-qt master" FETCH_HEAD; then
+          git checkout -B "$SYNC_BRANCH"
+          if ! git merge --no-edit -m "Merge upstream moonlight-stream/moonlight-qt master" "$upstream"; then
             git diff --name-only --diff-filter=U
-            echo "::error::Upstream changes conflict with this fork's changes in the files above. Merge $UPSTREAM master into master manually (see FORK.md)."
+            echo "::error::Upstream changes conflict with this fork's changes in the files above. Merge $UPSTREAM master into a branch from master by hand and open a pull request (see FORK.md)."
             exit 1
           fi
-          if ! git push origin HEAD:master; then
-            if git diff --name-only HEAD@{1} HEAD -- .github/workflows | grep -q .; then
+          # The branch is rebuilt from master each time, so it's replaced rather than added to,
+          # but only if nobody else pushed to it since checkout
+          expected=$(git rev-parse --quiet --verify "origin/$SYNC_BRANCH" || true)
+          if ! git push --force-with-lease="$SYNC_BRANCH:$expected" origin "HEAD:refs/heads/$SYNC_BRANCH"; then
+            if git diff --name-only HEAD^1 HEAD -- .github/workflows | grep -q .; then
               echo "::error::Upstream changed .github/workflows, which GITHUB_TOKEN can't push. Add a SYNC_TOKEN secret (see the comment at the top of this file) or merge manually."
             fi
             exit 1
@@ -77,6 +99,40 @@ jobs:
 
           echo "updated=true" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pull request
+        if: steps.merge.outputs.updated == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+          HAS_PAT: ${{ steps.merge.outputs.has_pat }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="$RUNNER_TEMP/pr-body.md"
+          {
+            echo "Merges new commits from [moonlight-stream/moonlight-qt](https://github.com/moonlight-stream/moonlight-qt) master."
+            echo
+            if [ "$HAS_PAT" = "true" ]; then
+              echo "The macOS app for this merge is built by this pull request's checks."
+            else
+              echo "The macOS app for this merge is built by [the sync run]($RUN_URL); pull requests opened by GitHub Actions don't start the usual checks."
+            fi
+            echo
+            echo "Look over the upstream changes, then merge with **Create a merge commit** (not squash or rebase) so master keeps upstream's history. Don't push to \`$SYNC_BRANCH\`: the next sync replaces it."
+            echo
+            echo "### New upstream commits"
+            echo
+            echo '```'
+            git log --oneline --no-decorate HEAD^1..HEAD^2 | head -n 200
+            echo '```'
+          } > "$body"
+
+          number=$(gh pr list --head "$SYNC_BRANCH" --base master --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --body-file "$body"
+          elif ! gh pr create --base master --head "$SYNC_BRANCH" --title "Merge upstream moonlight-stream/moonlight-qt" --body-file "$body"; then
+            echo "::error::Couldn't open the pull request. Turn on Settings > Actions > General > \"Allow GitHub Actions to create and approve pull requests\", or open one from $SYNC_BRANCH by hand."
+            exit 1
+          fi
 
       # GitHub disables scheduled workflows in public repos after 60 days without activity.
       - name: Keep schedule enabled
@@ -87,7 +143,7 @@ jobs:
   build:
     name: Build app
     needs: sync
-    # A push made with SYNC_TOKEN already triggers fork-macos.yml, so only build here for GITHUB_TOKEN pushes.
+    # A pull request opened with SYNC_TOKEN already runs fork-macos.yml, so only build here otherwise.
     if: (needs.sync.outputs.updated == 'true' && needs.sync.outputs.has_pat != 'true') || inputs.build
     uses: ./.github/workflows/fork-macos.yml
     with:
