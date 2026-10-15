@@ -70,10 +70,12 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
     - a file copy sends only its text
     - an image is sent only for picture copies (no text, or an image offered first), so an Excel range doesn't send a rendered bitmap
     - Word's HTML that points at local image files is dropped when RTF (which embeds the pictures) is there
-    - bundles are limited to 64 MB
+    - bundles are limited to 64 MB, and a compressed item can't claim more than deflate's 1032:1
+    - received images are written only if their bytes start with their type's PNG or JPEG signature
   - Only what changed is transferred. The PC returns a state token (its clipboard sequence number) and a content hash, and the Mac sends them back, so an unchanged clipboard costs a few bytes. Uploads are skipped while `NSPasteboard.changeCount` and the content hash are unchanged. This state lasts for the app's life, per host.
   - On the Mac, the pasteboard is read and written on the sync worker thread (`mac/pasteboard_mac.mm`), so streaming never waits for Office to render or for TIFF/HEIC to convert (with ImageIO). Images go as PNG, HEIC photos as JPEG.
-  - Modes are Off, Shortcuts only (Ctrl+Option+Shift+U sends, G fetches) and Automatic (the default). Automatic sends the clipboard when a stream starts or regains focus, and fetches the PC's when it loses focus or ends.
+  - Modes are Off, Shortcuts only (Ctrl+Option+Shift+U sends, G fetches) and Automatic. Automatic sends the clipboard when a stream starts or regains focus, and fetches the PC's when it loses focus or ends. New installs start with Shortcuts only; installs that already had hosts when this default changed keep Automatic, the earlier default.
+  - Responses from the host are capped (64 MB for bundles, 32 MB otherwise).
   - Requests run one at a time on a worker thread and report back through an SDL event, because the Qt event loop is paused while streaming.
   - Sync never wipes the local clipboard with an empty one and never sends back content that came from the host. Password-manager clips (`org.nspasteboard.ConcealedType`/`TransientType`, or Windows' `ExcludeClipboardContentFromMonitorProcessing`) are never synced automatically, and when sent with the shortcut they're marked private on the other side. Logs show types and sizes, never content.
   - The host must be Apollo, and Apollo must give this device its Clipboard permissions. Sync checks this through serverinfo `<Permission>`.
