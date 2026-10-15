@@ -44,6 +44,9 @@ public:
 
     explicit NvComputer(QSettings& settings);
 
+    // [fork] The host's uniqueid names a folder and settings keys, so only plain IDs are accepted
+    static bool isValidUuid(const QString& uuid);
+
     void
     setRemoteAddress(QHostAddress);
 
@@ -100,6 +103,7 @@ public:
     int serverCodecModeSupport;
     QString gpuModel;
     bool isSupportedServerVersion;
+    bool serverInfoVerified = false;    // [fork] came over HTTPS with the pinned certificate
 
     // Persisted traits
     NvAddress localAddress;

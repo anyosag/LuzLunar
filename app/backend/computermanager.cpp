@@ -180,6 +180,11 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
     for (int i = 0; i < hosts; i++) {
         settings.setArrayIndex(i);
         NvComputer* computer = new NvComputer(settings);
+        if (!NvComputer::isValidUuid(computer->uuid)) { // [fork]
+            qWarning() << "Ignoring saved PC" << computer->name << "with an invalid ID";
+            delete computer;
+            continue;
+        }
         m_KnownHosts[computer->uuid] = computer;
         m_LastSerializedHosts[computer->uuid] = *computer;
     }
@@ -625,6 +630,10 @@ private:
             emit pairingCompleted(m_Computer, tr("GeForce Experience returned error: %1").arg(e.toQString()));
         } catch (const QtNetworkReplyException& e) {
             emit pairingCompleted(m_Computer, e.toQString());
+        } catch (const std::exception& e) {
+            // [fork] Out of memory or the like while handling the host's answers; an uncaught one would end the app
+            qCritical() << "Pairing failed:" << e.what();
+            emit pairingCompleted(m_Computer, tr("Pairing failed. Please try again."));
         }
     }
 
@@ -854,6 +863,14 @@ private:
 
         // Create initial newComputer using HTTP serverinfo with no pinned cert
         NvComputer* newComputer = new NvComputer(http, serverInfo);
+        if (!NvComputer::isValidUuid(newComputer->uuid)) { // [fork]
+            qWarning() << "Ignoring PC" << newComputer->name << "with an invalid ID";
+            delete newComputer;
+            if (!m_Mdns) {
+                emit computerAddCompleted(false, false);
+            }
+            return;
+        }
         http.setTrueUid(!newComputer->isNvidiaServerSoftware);
 
         // Check if we have a record of this host UUID to pull the pinned cert

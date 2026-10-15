@@ -108,6 +108,16 @@ ApolloClient::Response ApolloClient::request(const QString& command, const QStri
         reply = nam.get(request);
     }
 
+    // Like NvHTTP::openConnection(): a certificate the system trusts raises no SSL errors, so compare it
+    // with the pinned one before the request is sent
+    bool pinMismatch = false;
+    QObject::connect(reply, &QNetworkReply::encrypted, reply, [reply, serverCert, &pinMismatch]() {
+        if (reply->sslConfiguration().peerCertificate() != serverCert) {
+            pinMismatch = true;
+            reply->abort();
+        }
+    });
+
     QEventLoop loop;
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     if (options.transferTimeoutMs <= 0) {
@@ -138,7 +148,10 @@ ApolloClient::Response ApolloClient::request(const QString& command, const QStri
 
     loop.exec(QEventLoop::ExcludeUserInputEvents);
 
-    if (!reply->isFinished()) {
+    if (pinMismatch) {
+        response.networkError = "The host's certificate isn't the one it was paired with";
+    }
+    else if (!reply->isFinished()) {
         reply->abort();
         response.networkError = cancelled ? "Cancelled" : (tooLarge ? "Response too large" : "Request timed out");
     }

@@ -150,6 +150,9 @@ public:
 
     QSslCertificate serverCert();
 
+    // [fork] Whether the last getServerInfo() answer came over HTTPS with the pinned certificate
+    bool serverInfoVerified() const { return m_ServerInfoVerified; }
+
     uint16_t httpPort();
 
     uint16_t httpsPort();
@@ -198,5 +201,6 @@ private:
     NvAddress m_Address;
     QNetworkAccessManager* m_Nam;
     QSslCertificate m_ServerCert;
+    bool m_ServerInfoVerified = false; // [fork]
     bool m_UseTrueUid;
 };
