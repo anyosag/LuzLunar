@@ -458,6 +458,7 @@ ClipboardSync::ClipboardSync(NvComputer* computer, bool automatic)
       m_PermissionsKnown(false),
       m_CanSend(false),
       m_CanReceive(false),
+      m_AutoFailureShown(false),
       m_ToastGeneration(0),
       m_ToastShowing(false)
 {
@@ -792,8 +793,15 @@ void ClipboardSync::reportFailure(const Result& result)
     if (result.manual || response.httpStatus == 413) {
         showToast(message);
     }
-    else if (response.httpStatus == 401 && !s_PermissionToastShown) {
-        s_PermissionToastShown = true;
+    else if (response.httpStatus == 401) {
+        if (!s_PermissionToastShown) {
+            s_PermissionToastShown = true;
+            showToast(message);
+        }
+    }
+    else if (!m_AutoFailureShown) {
+        // Otherwise an automatic sync that failed just leaves the old clipboard, with no explanation
+        m_AutoFailureShown = true;
         showToast(message);
     }
 }
