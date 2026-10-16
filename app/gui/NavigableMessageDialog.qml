@@ -50,6 +50,7 @@ NavigableDialog {
 
             id: dialogLabel
             text: dialogText + ((helpText && (standardButtons & Dialog.Help)) ? (helpTextSeparator + helpText) : "")
+            textFormat: Text.PlainText // [fork] the text can hold host names and host errors, never markup
             wrapMode: Text.Wrap
             elide: Label.ElideRight
 

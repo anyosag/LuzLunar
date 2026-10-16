@@ -62,6 +62,16 @@ CenteredGridView {
         activated = false
     }
 
+    // [fork] A tooltip's text can't be set to plain, and the host picks app names, so markup in
+    // one is escaped to show as it's spelled. Text without "<" holds no markup and is left alone.
+    function escapeMarkup(text)
+    {
+        if (!text || text.indexOf("<") < 0) {
+            return text
+        }
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
     function createModel()
     {
         var model = Qt.createQmlObject('import AppModel 1.0; AppModel {}', parent, '')
@@ -112,7 +122,7 @@ CenteredGridView {
             }
 
             // Display a tooltip with the full name if it's truncated
-            ToolTip.text: model.name
+            ToolTip.text: appGrid.escapeMarkup(model.name) // [fork] was model.name
             ToolTip.delay: 1000
             ToolTip.timeout: 5000
             ToolTip.visible: (parent.hovered || parent.highlighted) && (!appNameText || appNameText.truncated)
@@ -213,6 +223,7 @@ CenteredGridView {
             sourceComponent: Label {
                 id: appNameText
                 text: model.name
+                textFormat: Text.PlainText // [fork] the host picks app names, never markup
                 font.pointSize: 17 // [fork] was 22
                 leftPadding: 20
                 rightPadding: 20
