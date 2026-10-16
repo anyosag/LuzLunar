@@ -52,6 +52,8 @@ Fork code lives in new files: `app/fork/`, fork QML files in `app/gui/`, `script
 | `app/gui/PcView.qml`, `app/gui/AppView.qml` | Tile, icon and font sizes; tinted `IconImage`s from 2x images; AppView's box art cut to 12 pt rounded corners (`MultiEffect` mask) inside a card whose corners nest around it; `ForkBusyIndicator` for the search spinner; no Material import |
 | `app/gui/AutoResizingComboBox.qml` | Indicator null check; the Material popup color only off macOS; versionless Controls import and `popup.popupType: Popup.Item` (in-window, so gamepad keys reach it) |
 | `app/gui/SettingsView.qml` | Plain group box titles instead of sky blue |
+| `app/backend/nvcomputer.*`, `computermanager.cpp`, `boxartmanager.cpp` | Security fixes, reported upstream: `NvComputer::isValidUuid()` (a host's ID names its box art folder, so `..` or `/` could delete other folders) checked when hosts load and are added and in the box art paths; `serverInfoVerified`, so unverified serverinfo (HTTP, including the fallback when the certificate doesn't match) only changes a paired host's pairing state, online state and active address, in `NvComputer::update()`; pairing catches `std::exception` |
+| `app/backend/nvhttp.*`, `nvpairingmanager.cpp` | Security fixes, reported upstream: `openConnection()` compares the server's certificate with the pinned one on `encrypted` (a certificate the system trusts raised no SSL error, so it was never compared) and refuses responses over 16 MB; `getServerInfo()` records whether its answer was verified; pairing fails cleanly without an app version, and `decrypt()` returns only whole blocks |
 
 ## Fork features
 

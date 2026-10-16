@@ -127,9 +127,25 @@ void NvComputer::sortAppList()
     });
 }
 
+// [fork] Only letters, digits, - and _, so the ID can't name another folder
+bool NvComputer::isValidUuid(const QString& uuid)
+{
+    if (uuid.isEmpty() || uuid.length() > 64) {
+        return false;
+    }
+    for (QChar c : uuid) {
+        ushort u = c.unicode();
+        if (!((u >= '0' && u <= '9') || (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || u == '-' || u == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
 {
     this->serverCert = http.serverCert();
+    this->serverInfoVerified = http.serverInfoVerified(); // [fork]
 
     this->hasCustomName = false;
     this->name = NvHTTP::getXmlString(serverInfo, "hostname");
@@ -546,6 +562,22 @@ bool NvComputer::update(const NvComputer& that)
         this->field = that.field;             \
         changed = true;                       \
     }
+
+    // [fork] A paired host's details only change through its pinned certificate. Unverified serverinfo
+    // (plain HTTP, including the fallback when the certificate doesn't match) may say the host is up
+    // and no longer paired, so it can be paired again, but can't rename it, give it new addresses or
+    // ports, or change its MAC address for Wake-on-LAN.
+    if (!this->serverCert.isNull() && !that.serverInfoVerified) {
+        ASSIGN_IF_CHANGED(pairState);
+        ASSIGN_IF_CHANGED(state);
+        if (!that.activeAddress.isNull() &&
+                (that.activeAddress == localAddress || that.activeAddress == remoteAddress ||
+                 that.activeAddress == ipv6Address || that.activeAddress == manualAddress)) {
+            ASSIGN_IF_CHANGED(activeAddress);
+        }
+        return changed;
+    }
+    this->serverInfoVerified = that.serverInfoVerified; // [fork]
 
     if (!hasCustomName) {
         // Only overwrite the name if it's not custom
