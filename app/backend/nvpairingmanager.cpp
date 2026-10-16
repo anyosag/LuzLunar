@@ -98,7 +98,8 @@ NvPairingManager::decrypt(const QByteArray& ciphertext, const QByteArray& key)
                       &plaintextLen,
                       reinterpret_cast<const unsigned char*>(ciphertext.data()),
                       ciphertext.length());
-    Q_ASSERT(plaintextLen == plaintext.length());
+    // [fork] Only whole blocks decrypt; a host's ciphertext may not be a multiple of the block size
+    plaintext.truncate(plaintextLen);
 
     EVP_CIPHER_CTX_free(cipher);
 
@@ -215,7 +216,12 @@ NvPairingManager::saltPin(const QByteArray& salt, QString pin)
 NvPairingManager::PairState
 NvPairingManager::pair(QString appVersion, QString pin, QSslCertificate& serverCert)
 {
-    int serverMajorVersion = NvHTTP::parseQuad(appVersion).at(0);
+    QVector<int> serverVersion = NvHTTP::parseQuad(appVersion); // [fork] may be empty
+    if (serverVersion.isEmpty()) {
+        qCritical() << "Server didn't report its version";
+        return PairState::FAILED;
+    }
+    int serverMajorVersion = serverVersion.at(0);
     qInfo() << "Pairing with server generation:" << serverMajorVersion;
 
     QCryptographicHash::Algorithm hashAlgo;

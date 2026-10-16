@@ -14,6 +14,9 @@
 
 #define FAST_FAIL_TIMEOUT_MS 2000
 #define REQUEST_TIMEOUT_MS 5000
+
+// [fork] Host answers (XML, box art) are small; a larger one is refused instead of buffered
+#define MAX_RESPONSE_BYTES (16 * 1024 * 1024)
 #define LAUNCH_TIMEOUT_MS 120000
 #define RESUME_TIMEOUT_MS 30000
 #define QUIT_TIMEOUT_MS 30000
@@ -149,12 +152,14 @@ NvHTTP::getServerInfo(NvLogLevel logLevel, bool fastFail)
                                                 logLevel);
             // Throws if the request failed
             verifyResponseStatus(serverInfo);
+            m_ServerInfoVerified = true; // [fork]
         }
         catch (const GfeHttpResponseException& e)
         {
             if (e.getStatusCode() == 401)
             {
                 // Certificate validation error, fallback to HTTP
+                m_ServerInfoVerified = false; // [fork]
                 serverInfo = openConnectionToString(m_BaseUrlHttp,
                                                     "serverinfo",
                                                     nullptr,
@@ -172,6 +177,7 @@ NvHTTP::getServerInfo(NvLogLevel logLevel, bool fastFail)
     else
     {
         // Only use HTTP prior to pairing or fetching HTTPS port
+        m_ServerInfoVerified = false; // [fork]
         serverInfo = openConnectionToString(m_BaseUrlHttp,
                                             "serverinfo",
                                             nullptr,
@@ -517,6 +523,28 @@ NvHTTP::openConnection(QUrl baseUrl,
     auto sslErrorsConnection = connect(m_Nam, &QNetworkAccessManager::sslErrors, this, &NvHTTP::handleSslErrors);
     QNetworkReply* reply = m_Nam->get(request);
 
+    // [fork] A certificate the system trusts raises no SSL errors, so handleSslErrors() never compares it with
+    // the pinned one. Check here, after the handshake and before the request (which may carry the
+    // stream's key) is sent.
+    bool pinMismatch = false;
+    QMetaObject::Connection encryptedConnection;
+    if (!m_ServerCert.isNull()) {
+        encryptedConnection = connect(reply, &QNetworkReply::encrypted, this, [this, reply, &pinMismatch]() {
+            if (reply->sslConfiguration().peerCertificate() != m_ServerCert) {
+                pinMismatch = true;
+                reply->abort();
+            }
+        });
+    }
+
+    bool tooLarge = false; // [fork]
+    auto sizeConnection = connect(reply, &QNetworkReply::downloadProgress, reply, [reply, &tooLarge](qint64 received, qint64 total) {
+        if (received > MAX_RESPONSE_BYTES || total > MAX_RESPONSE_BYTES) {
+            tooLarge = true;
+            reply->abort();
+        }
+    });
+
     // Run the request with a timeout if requested
     QEventLoop loop;
     connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
@@ -543,6 +571,30 @@ NvHTTP::openConnection(QUrl baseUrl,
     m_Nam->clearAccessCache();
 #endif
     disconnect(sslErrorsConnection);
+    disconnect(encryptedConnection); // [fork]
+    disconnect(sizeConnection); // [fork] both capture locals
+
+    // [fork] The pinned-certificate check and the size limit above
+    if (pinMismatch) {
+        if (logLevel >= NvLogLevel::NVLL_ERROR) {
+            qWarning() << command << "request failed: the server's certificate isn't the pinned one";
+        }
+
+        // Handled like a handshake failure: the host is shown as unpaired
+        GfeHttpResponseException exception(401, "Server certificate mismatch");
+        delete reply;
+        throw exception;
+    }
+
+    if (tooLarge) {
+        if (logLevel >= NvLogLevel::NVLL_ERROR) {
+            qWarning() << command << "request failed: the response is too large";
+        }
+
+        QtNetworkReplyException exception(QNetworkReply::UnknownContentError, "Response too large");
+        delete reply;
+        throw exception;
+    }
 
     // Handle error
     if (reply->error() != QNetworkReply::NoError)

@@ -22,6 +22,11 @@ BoxArtManager::BoxArtManager(QObject *parent) :
 QString
 BoxArtManager::getFilePathForBoxArt(NvComputer* computer, int appId)
 {
+    // [fork] The ID names the folder; ComputerManager rejects others, and this keeps it that way
+    if (!NvComputer::isValidUuid(computer->uuid)) {
+        return QString();
+    }
+
     QDir dir = m_BoxArtDir;
 
     // Create the cache directory if it did not already exist
@@ -72,7 +77,11 @@ private:
 QUrl BoxArtManager::loadBoxArt(NvComputer* computer, NvApp& app)
 {
     // Try to open the cached file if it exists and contains data
-    QFile cacheFile(getFilePathForBoxArt(computer, app.id));
+    QString cachePath = getFilePathForBoxArt(computer, app.id); // [fork] empty for an invalid ID
+    if (cachePath.isEmpty()) {
+        return QUrl("qrc:/res/no_app_image.png");
+    }
+    QFile cacheFile(cachePath);
     if (cacheFile.exists() && cacheFile.size() > 0) {
         return QUrl::fromLocalFile(cacheFile.fileName());
     }
@@ -92,7 +101,7 @@ void BoxArtManager::deleteBoxArt(NvComputer* computer)
     QDir dir(Path::getBoxArtCacheDir());
 
     // Delete everything in this computer's box art directory
-    if (dir.cd(computer->uuid)) {
+    if (NvComputer::isValidUuid(computer->uuid) && dir.cd(computer->uuid)) { // [fork] ID check
         dir.removeRecursively();
     }
 }
@@ -109,6 +118,9 @@ QUrl BoxArtManager::loadBoxArtFromNetwork(NvComputer* computer, int appId)
     NvHTTP http(computer);
 
     QString cachePath = getFilePathForBoxArt(computer, appId);
+    if (cachePath.isEmpty()) { // [fork]
+        return QUrl();
+    }
     QImage image;
     try {
         image = http.getBoxArt(appId);
