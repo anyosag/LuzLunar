@@ -248,7 +248,8 @@ long MacPasteboard::write(const std::vector<clipbundle::item>& items, bool conce
         bool any = false;
         for (const clipbundle::item& it : items) {
             const clipbundle::type_info* info = clipbundle::find_type(it.type);
-            if (info == nullptr) {
+            // Images must be the format they claim: the app that pastes decodes whatever the bytes are
+            if (info == nullptr || !clipbundle::data_matches_type(it.type, it.data)) {
                 continue;
             }
 

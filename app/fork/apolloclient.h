@@ -34,7 +34,7 @@ public:
         QByteArray contentType = "text/plain; charset=utf-8";   // of the POST body
         int timeoutMs = 3000;           // for the whole request, unless transferTimeoutMs is set
         int transferTimeoutMs = 0;      // instead: give up only after this long without any progress
-        qint64 maxResponseBytes = 0;    // give up on larger responses; 0 for no limit
+        qint64 maxResponseBytes = 32 * 1024 * 1024;   // give up on larger responses (the host decides what it sends); 0 for no limit
         std::function<bool()> cancelled;    // polled while waiting; true aborts the request
     };
 

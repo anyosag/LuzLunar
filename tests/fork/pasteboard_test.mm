@@ -80,6 +80,12 @@ int main()
         const clipbundle::item* readPng = find(image, "image/png");
         CHECK(readPng != nullptr && readPng->data == pngBytes);
 
+        // Bytes that aren't the declared format aren't written
+        NSData* tiffBytes = makeImage(NSBitmapImageFileTypeTIFF);
+        CHECK(MacPasteboard::write({ { "image/png", std::string(static_cast<const char*>(tiffBytes.bytes), tiffBytes.length) }, { "text/plain", "caption" } }, false, name) != 0);
+        CHECK(![[pasteboard types] containsObject:NSPasteboardTypePNG]);
+        CHECK([[pasteboard types] containsObject:NSPasteboardTypeString]);
+
         // A TIFF-only image (what many Mac apps copy) is converted to PNG
         [pasteboard clearContents];
         [pasteboard setData:makeImage(NSBitmapImageFileTypeTIFF) forType:NSPasteboardTypeTIFF];

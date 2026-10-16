@@ -46,7 +46,7 @@ QString ForkPreferences::buildId() const
 ForkPreferences::ForkPreferences(QObject* parent)
     : QObject(parent),
       m_KeyMap(defaultKeyMap()),
-      m_ClipboardSyncMode(CSM_AUTOMATIC),
+      m_ClipboardSyncMode(CSM_MANUAL),
       m_NotchBar(true)
 {
     QSettings settings;
@@ -60,6 +60,12 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
     settings.endGroup();
 
+    if (!settings.contains(SER_CLIPBOARDSYNC)) {
+        // New installs only sync with the shortcuts. Automatic was the default before, so installs that
+        // already have hosts keep it; the choice is saved so pairing a host later doesn't change it.
+        bool existingInstall = settings.contains("hosts/size") || settings.contains("hostsbackup/size");
+        settings.setValue(SER_CLIPBOARDSYNC, existingInstall ? CSM_AUTOMATIC : CSM_MANUAL);
+    }
     int mode = settings.value(SER_CLIPBOARDSYNC, m_ClipboardSyncMode).toInt();
     if (mode >= CSM_OFF && mode <= CSM_AUTOMATIC) {
         m_ClipboardSyncMode = mode;
