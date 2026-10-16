@@ -15,6 +15,10 @@ namespace ForkVideoScaling
     // one qtWindow is on. Returns upstream where it can't tell, or off macOS.
     bool useSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWindow* qtWindow);
 
+    // The index of the display qtWindow is on (the primary one without a window), in the order
+    // StreamUtils and ClientHardware use; -1 if it can't tell, or off macOS
+    int displayIndexFor(QWindow* qtWindow);
+
     // Called by ForkStreamExtensions around a stream: window is the stream's window, and stretch is
     // the session's fullscreenStretch preference. Stretching is off outside that span.
     void activate(SDL_Window* window, bool stretch);

@@ -36,6 +36,12 @@ public:
     // The app name and stream stats beside the camera notch in fullscreen (macOS)
     Q_PROPERTY(bool notchBar READ notchBar WRITE setNotchBar NOTIFY notchBarChanged)
 
+    // Tell hosts about the Mac screen a stream shows on, for Apollo's virtual display (clientdisplay.*)
+    Q_PROPERTY(bool describeDisplay READ describeDisplay WRITE setDescribeDisplay NOTIFY describeDisplayChanged)
+
+    // The HDR peak brightness in nits to tell hosts; 0 works it out from the screen
+    Q_PROPERTY(int hdrPeakOverride READ hdrPeakOverride WRITE setHdrPeakOverride NOTIFY hdrPeakOverrideChanged)
+
     // This build, like "6.2.0-fork.ee5b3ba" (not a preference; shown in Settings)
     Q_PROPERTY(QString buildId READ buildId CONSTANT)
 
@@ -48,6 +54,12 @@ public:
 
     bool notchBar() const { return m_NotchBar; }
     void setNotchBar(bool enabled);
+
+    bool describeDisplay() const { return m_DescribeDisplay; }
+    void setDescribeDisplay(bool enabled);
+
+    int hdrPeakOverride() const { return m_HdrPeakOverride; }
+    void setHdrPeakOverride(int nits);
 
     int commandKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalGui]; }
     int controlKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalCtrl]; }
@@ -63,6 +75,8 @@ signals:
     void keyTargetsChanged();
     void clipboardSyncModeChanged();
     void notchBarChanged();
+    void describeDisplayChanged();
+    void hdrPeakOverrideChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -72,4 +86,6 @@ private:
     ForkKeymap::Map m_KeyMap;
     int m_ClipboardSyncMode;
     bool m_NotchBar;
+    bool m_DescribeDisplay;
+    int m_HdrPeakOverride;
 };

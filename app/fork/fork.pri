@@ -13,6 +13,7 @@
 
 SOURCES += \
     $$PWD/apolloclient.cpp \
+    $$PWD/clientdisplay.cpp \
     $$PWD/clienthardware.cpp \
     $$PWD/clipbundle.cpp \
     $$PWD/clipboardsync.cpp \
@@ -21,6 +22,7 @@ SOURCES += \
     $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
+    $$PWD/forklaunchargs.cpp \
     $$PWD/forkpolicy.cpp \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
@@ -33,6 +35,7 @@ SOURCES += \
 
 HEADERS += \
     $$PWD/apolloclient.h \
+    $$PWD/clientdisplay.h \
     $$PWD/clienthardware.h \
     $$PWD/clipbundle.h \
     $$PWD/clipboardsync.h \
@@ -41,6 +44,7 @@ HEADERS += \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
+    $$PWD/forklaunchargs.h \
     $$PWD/forkpolicy.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \

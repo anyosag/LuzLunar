@@ -89,6 +89,11 @@ namespace
 
         display.isBuiltin = CGDisplayIsBuiltin(displayId);
 
+        // From the display's EDID; zero when it has none
+        CGSize sizeMm = CGDisplayScreenSize(displayId);
+        rules.widthMm = static_cast<int>(std::lround(sizeMm.width));
+        rules.heightMm = static_cast<int>(std::lround(sizeMm.height));
+
         CGRect bounds = CGDisplayBounds(displayId);
         display.pointWidth = static_cast<int>(std::lround(bounds.size.width));
         display.pointHeight = static_cast<int>(std::lround(bounds.size.height));
@@ -102,6 +107,15 @@ namespace
 
             // Above 1 means the panel can show brighter than SDR white, which is HDR (EDR on a Mac)
             rules.hdr = screen.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0;
+            rules.edrPotential = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
+            rules.edrCurrent = screen.maximumExtendedDynamicRangeColorComponentValue;
+            rules.edrReference = screen.maximumReferenceExtendedDynamicRangeColorComponentValue;
+            rules.p3 = [screen canRepresentDisplayGamut:NSDisplayGamutP3];
+
+            // ProMotion's slowest rate; a fixed-rate screen reports the same as its fastest
+            if (screen.maximumRefreshInterval > 0) {
+                rules.minRefresh = static_cast<int>(std::lround(1.0 / screen.maximumRefreshInterval));
+            }
         }
         else {
             rules.name = "Display " + std::to_string(index + 1);

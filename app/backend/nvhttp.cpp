@@ -211,7 +211,8 @@ NvHTTP::startApp(QString verb,
                  bool localAudio,
                  int gamepadMask,
                  bool persistGameControllersOnDisconnect,
-                 QString& rtspSessionUrl)
+                 QString& rtspSessionUrl,
+                 const QString& forkLaunchArgs)
 {
     int riKeyId;
 
@@ -240,6 +241,7 @@ NvHTTP::startApp(QString verb,
                                    "&remoteControllersBitmap="+QString::number(gamepadMask)+
                                    "&gcmap="+QString::number(gamepadMask)+
                                    "&gcpersist="+QString::number(persistGameControllersOnDisconnect ? 1 : 0)+
+                                   forkLaunchArgs+ // [fork] the Mac screen, for Apollo's virtual display
                                    LiGetLaunchUrlQueryParameters(),
                                    LAUNCH_TIMEOUT_MS);
 

@@ -31,7 +31,8 @@ class ClientHardware : public QObject
     // One map per display, in the order StreamUtils uses for its display index
     // (CGGetActiveDisplayList): name, nativeWidth, nativeHeight, safeWidth, safeHeight,
     // fullRatio, belowNotchRatio, pointWidth, pointHeight, scale, hasNotch, maxRefresh, hdr,
-    // isBuiltin. Sizes are in pixels except the point size. A notched display has two shapes: the
+    // isBuiltin, widthMm, heightMm, p3, edrPotential, hdrPeak (what Apollo hosts are told, 0 if
+    // unknown). Sizes are in pixels except the point size. A notched display has two shapes: the
     // full panel (native, e.g. 3024x1964, 1.54:1) and the area below the notch (safe, 3024x1890,
     // 16:10). Without a notch the safe size and belowNotchRatio equal the native ones.
     // maxRefresh is 0 if unknown.
@@ -57,6 +58,9 @@ public:
     };
 
     static ClientHardware* get();
+
+    // Everything read, for C++ callers
+    const Snapshot& info() const { return m_Info; }
 
     QString chip() const { return m_Info.chip; }
     QString gpu() const { return m_Info.gpu; }
