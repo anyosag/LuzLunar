@@ -12,7 +12,9 @@ It ships as `LuzLunar.app`, but keeps Moonlight's bundle ID (`com.moonlight-stre
   - `LUZLUNAR_INSTALL=1` quits LuzLunar, moves `/Applications/LuzLunar.app` to the Trash and installs the new build.
 - Every build has a build ID: the version plus the commit, like `6.2.0-fork.ee5b3ba`, the same as in the artifact and DMG names. It's shown at the bottom of Settings › Keyboard & Clipboard (`ForkPreferences.buildId`, from qmake's `FORK_BUILD_ID`) and is the bundle's `CFBundleVersion`, so Finder's Get Info tells copies apart.
 - Upstream's `build.yml` (every platform) is disabled in this repo's Actions settings. The file stays unchanged so upstream merges stay clean.
-- `.github/workflows/sync-upstream.yml` merges upstream `master` daily and builds when anything new arrives. To sync upstream workflow changes, it needs a `SYNC_TOKEN` secret: a fine-grained token for this repo with Contents and Workflows read/write.
+- `.github/workflows/sync-upstream.yml` merges upstream `master` daily onto the `upstream-sync` branch and opens (or updates) a pull request into `master`, so upstream changes are looked over before they ship. It builds the app from the merge. Merge that pull request with "Create a merge commit". Opening it needs "Allow GitHub Actions to create and approve pull requests" in the repository's Actions settings. To sync upstream workflow changes, it needs a `SYNC_TOKEN` secret: a fine-grained token for this repo with Contents, Workflows and Pull requests read/write; pull requests opened with it also run the usual checks.
+- The prebuilt dependencies `setup-deps.py` and `setup-deps.ps1` download are checked against SHA-256 hashes kept in those scripts. Add the new hashes when changing their `TAG`.
+- Actions are pinned to commits; Dependabot proposes updates.
 
 ## Installing a build
 
