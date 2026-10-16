@@ -21,6 +21,11 @@ Dialog {
         if (footer && footer.background) {
             footer.background.visible = false
         }
+
+        // [fork] The style's title row is a Label, and a title can hold an app name from the host
+        if (header && header.textFormat !== undefined) {
+            header.textFormat = Text.PlainText
+        }
     }
 
     onClosed: {
