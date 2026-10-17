@@ -6,6 +6,7 @@
         <file alias="ForkHardwareWarnings.qml">../gui/ForkHardwareWarnings.qml</file>
         <file alias="StreamProfileDialog.qml">../gui/StreamProfileDialog.qml</file>
         <file alias="ForkStretchOption.qml">../gui/ForkStretchOption.qml</file>
+        <file alias="ForkMacShortcutsOption.qml">../gui/ForkMacShortcutsOption.qml</file>
         <file alias="ForkNativeToolbar.qml">../gui/ForkNativeToolbar.qml</file>
         <file alias="ForkDialogBackground.qml">../gui/ForkDialogBackground.qml</file>
         <file alias="ForkBusyIndicator.qml">../gui/ForkBusyIndicator.qml</file>
