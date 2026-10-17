@@ -2,6 +2,7 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
+#include "fork/forklaunchargs.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
 #include "fork/forkvideoscaling.h" // [fork]
 #include "fork/streamstats.h" // [fork]
@@ -651,6 +652,8 @@ bool Session::initialize(QQuickWindow* qtWindow)
         SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, shouldUseFullScreenSpaces ? "1" : "0");
     }
 #endif
+
+    ForkLaunchArgs::capture(m_QtWindow); // [fork]
 
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -1628,7 +1631,8 @@ bool Session::startConnectionAsync()
                       m_Preferences->playAudioOnHost,
                       m_InputHandler->getAttachedGamepadMask(),
                       !m_Preferences->multiController,
-                      rtspSessionUrl);
+                      rtspSessionUrl,
+                      ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware)); // [fork]
     } catch (const GfeHttpResponseException& e) {
         emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
         return false;

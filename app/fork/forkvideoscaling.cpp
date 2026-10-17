@@ -51,15 +51,21 @@ namespace
 #endif
 }
 
-bool useSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWindow* qtWindow)
+int displayIndexFor(QWindow* qtWindow)
 {
 #ifdef Q_OS_DARWIN
     QScreen* screen = qtWindow != nullptr ? qtWindow->screen() : QGuiApplication::primaryScreen();
-    if (screen == nullptr) {
-        return upstream;
-    }
+    return screen != nullptr ? displayIndexAt(screen->geometry().topLeft()) : -1;
+#else
+    (void)qtWindow;
+    return -1;
+#endif
+}
 
-    int displayIndex = displayIndexAt(screen->geometry().topLeft());
+bool useSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWindow* qtWindow)
+{
+#ifdef Q_OS_DARWIN
+    int displayIndex = displayIndexFor(qtWindow);
     if (displayIndex < 0) {
         return upstream;
     }

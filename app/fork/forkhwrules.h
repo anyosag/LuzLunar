@@ -18,6 +18,14 @@ namespace ForkHwRules
         bool hasNotch = false;
         int maxRefresh = 0;                        // Hz; 0 if unknown
         bool hdr = false;
+
+        // For the host's virtual display (clientdisplay.*); appended so older initializers still fit
+        int widthMm = 0, heightMm = 0;             // physical size; 0 if unknown
+        bool p3 = false;                           // shows the Display P3 gamut
+        double edrPotential = 1;                   // the most the panel can go above SDR white
+        double edrCurrent = 1;                     // above SDR white right now, which follows brightness
+        double edrReference = 0;                   // in a reference preset; 0 otherwise
+        int minRefresh = 0;                        // Hz; ProMotion's lowest; 0 if unknown
     };
 
     // Which codecs this Mac decodes in hardware (Main10 is 10-bit HEVC, needed for HDR)

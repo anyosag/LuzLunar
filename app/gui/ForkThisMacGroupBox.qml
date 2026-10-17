@@ -13,17 +13,24 @@ GroupBox {
     font.pointSize: 12
     visible: SystemProperties.isDarwin
 
-    // One line per display, like "Built-in Retina Display: 3024×1964 (1.54:1), 3024×1890 below the notch (16:10), up to 120 Hz, HDR"
+    // One line per display, like "Built-in Retina Display: 3024×1964 (1.54:1), 3024×1890 below the notch (16:10),
+    // 30.2×19.6 cm, up to 120 Hz, Display P3, HDR up to 1600 nits"
     function describe(display) {
         var text = qsTr("%1: %2×%3 (%4)").arg(display.name).arg(display.nativeWidth).arg(display.nativeHeight).arg(display.fullRatio)
         if (display.hasNotch) {
             text += qsTr(", %1×%2 below the notch (%3)").arg(display.safeWidth).arg(display.safeHeight).arg(display.belowNotchRatio)
         }
+        if (display.widthMm > 0 && display.heightMm > 0) {
+            text += qsTr(", %1×%2 cm").arg((display.widthMm / 10).toFixed(1)).arg((display.heightMm / 10).toFixed(1))
+        }
         if (display.maxRefresh > 0) {
             text += qsTr(", up to %1 Hz").arg(display.maxRefresh)
         }
+        if (display.p3) {
+            text += qsTr(", Display P3")
+        }
         if (display.hdr) {
-            text += qsTr(", HDR")
+            text += display.hdrPeak > 0 ? qsTr(", HDR up to %1 nits").arg(display.hdrPeak) : qsTr(", HDR")
         }
         return text
     }

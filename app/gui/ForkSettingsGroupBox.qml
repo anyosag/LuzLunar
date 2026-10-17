@@ -84,6 +84,55 @@ GroupBox {
             ToolTip.text: qsTr("On a MacBook with a camera notch, fullscreen streams leave the strip beside the notch empty. This shows the app's name on the left and frame rate, latency, bitrate, codec and loss on the right. Connection warnings and clipboard messages appear beside the notch, or in a pill in the corner of a windowed stream, instead of over the stream.")
         }
 
+        CheckBox {
+            width: parent.width
+            visible: SystemProperties.isDarwin
+            hoverEnabled: true
+            text: qsTr("Describe this Mac's screen to Apollo hosts")
+            font.pointSize: 12
+            checked: ForkPreferences.describeDisplay
+            onCheckedChanged: {
+                ForkPreferences.describeDisplay = checked
+            }
+
+            ToolTip.delay: 1000
+            ToolTip.timeout: 10000
+            ToolTip.visible: hovered
+            ToolTip.text: qsTr("Each stream tells the host this screen's size, colors, HDR brightness and shapes, so the virtual display Apollo creates with the LuzVDA driver matches it: Windows picks a fitting scale and aims HDR at what this screen can show. Other hosts ignore it.")
+        }
+
+        Row {
+            spacing: 5
+            width: parent.width
+            visible: SystemProperties.isDarwin && ForkPreferences.describeDisplay
+
+            Label {
+                width: 180
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("HDR peak brightness")
+                font.pointSize: 12
+            }
+
+            AutoResizingComboBox {
+                // Nits for each item; 0 lets LuzLunar work it out from the screen
+                readonly property var values: [0, 400, 600, 1000, 1600]
+
+                model: [qsTr("Automatic"), qsTr("400 nits"), qsTr("600 nits"), qsTr("1000 nits"), qsTr("1600 nits")]
+                font.pointSize: 12
+
+                Component.onCompleted: {
+                    var index = values.indexOf(ForkPreferences.hdrPeakOverride)
+                    currentIndex = index >= 0 ? index : 0
+                    recalculateWidth()
+                }
+
+                // ::onActivated must be used, as it only listens for when the index is changed by a human
+                onActivated: {
+                    ForkPreferences.hdrPeakOverride = values[currentIndex]
+                }
+            }
+        }
+
         Row {
             spacing: 5
             width: parent.width

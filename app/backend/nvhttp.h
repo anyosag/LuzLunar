@@ -173,7 +173,8 @@ public:
              bool localAudio,
              int gamepadMask,
              bool persistGameControllersOnDisconnect,
-             QString& rtspSessionUrl);
+             QString& rtspSessionUrl,
+             const QString& forkLaunchArgs = QString()); // [fork] ForkLaunchArgs::take()
 
     QVector<NvApp>
     getAppList();

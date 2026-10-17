@@ -5,6 +5,11 @@
 #define SER_KEYTARGETS "fork/keyTargets"
 #define SER_CLIPBOARDSYNC "fork/clipboardSync"
 #define SER_NOTCHBAR "fork/notchBar"
+#define SER_DESCRIBEDISPLAY "fork/describeDisplay"
+#define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
+
+// Brighter than any display sold; HDR10 tops out at 10,000 nits
+#define MAX_HDR_PEAK 10000
 
 namespace
 {
@@ -47,7 +52,9 @@ ForkPreferences::ForkPreferences(QObject* parent)
     : QObject(parent),
       m_KeyMap(defaultKeyMap()),
       m_ClipboardSyncMode(CSM_MANUAL),
-      m_NotchBar(true)
+      m_NotchBar(true),
+      m_DescribeDisplay(true),
+      m_HdrPeakOverride(0)
 {
     QSettings settings;
 
@@ -72,6 +79,34 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
 
     m_NotchBar = settings.value(SER_NOTCHBAR, m_NotchBar).toBool();
+    m_DescribeDisplay = settings.value(SER_DESCRIBEDISPLAY, m_DescribeDisplay).toBool();
+
+    int peak = settings.value(SER_HDRPEAKOVERRIDE, m_HdrPeakOverride).toInt();
+    if (peak >= 0 && peak <= MAX_HDR_PEAK) {
+        m_HdrPeakOverride = peak;
+    }
+}
+
+void ForkPreferences::setDescribeDisplay(bool enabled)
+{
+    if (enabled == m_DescribeDisplay) {
+        return;
+    }
+
+    m_DescribeDisplay = enabled;
+    QSettings().setValue(SER_DESCRIBEDISPLAY, enabled);
+    emit describeDisplayChanged();
+}
+
+void ForkPreferences::setHdrPeakOverride(int nits)
+{
+    if (nits < 0 || nits > MAX_HDR_PEAK || nits == m_HdrPeakOverride) {
+        return;
+    }
+
+    m_HdrPeakOverride = nits;
+    QSettings().setValue(SER_HDRPEAKOVERRIDE, nits);
+    emit hdrPeakOverrideChanged();
 }
 
 void ForkPreferences::setNotchBar(bool enabled)

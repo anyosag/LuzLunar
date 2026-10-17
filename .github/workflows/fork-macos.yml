@@ -143,6 +143,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/hwrules_test.cpp app/fork/forkhwrules.cpp -o "$RUNNER_TEMP/hwrules_test"
           "$RUNNER_TEMP/hwrules_test"
+          # What the host is told about the Mac screen, for Apollo's virtual display
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/clientdisplay_test.cpp app/fork/clientdisplay.cpp -o "$RUNNER_TEMP/clientdisplay_test"
+          "$RUNNER_TEMP/clientdisplay_test"
           # The aspect ratio picker's sizes, the aspect lock and even rounding
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/aspect_test.cpp app/fork/forkaspect.cpp -o "$RUNNER_TEMP/aspect_test"

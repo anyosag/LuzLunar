@@ -1,5 +1,8 @@
 #include "clienthardware.h"
 
+#include "clientdisplay.h"
+#include "forkpreferences.h"
+
 #include "settings/streamingpreferences.h"
 
 // The platform parts (read and watchDisplays) are in mac/clienthardware_mac.mm on macOS (a different name, so qmake doesn't give both files the same object file)
@@ -42,6 +45,9 @@ ClientHardware::ClientHardware(QObject* parent)
 {
     refresh();
     ClientHardwarePlatform::watchDisplays([this]() { refresh(); });
+
+    // hdrPeak follows the setting
+    connect(ForkPreferences::get(), &ForkPreferences::hdrPeakOverrideChanged, this, &ClientHardware::refresh);
 }
 
 void ClientHardware::refresh()
@@ -73,6 +79,11 @@ void ClientHardware::refresh()
             { "maxRefresh", rules.maxRefresh },
             { "hdr", rules.hdr },
             { "isBuiltin", display.isBuiltin },
+            { "widthMm", rules.widthMm },
+            { "heightMm", rules.heightMm },
+            { "p3", rules.p3 },
+            { "edrPotential", rules.edrPotential },
+            { "hdrPeak", ClientDisplay::describe(rules, display.isBuiltin, ForkPreferences::get()->hdrPeakOverride()).peakNits },
         });
     }
 
