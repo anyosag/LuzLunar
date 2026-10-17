@@ -2,11 +2,98 @@
 
 #include <QWindow>
 
+#include <dlfcn.h>
+
 #import <AppKit/AppKit.h>
 
 namespace
 {
     id s_ShortcutMonitor = nil;
+
+    // SkyLight's symbolic hot key calls (CGError is 0 on success)
+    typedef int (*SetHotKeyEnabledFn)(uint32_t id, bool enabled);
+    typedef bool (*IsHotKeyEnabledFn)(uint32_t id);
+    typedef int (*SetHotKeyEnabledForConnectionFn)(int connection, uint32_t id, bool enabled);
+    typedef int (*MainConnectionFn)(void);
+    typedef const char* (*HotKeyNameFn)(uint32_t id);
+
+    struct HotKeyApi {
+        SetHotKeyEnabledFn setEnabled;
+        IsHotKeyEnabledFn isEnabled;
+        SetHotKeyEnabledForConnectionFn setEnabledForConnection;
+        MainConnectionFn mainConnection;
+        HotKeyNameFn name;
+
+        HotKeyApi()
+        {
+            setEnabled = reinterpret_cast<SetHotKeyEnabledFn>(dlsym(RTLD_DEFAULT, "CGSSetSymbolicHotKeyEnabled"));
+            isEnabled = reinterpret_cast<IsHotKeyEnabledFn>(dlsym(RTLD_DEFAULT, "CGSIsSymbolicHotKeyEnabled"));
+            setEnabledForConnection = reinterpret_cast<SetHotKeyEnabledForConnectionFn>(
+                dlsym(RTLD_DEFAULT, "CGSSetSymbolicHotKeyEnabledForConnection"));
+            mainConnection = reinterpret_cast<MainConnectionFn>(dlsym(RTLD_DEFAULT, "CGSMainConnectionID"));
+            name = reinterpret_cast<HotKeyNameFn>(dlsym(RTLD_DEFAULT, "SLSSymbolicHotKeyName"));
+        }
+
+        bool available() const
+        {
+            return setEnabled && isEnabled && setEnabledForConnection && mainConnection && name;
+        }
+    };
+
+    const HotKeyApi& hotKeyApi()
+    {
+        static const HotKeyApi s_Api;
+        return s_Api;
+    }
+}
+
+bool MacIntegration::symbolicHotKeysAvailable()
+{
+    return hotKeyApi().available();
+}
+
+bool MacIntegration::isSymbolicHotKeyEnabled(int id)
+{
+    const HotKeyApi& api = hotKeyApi();
+    return api.available() && api.isEnabled(static_cast<uint32_t>(id));
+}
+
+bool MacIntegration::setSymbolicHotKeyEnabled(int id, bool enabled, bool forApp)
+{
+    const HotKeyApi& api = hotKeyApi();
+    if (!api.available()) {
+        return false;
+    }
+
+    int err = forApp ? api.setEnabledForConnection(api.mainConnection(), static_cast<uint32_t>(id), enabled)
+                     : api.setEnabled(static_cast<uint32_t>(id), enabled);
+    return err == 0;
+}
+
+std::string MacIntegration::symbolicHotKeyName(int id)
+{
+    const HotKeyApi& api = hotKeyApi();
+    const char* name = api.available() ? api.name(static_cast<uint32_t>(id)) : nullptr;
+    return name ? std::string(name) : std::string();
+}
+
+bool MacIntegration::screenshotOverlayVisible()
+{
+    // Window owners are readable without the screen recording permission (titles aren't)
+    CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+                                                    kCGNullWindowID);
+    if (windows == nullptr) {
+        return false;
+    }
+
+    bool visible = false;
+    for (CFIndex i = 0; i < CFArrayGetCount(windows) && !visible; i++) {
+        CFDictionaryRef window = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(windows, i));
+        CFStringRef owner = static_cast<CFStringRef>(CFDictionaryGetValue(window, kCGWindowOwnerName));
+        visible = owner != nullptr && CFStringCompare(owner, CFSTR("screencapture"), 0) == kCFCompareEqualTo;
+    }
+    CFRelease(windows);
+    return visible;
 }
 
 void MacIntegration::setStreamShortcutGuard(bool enabled)

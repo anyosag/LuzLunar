@@ -23,10 +23,12 @@ SOURCES += \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
     $$PWD/forklaunchargs.cpp \
+    $$PWD/forkmacshortcuts.cpp \
     $$PWD/forkpolicy.cpp \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
     $$PWD/forkstreamextensions.cpp \
+    $$PWD/forksystemshortcuts.cpp \
     $$PWD/forkvideoscaling.cpp \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
@@ -45,9 +47,11 @@ HEADERS += \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
     $$PWD/forklaunchargs.h \
+    $$PWD/forkmacshortcuts.h \
     $$PWD/forkpolicy.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
+    $$PWD/forksystemshortcuts.h \
     $$PWD/forkvideoscaling.h \
     $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
