@@ -101,6 +101,13 @@ NavigableDialog {
     // The title and footer draw their own space above and below the content
     topPadding: 0
     bottomPadding: 0
+    // All of the content, so the dialog is as tall as it up to the window's height. Set here, as a
+    // popup only sizes itself to its content when it has one child item (the scroll bar is another).
+    contentHeight: scroller.contentHeight
+
+    // The content's scroll position and how far it scrolls, for the screenshot harness
+    property alias scrollY: scroller.contentY
+    readonly property real scrollMax: Math.max(0, scroller.contentHeight - scroller.height)
 
     function openFor(computerIndex, name) {
         hostUuid = StreamProfiles.hostUuid(ComputerManager, computerIndex)
@@ -543,13 +550,8 @@ NavigableDialog {
 
     Flickable {
         id: scroller
-        // The screenshot harness finds the open dialog by this name
-        objectName: "streamProfileScroller"
-        readonly property var dialog: streamProfileDialog
 
         anchors.fill: parent
-        // The dialog is as tall as all of the content, up to the window's height
-        implicitHeight: contentHeight
         contentHeight: content.height + 14 + 22
         clip: true
         boundsBehavior: Flickable.StopAtBounds
