@@ -1,11 +1,13 @@
 import QtQuick
 import QtQuick.Shapes
 
+import ForkPreferences 1.0
 import ForkTheme 1.0
 import StreamingPreferences 1.0
 
 // [fork] Settings › Mouse & trackpad: whether the stream holds the pointer (games) or lets it
-// cross in and out like any window (remote desktop), and the mouse button and scrolling options.
+// cross in and out like any window (remote desktop), the mouse button and scrolling options, and
+// trackpad passthrough (the Mac trackpad as a Windows touchpad).
 // Upstream's "Use touchscreen as a virtual trackpad" (absoluteTouchMode) is left out on purpose:
 // Macs have no touchscreen, so the setting could never do anything here.
 Column {
@@ -255,6 +257,93 @@ Column {
                 help: qsTr("Turn this on if scrolling on the PC feels backwards next to this Mac.")
                 checked: StreamingPreferences.reverseScrollDirection
                 onToggled: (on) => StreamingPreferences.reverseScrollDirection = on
+            }
+        }
+    }
+
+    // ---- Trackpad -------------------------------------------------------------------------
+
+    // Trackpad passthrough (app/fork/forktrackpadpassthrough.cpp). Each app can choose otherwise in
+    // its Stream Settings.
+    ForkCard {
+        title: qsTr("Trackpad")
+        spacing: 8
+        height: implicitHeight - 8
+
+        Column {
+            width: parent.width
+            spacing: 0
+
+            ForkSwitchRow {
+                showDivider: false
+                label: qsTr("Send the trackpad to Windows as a touchpad")
+                help: qsTr("Windows gets every finger and makes its own pointer, taps, scrolling and gestures, with its touchpad settings. The stream captures the pointer, and macOS's trackpad gestures wait while the stream is in front. Needs LuzLunar's Apollo on Windows 11. Apps can choose otherwise in Stream Settings.")
+                checked: StreamingPreferences.trackpadPassthrough
+                onToggled: (on) => StreamingPreferences.trackpadPassthrough = on
+            }
+
+            ForkSwitchRow {
+                label: qsTr("Also pause Notification Center's swipe and three-finger drag")
+                help: qsTr("Switched off in System Settings while the stream is in front, and back on when it isn't, or the next time LuzLunar opens if it quit unexpectedly.")
+                checked: ForkPreferences.trackpadPauseMacSettings
+                onToggled: (on) => ForkPreferences.trackpadPauseMacSettings = on
+            }
+
+            // macOS only lets LuzLunar hold back its gestures with the Accessibility permission
+            Item {
+                id: accessibilityRow
+
+                property bool trusted: ForkPreferences.accessibilityTrusted()
+
+                width: parent.width
+                implicitHeight: Math.max(accessibilityTexts.implicitHeight, accessibilityButton.implicitHeight) + 24
+
+                // The permission is granted in System Settings, so look again while the page is open
+                Timer {
+                    interval: 2000
+                    repeat: true
+                    running: accessibilityRow.visible && !accessibilityRow.trusted
+                    onTriggered: accessibilityRow.trusted = ForkPreferences.accessibilityTrusted()
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: ForkTheme.lineSoft
+                }
+
+                Column {
+                    id: accessibilityTexts
+                    anchors.left: parent.left
+                    anchors.right: accessibilityButton.visible ? accessibilityButton.left : parent.right
+                    anchors.rightMargin: accessibilityButton.visible ? 16 : 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+
+                    ForkText {
+                        width: parent.width
+                        kind: "label"
+                        text: accessibilityRow.trusted ? qsTr("Accessibility: allowed") : qsTr("Accessibility: not allowed")
+                    }
+
+                    ForkText {
+                        width: parent.width
+                        kind: "help"
+                        wrapMode: Text.WordWrap
+                        text: accessibilityRow.trusted
+                              ? qsTr("Spaces, Mission Control and the other system swipes stay with the stream while it's in front.")
+                              : qsTr("Without it, the trackpad still goes to Windows, but a three- or four-finger swipe can switch Spaces on this Mac. If LuzLunar is already on the list, remove it and add it again.")
+                    }
+                }
+
+                ForkButton {
+                    id: accessibilityButton
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !accessibilityRow.trusted
+                    text: qsTr("Open Privacy & Security")
+                    onClicked: ForkPreferences.requestAccessibility()
+                }
             }
         }
     }

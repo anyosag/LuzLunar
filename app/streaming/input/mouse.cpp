@@ -3,6 +3,7 @@
 #include <Limelight.h>
 #include "SDL_compat.h"
 #include "streaming/streamutils.h"
+#include "fork/forktrackpadpassthrough.h" // [fork]
 
 void SdlInputHandler::notifyMouseLeave()
 {
@@ -32,6 +33,10 @@ void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
 
     if (event->which == SDL_TOUCH_MOUSEID) {
         // Ignore synthetic mouse events
+        return;
+    }
+    else if (ForkTrackpadPassthrough::muteButton(event)) {
+        // [fork] The trackpad's own click: Windows gets the fingers and the pad press instead
         return;
     }
     else if (!isCaptureActive()) {
@@ -100,6 +105,10 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
         // Ignore synthetic mouse events
         return;
     }
+    else if (ForkTrackpadPassthrough::muteMotion(event)) {
+        // [fork] The trackpad's own pointer motion: Windows moves its pointer from the fingers
+        return;
+    }
 
     // Batch all pending mouse motion events to save CPU time
     Sint32 x = event->x, y = event->y, xrel = event->xrel, yrel = event->yrel;
@@ -108,7 +117,7 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
         event = &nextEvent.motion;
 
         // Ignore synthetic mouse events
-        if (event->which != SDL_TOUCH_MOUSEID) {
+        if (event->which != SDL_TOUCH_MOUSEID && !ForkTrackpadPassthrough::muteMotion(event)) { // [fork] and the trackpad's
             x = event->x;
             y = event->y;
             xrel += event->xrel;
@@ -186,6 +195,10 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
     }
     else if (event->which == SDL_TOUCH_MOUSEID) {
         // Ignore synthetic mouse events
+        return;
+    }
+    else if (ForkTrackpadPassthrough::muteWheel(event)) {
+        // [fork] The trackpad's own scrolling: Windows scrolls from the fingers
         return;
     }
 

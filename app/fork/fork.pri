@@ -29,6 +29,9 @@ SOURCES += \
     $$PWD/forkqml.cpp \
     $$PWD/forkstreamextensions.cpp \
     $$PWD/forksystemshortcuts.cpp \
+    $$PWD/forktrackpad.cpp \
+    $$PWD/forktrackpadgestures.cpp \
+    $$PWD/forktrackpadpassthrough.cpp \
     $$PWD/forkvideoscaling.cpp \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
@@ -52,27 +55,38 @@ HEADERS += \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
     $$PWD/forksystemshortcuts.h \
+    $$PWD/forktrackpad.h \
+    $$PWD/forktrackpadgestures.h \
+    $$PWD/forktrackpadpassthrough.h \
     $$PWD/forkvideoscaling.h \
+    $$PWD/luztouchpad.h \
     $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
+    $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macintegration.h \
     $$PWD/mac/notchbar.h \
-    $$PWD/mac/pasteboard.h
+    $$PWD/mac/pasteboard.h \
+    $$PWD/mac/trackpadcapture_mac.h
 
 macx {
     SOURCES += \
         $$PWD/screenshotharness.cpp \
         $$PWD/mac/clienthardware_mac.mm \
+        $$PWD/mac/gesturesuppressor_mac.mm \
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/pasteboard_mac.mm \
         $$PWD/mac/sfsymbolprovider.mm \
+        $$PWD/mac/trackpadcapture_mac.mm \
         $$PWD/mac/windowchrome_mac.mm
 
     # Rich clipboard sync: images through ImageIO, and zlib for the clipboard bundle (clipbundle.cpp)
     LIBS += -framework ImageIO -lz
+
+    # Trackpad passthrough's gesture blocker: the event tap and the Accessibility check
+    LIBS += -framework ApplicationServices
     DEFINES += CLIPBUNDLE_WITH_ZLIB
 }
 

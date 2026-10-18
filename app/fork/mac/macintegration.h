@@ -40,6 +40,9 @@ namespace MacIntegration
     // True while macOS's screenshot tools are on screen (⇧⌘4's crosshair, ⇧⌘5's toolbar): the
     // screencapture process puts a window over the whole screen until it's done
     bool screenshotOverlayVisible();
+
+    // True if pid is a running copy of this program, for crash records another copy left
+    bool isRunningCopy(long pid);
 #else
     inline void setStreamShortcutGuard(bool) {}
     inline bool clipboardHasConcealedContent() { return false; }
@@ -49,5 +52,6 @@ namespace MacIntegration
     inline bool setSymbolicHotKeyEnabled(int, bool, bool) { return false; }
     inline std::string symbolicHotKeyName(int) { return std::string(); }
     inline bool screenshotOverlayVisible() { return false; }
+    inline bool isRunningCopy(long) { return false; }
 #endif
 }

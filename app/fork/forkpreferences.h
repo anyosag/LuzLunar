@@ -54,7 +54,21 @@ public:
     // Whether this macOS lets LuzLunar choose shortcuts one group at a time
     Q_PROPERTY(bool macShortcutsSelectable READ macShortcutsSelectable CONSTANT)
 
+    // While trackpad passthrough runs, also turn off the macOS gestures the event tap can't hold
+    // back (Notification Center's edge swipe, three-finger drag) through System Settings' own code,
+    // and turn them back on afterwards (forktrackpadgestures.*)
+    Q_PROPERTY(bool trackpadPauseMacSettings READ trackpadPauseMacSettings WRITE setTrackpadPauseMacSettings NOTIFY trackpadPauseMacSettingsChanged)
+
     static ForkPreferences* get();
+
+    bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
+    void setTrackpadPauseMacSettings(bool pause);
+
+    // Whether macOS lets LuzLunar hold back its trackpad gestures (Privacy & Security › Accessibility)
+    Q_INVOKABLE bool accessibilityTrusted() const;
+
+    // Asks macOS for that permission and opens its page in System Settings
+    Q_INVOKABLE void requestAccessibility();
 
     QString buildId() const;
 
@@ -99,6 +113,7 @@ signals:
     void describeDisplayChanged();
     void hdrPeakOverrideChanged();
     void macShortcutsChanged();
+    void trackpadPauseMacSettingsChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -111,6 +126,7 @@ private:
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;
     bool m_MacShortcutsAll;
+    bool m_TrackpadPauseMacSettings;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };

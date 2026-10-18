@@ -1,15 +1,20 @@
 #!/bin/bash
-# LuzLunar build for Apple Silicon: scripts/generate-dmg.sh, but arm64 only, renamed and ad-hoc signed.
+# LuzLunar build for Apple Silicon: scripts/generate-dmg.sh, but arm64 only, renamed and re-signed.
 # Requires create-dmg from https://github.com/sindresorhus/create-dmg and Qt's tools on PATH.
 #
 # An unsigned arm64 app doesn't launch on Apple Silicon (macdeployqt invalidates the linker's
-# ad-hoc signature), so the bundle is re-signed ad-hoc. Hardened runtime (--options runtime)
-# is left off: with an ad-hoc signature it makes library validation reject the bundled Qt frameworks.
+# ad-hoc signature), so the bundle is re-signed: with the certificate in LUZLUNAR_SIGN_IDENTITY
+# when it's set, ad-hoc otherwise. macOS ties privacy permissions such as Accessibility to the
+# signature, and an ad-hoc signature changes with every build, so only certificate-signed builds
+# keep them across updates. Hardened runtime (--options runtime) is left off: without a Team ID it
+# makes library validation reject the bundled Qt frameworks.
 #
 # Paths are quoted throughout, so the checkout may live in a folder whose name has spaces.
-# Optional switches for local builds (CI sets neither):
+# Optional switches for local builds (CI sets neither of the first two):
 #   LUZLUNAR_SKIP_DMG=1  skip the DMG, e.g. when create-dmg isn't installed
 #   LUZLUNAR_INSTALL=1   replace /Applications/LuzLunar.app with this build; the old copy goes to the Trash
+#   LUZLUNAR_SIGN_IDENTITY=<SHA-1>  sign with this certificate (CI sets it from the LUZLUNAR_SIGNING_P12
+#                        secret); LUZLUNAR_SIGN_KEYCHAIN names the keychain that holds it, if not the default
 BUILD_CONFIG=$1
 
 fail()
@@ -128,10 +133,22 @@ echo Checking the binary is arm64 only
 lipo -archs "$APP/Contents/MacOS/$APP_NAME"
 [ "$(lipo -archs "$APP/Contents/MacOS/$APP_NAME")" == "arm64" ] || fail "Expected an arm64-only binary!"
 
-echo Signing app bundle ad-hoc
-codesign --force --deep --sign - "$APP" || fail "Ad-hoc signing failed!"
-codesign --verify --deep --strict --verbose=2 "$APP" || fail "Signature verification failed!"
-codesign -dv "$APP" 2>&1 | grep -q 'Signature=adhoc' || fail "Bundle isn't ad-hoc signed!"
+if [ -n "$LUZLUNAR_SIGN_IDENTITY" ]; then
+  echo Signing app bundle with certificate $LUZLUNAR_SIGN_IDENTITY
+  KEYCHAIN_ARGS=()
+  if [ -n "$LUZLUNAR_SIGN_KEYCHAIN" ]; then KEYCHAIN_ARGS+=(--keychain "$LUZLUNAR_SIGN_KEYCHAIN"); fi
+  codesign --force --deep --timestamp=none "${KEYCHAIN_ARGS[@]}" --sign "$LUZLUNAR_SIGN_IDENTITY" "$APP" || fail "Signing failed!"
+  codesign --verify --deep --strict --verbose=2 "$APP" || fail "Signature verification failed!"
+  codesign -dv "$APP" 2>&1 | grep -q 'Signature=adhoc' && fail "Bundle is still ad-hoc signed!"
+  # The designated requirement names the certificate. It must read the same in every build, or
+  # macOS treats the update as a different app and drops its permissions.
+  codesign -d -r- "$APP" 2>&1 | grep designated
+else
+  echo Signing app bundle ad-hoc
+  codesign --force --deep --sign - "$APP" || fail "Ad-hoc signing failed!"
+  codesign --verify --deep --strict --verbose=2 "$APP" || fail "Signature verification failed!"
+  codesign -dv "$APP" 2>&1 | grep -q 'Signature=adhoc' || fail "Bundle isn't ad-hoc signed!"
+fi
 
 echo Smoke test: launching $APP_NAME --version
 perl -e 'alarm 60; exec @ARGV' "$APP/Contents/MacOS/$APP_NAME" --version

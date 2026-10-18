@@ -5,6 +5,7 @@
 #include <QVariantMap>
 
 #include "forkmacshortcuts.h"
+#include "mac/gesturesuppressor_mac.h"
 #include "mac/macintegration.h"
 
 #define SER_KEYTARGETS "fork/keyTargets"
@@ -14,6 +15,7 @@
 #define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
 #define SER_MACSHORTCUTS "fork/macShortcuts"
 #define SER_MACSHORTCUTSALL "fork/macShortcutsAll"
+#define SER_TRACKPADPAUSEMACSETTINGS "fork/trackpadPauseMacSettings"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
@@ -62,7 +64,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_NotchBar(true),
       m_DescribeDisplay(true),
       m_HdrPeakOverride(0),
-      m_MacShortcutsAll(false)
+      m_MacShortcutsAll(false),
+      m_TrackpadPauseMacSettings(true)
 {
     QSettings settings;
 
@@ -95,6 +98,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
 
     m_MacShortcutsAll = settings.value(SER_MACSHORTCUTSALL, m_MacShortcutsAll).toBool();
+    m_TrackpadPauseMacSettings = settings.value(SER_TRACKPADPAUSEMACSETTINGS, m_TrackpadPauseMacSettings).toBool();
     settings.beginGroup(SER_MACSHORTCUTS);
     for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
         QString key = QString::fromUtf8(group.key);
@@ -156,6 +160,27 @@ void ForkPreferences::setMacShortcutsAll(bool all)
 bool ForkPreferences::macShortcutsSelectable() const
 {
     return MacIntegration::symbolicHotKeysAvailable();
+}
+
+void ForkPreferences::setTrackpadPauseMacSettings(bool pause)
+{
+    if (pause == m_TrackpadPauseMacSettings) {
+        return;
+    }
+
+    m_TrackpadPauseMacSettings = pause;
+    QSettings().setValue(SER_TRACKPADPAUSEMACSETTINGS, pause);
+    emit trackpadPauseMacSettingsChanged();
+}
+
+bool ForkPreferences::accessibilityTrusted() const
+{
+    return ForkGestureSuppressor::accessibilityTrusted();
+}
+
+void ForkPreferences::requestAccessibility()
+{
+    ForkGestureSuppressor::requestAccessibility();
 }
 
 void ForkPreferences::setDescribeDisplay(bool enabled)

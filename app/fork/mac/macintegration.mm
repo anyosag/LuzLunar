@@ -5,6 +5,10 @@
 #include <QWindow>
 
 #include <dlfcn.h>
+#include <libproc.h>
+#include <signal.h>
+#include <string.h>
+#include <unistd.h>
 
 #import <AppKit/AppKit.h>
 
@@ -136,4 +140,16 @@ long MacIntegration::windowNumber(QWindow* window)
     }
     NSView* view = reinterpret_cast<NSView*>(window->winId());
     return view.window != nil ? view.window.windowNumber : 0;
+}
+
+bool MacIntegration::isRunningCopy(long pid)
+{
+    if (pid <= 0 || kill(static_cast<pid_t>(pid), 0) != 0) {
+        return false;
+    }
+    char other[PROC_PIDPATHINFO_MAXSIZE];
+    char self[PROC_PIDPATHINFO_MAXSIZE];
+    return proc_pidpath(static_cast<int>(pid), other, sizeof(other)) > 0 &&
+           proc_pidpath(getpid(), self, sizeof(self)) > 0 &&
+           strcmp(other, self) == 0;
 }

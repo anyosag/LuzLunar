@@ -29,6 +29,7 @@
 #define SER_VIDEODEC "videodec"
 #define SER_WINDOWMODE "windowmode"
 #define SER_FULLSCREENSTRETCH "fullscreenstretch" // [fork]
+#define SER_TRACKPADPASSTHROUGH "trackpadpassthrough" // [fork]
 #define SER_MDNS "mdns"
 #define SER_QUITAPPAFTER "quitAppAfter"
 #define SER_ABSMOUSEMODE "mouseacceleration"
@@ -168,6 +169,7 @@ void StreamingPreferences::reload()
                                                         static_cast<int>(settings.value(SER_FULLSCREEN, true).toBool() ?
                                                                              recommendedFullScreenMode : WindowMode::WM_WINDOWED)).toInt());
     fullscreenStretch = settings.value(SER_FULLSCREENSTRETCH, false).toBool(); // [fork]
+    trackpadPassthrough = settings.value(SER_TRACKPADPASSTHROUGH, false).toBool(); // [fork]
     uiDisplayMode = static_cast<UIDisplayMode>(settings.value(SER_UIDISPLAYMODE,
                                                static_cast<int>(settings.value(SER_STARTWINDOWED, true).toBool() ? UIDisplayMode::UI_WINDOWED
                                                                                                                  : UIDisplayMode::UI_MAXIMIZED)).toInt());
@@ -355,6 +357,7 @@ void StreamingPreferences::save()
     settings.setValue(SER_RENDERER, static_cast<int>(rendererSelection));
     settings.setValue(SER_WINDOWMODE, static_cast<int>(windowMode));
     settings.setValue(SER_FULLSCREENSTRETCH, fullscreenStretch); // [fork]
+    settings.setValue(SER_TRACKPADPASSTHROUGH, trackpadPassthrough); // [fork]
     settings.setValue(SER_UIDISPLAYMODE, static_cast<int>(uiDisplayMode));
     settings.setValue(SER_LANGUAGE, static_cast<int>(language));
     settings.setValue(SER_DEFAULTVER, CURRENT_DEFAULT_VER);

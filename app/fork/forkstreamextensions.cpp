@@ -7,6 +7,7 @@
 #include "clipboardsync.h"
 #include "forkpreferences.h"
 #include "forksystemshortcuts.h"
+#include "forktrackpadpassthrough.h"
 #include "forkvideoscaling.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
@@ -58,10 +59,22 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
 
     // Which Mac shortcuts system key capture takes; SdlInputHandler asks it before grabbing
     ForkSystemShortcuts::activate(window);
+
+    // The trackpad as a Windows touchpad, when the stream's setting is on; its messages appear
+    // beside the notch too
+    if (m_NotchBar) {
+        NotchBar* notchBar = m_NotchBar.get();
+        ForkTrackpadPassthrough::setMessageSink([notchBar](const QString& text) {
+            return notchBar->showToast(text);
+        });
+    }
+    ForkTrackpadPassthrough::activate(window, prefs);
 }
 
 ForkStreamExtensions::~ForkStreamExtensions()
 {
+    ForkTrackpadPassthrough::deactivate();
+    ForkTrackpadPassthrough::setMessageSink(nullptr);
     ForkSystemShortcuts::deactivate();
     ForkVideoScaling::deactivate();
 
@@ -89,4 +102,5 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     }
 
     ForkSystemShortcuts::handleEvent(event);
+    ForkTrackpadPassthrough::handleEvent(event);
 }

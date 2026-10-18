@@ -1,0 +1,71 @@
+diff --git a/src/InputStream.c b/src/InputStream.c
+index 3b56098..cc7b6d2 100644
+--- a/src/InputStream.c
++++ b/src/InputStream.c
+@@ -1373,6 +1373,47 @@ int LiSendTouchEvent(uint8_t eventType, uint32_t pointerId, float x, float y, fl
+     return err;
+ }
+ 
++// LuzLunar's patch: queues an input packet built by the caller, for protocol extensions
++int LiSendForkInputPacket(const void* packet, uint32_t length, uint8_t channelId, bool reliable) {
++    PPACKET_HOLDER holder;
++    NV_INPUT_HEADER header;
++    int extraLength;
++    int err;
++
++    if (!initialized) {
++        return -2;
++    }
++
++    // The packet must be a whole input packet that the send thread can encrypt
++    if (packet == NULL || length < sizeof(NV_INPUT_HEADER) || length > MAX_INPUT_PACKET_SIZE) {
++        return -3;
++    }
++    memcpy(&header, packet, sizeof(header));
++    if (BE32(header.size) + sizeof(uint32_t) != length) {
++        return -3;
++    }
++
++    // A packet larger than the holder's union needs an extended holder
++    extraLength = (int)length - (int)sizeof(holder->packet);
++    holder = allocatePacketHolder(extraLength > 0 ? extraLength : 0);
++    if (holder == NULL) {
++        return -1;
++    }
++
++    holder->channelId = channelId;
++    holder->enetPacketFlags = reliable ? ENET_PACKET_FLAG_RELIABLE : 0;
++    memcpy(&holder->packet, packet, length);
++
++    err = LbqOfferQueueItem(&packetQueue, holder, &holder->entry);
++    if (err != LBQ_SUCCESS) {
++        LC_ASSERT(err == LBQ_BOUND_EXCEEDED);
++        Limelog("Input queue reached maximum size limit\n");
++        freePacketHolder(holder);
++    }
++
++    return err;
++}
++
+ int LiSendPenEvent(uint8_t eventType, uint8_t toolType, uint8_t penButtons,
+                    float x, float y, float pressureOrDistance,
+                    float contactAreaMajor, float contactAreaMinor,
+diff --git a/src/Limelight.h b/src/Limelight.h
+index 22bee46..c81178e 100644
+--- a/src/Limelight.h
++++ b/src/Limelight.h
+@@ -851,6 +851,14 @@ int LiSendHighResScrollEvent(short scrollAmount);
+ int LiSendHScrollEvent(signed char scrollClicks);
+ int LiSendHighResHScrollEvent(short scrollAmount);
+ 
++// This function queues an input packet the caller has built: an NV_INPUT_HEADER (the big-endian
++// size of the bytes after the size field, then the little-endian magic) and its payload, length
++// bytes in all (8 to 128). It goes on channelId, reliably or not. It's for protocol extensions
++// this library doesn't know, like LuzLunar's trackpad frames for anyosag/Apollo, so check the
++// host's LiGetHostFeatureFlags() first. Returns 0 when queued, -2 when not connected, -3 for a
++// malformed packet. (LuzLunar's patch, not upstream.)
++int LiSendForkInputPacket(const void* packet, uint32_t length, uint8_t channelId, bool reliable);
++
+ // This function returns a time in microseconds with an implementation-defined epoch.
+ // It should only ever be compared with the return value from a previous call to itself.
+ uint64_t LiGetMicroseconds(void);
