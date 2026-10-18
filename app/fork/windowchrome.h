@@ -16,17 +16,22 @@ class ForkWindowChrome : public QObject
     // True once the native toolbar is in place; the QML toolbar collapses while it is
     Q_PROPERTY(bool active READ isActive NOTIFY activeChanged)
 
+    // The system's Reduce Motion accessibility setting (always false off macOS)
+    Q_PROPERTY(bool reduceMotion READ reduceMotion NOTIFY reduceMotionChanged)
+
 public:
     static ForkWindowChrome* get();
     ~ForkWindowChrome();
 
     bool isActive() const;
+    bool reduceMotion();
 
     // Takes over the window's title bar. Call once, after the window is created.
     Q_INVOKABLE void attach(QWindow* window);
 
     // Each item is a map with id, symbol (SF Symbol name), label, toolTip, visible, focused (its
-    // QML button has keyboard focus; highlighted natively) and, for back buttons, navigational.
+    // QML button has keyboard focus; highlighted natively), labeled (shows its label beside the
+    // symbol, like "Add PC") and, for back buttons, navigational.
     // Items keep the order of the first call.
     Q_INVOKABLE void setToolbarItems(const QVariantList& items);
 
@@ -41,6 +46,7 @@ public:
 
 signals:
     void activeChanged();
+    void reduceMotionChanged();
     void triggered(const QString& id);
 
 private:
@@ -54,4 +60,5 @@ private:
     QString m_Subtitle;
     bool m_Active = false;
     void* m_Platform = nullptr;   // ForkToolbarController on macOS
+    void* m_MotionObserver = nullptr;
 };

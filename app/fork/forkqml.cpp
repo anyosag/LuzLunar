@@ -3,7 +3,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlEngine>
-#include <QQuickWindow>
+#include <QUrl>
 
 #include "clienthardware.h"
 #include "forkaspectratios.h"
@@ -20,12 +20,8 @@ namespace
         // Moonlight's settings (paired PCs, preferences), which LuzLunar shares.
         QGuiApplication::setApplicationDisplayName(QStringLiteral("LuzLunar"));
 
-#ifdef Q_OS_DARWIN
-        // Windows need an alpha channel from the start for the translucent (Liquid Glass) window
-        // background that ForkWindowChrome puts behind the main window's content
-        QQuickWindow::setDefaultAlphaBuffer(true);
-#endif
-
+        // LuzLunar's colors and type (app/gui/ForkThemeData.qml)
+        qmlRegisterSingletonType(QUrl(QStringLiteral("qrc:/gui/ForkThemeData.qml")), "ForkTheme", 1, 0, "ForkTheme");
         qmlRegisterSingletonType<ForkPreferences>("ForkPreferences", 1, 0, "ForkPreferences",
                                                   [](QQmlEngine*, QJSEngine*) -> QObject* {
             ForkPreferences* prefs = ForkPreferences::get();

@@ -1,5 +1,6 @@
 #include "fork/windowchrome.h"
 
+#include <QGuiApplication>
 #include <QVariantMap>
 
 #import <AppKit/AppKit.h>
@@ -13,9 +14,9 @@
     NSToolbar* m_Toolbar;
     NSArray<NSString*>* m_ItemIds;          // the items QML declared, in its order
     NSArray<NSString*>* m_ToolbarOrder;     // the same with the system spacers
-    // Per item id: label, symbol, image (built once per symbol), toolTip, navigational, hidden, focused
+    // Per item id: label, symbol, image (built once per symbol), toolTip, navigational, hidden,
+    // focused, labeled
     NSMutableDictionary<NSString*, NSMutableDictionary*>* m_State;
-    NSView* m_Backdrop;                     // the translucent window background
 }
 - (instancetype)initWithOwner:(ForkWindowChrome*)owner;
 - (void)applyItems:(const QVariantList&)items
@@ -43,51 +44,23 @@
     [m_ItemIds release];
     [m_ToolbarOrder release];
     [m_State release];
-    [m_Backdrop removeFromSuperview];
-    [m_Backdrop release];
     [super dealloc];
 }
 
-// A translucent background for the whole window, title bar included: Liquid Glass on macOS 26,
-// a behind-window blur before. It sits below Qt's content view, which draws on a transparent
-// background while the native chrome is active (main.qml), so the desktop shows through.
-- (void)installBackdropInWindow:(NSWindow*)window
+// The window's ground, opaque as in the design: the title bar and the native toolbar sit on the
+// toolbar color (Night #0E1328 in dark mode, Day #E4E7F1 in light, as ForkTheme.bar in
+// app/gui/ForkThemeData.qml) above a hairline, and QML draws the page below in ForkTheme.bg
+- (void)installGroundInWindow:(NSWindow*)window
 {
-    NSView* frameView = window.contentView.superview;
-    if (frameView == nil || (m_Backdrop != nil && m_Backdrop.superview == frameView)) {
-        return;
-    }
-    [m_Backdrop removeFromSuperview];
-    [m_Backdrop release];
-
-    if (@available(macOS 26.0, *)) {
-        NSGlassEffectView* glass = [[NSGlassEffectView alloc] initWithFrame:frameView.bounds];
-        glass.style = NSGlassEffectViewStyleRegular;
-        // Plain glass shows too much of the desktop to read the window's content over, so tint it
-        // toward the window background (resolved for light or dark mode)
-        glass.tintColor = [NSColor colorWithName:nil dynamicProvider:^NSColor*(NSAppearance* appearance) {
-            __block NSColor* tint = nil;
-            [appearance performAsCurrentDrawingAppearance:^{
-                tint = [NSColor.windowBackgroundColor colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-            }];
-            return [tint colorWithAlphaComponent:0.7];
-        }];
-        m_Backdrop = glass;
-    }
-    else {
-        NSVisualEffectView* effect = [[NSVisualEffectView alloc] initWithFrame:frameView.bounds];
-        effect.material = NSVisualEffectMaterialUnderWindowBackground;
-        effect.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-        effect.state = NSVisualEffectStateFollowsWindowActiveState;
-        m_Backdrop = effect;
-    }
-    m_Backdrop.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [frameView addSubview:m_Backdrop positioned:NSWindowBelow relativeTo:window.contentView];
-
-    window.opaque = NO;
-    window.backgroundColor = NSColor.clearColor;
+    window.opaque = YES;
+    window.backgroundColor = [NSColor colorWithName:nil dynamicProvider:^NSColor*(NSAppearance* appearance) {
+        BOOL dark = [[appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]]
+                     isEqualToString:NSAppearanceNameDarkAqua];
+        return dark ? [NSColor colorWithSRGBRed:14 / 255.0 green:19 / 255.0 blue:40 / 255.0 alpha:1]
+                    : [NSColor colorWithSRGBRed:228 / 255.0 green:231 / 255.0 blue:241 / 255.0 alpha:1];
+    }];
     window.titlebarAppearsTransparent = YES;
-    window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
+    window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleLine;
 }
 
 // Creates a fresh toolbar for this set of item ids
@@ -175,7 +148,7 @@
     }
     window.toolbarStyle = NSWindowToolbarStyleUnified;
     window.titleVisibility = NSWindowTitleVisible;
-    [self installBackdropInWindow:window];
+    [self installGroundInWindow:window];
     m_Toolbar.visible = visible;
     window.subtitle = subtitle ?: @"";
 }
@@ -210,6 +183,7 @@
         state[@"navigational"] = @(item.value("navigational").toBool());
         state[@"hidden"] = @(!item.value("visible", true).toBool());
         state[@"focused"] = @(item.value("focused").toBool());
+        state[@"labeled"] = @(item.value("labeled").toBool());
     }
 }
 
@@ -220,7 +194,25 @@
         toolbarItem.label = label;
     }
     NSImage* image = state[@"image"];
-    if (toolbarItem.image != image) {
+    if ([state[@"labeled"] boolValue]) {
+        // A button with the symbol and its label side by side ("Add PC"), as its own view
+        NSButton* button = [toolbarItem.view isKindOfClass:NSButton.class] ? (NSButton*)toolbarItem.view : nil;
+        if (button == nil) {
+            button = [NSButton buttonWithTitle:label target:self action:@selector(buttonClicked:)];
+            button.bezelStyle = NSBezelStyleToolbar;
+            button.imagePosition = NSImageLeading;
+            button.identifier = toolbarItem.itemIdentifier;
+            toolbarItem.view = button;
+        }
+        if (![button.title isEqualToString:label]) {
+            button.title = label;
+        }
+        if (button.image != image) {
+            button.image = image;
+        }
+        button.toolTip = state[@"toolTip"];
+    }
+    else if (toolbarItem.image != image) {
         toolbarItem.image = image;
     }
     toolbarItem.toolTip = state[@"toolTip"];
@@ -245,6 +237,11 @@
     // A click selects a selectable item; only keyboard focus should leave it highlighted
     m_Toolbar.selectedItemIdentifier = nil;
     m_Owner->notifyTriggered(QString::fromNSString(sender.itemIdentifier));
+}
+
+- (void)buttonClicked:(NSButton*)sender
+{
+    m_Owner->notifyTriggered(QString::fromNSString(sender.identifier));
 }
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar
@@ -295,6 +292,24 @@ willBeInsertedIntoToolbar:(BOOL)flag
 ForkWindowChrome::~ForkWindowChrome()
 {
     [(ForkToolbarController*)m_Platform release];
+    if (m_MotionObserver != nullptr) {
+        [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:(id)m_MotionObserver];
+        [(id)m_MotionObserver release];
+    }
+}
+
+bool ForkWindowChrome::reduceMotion()
+{
+    // Follow the setting from the first time QML asks
+    if (m_MotionObserver == nullptr) {
+        id observer = [NSWorkspace.sharedWorkspace.notificationCenter
+            addObserverForName:NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification
+                        object:nil
+                         queue:NSOperationQueue.mainQueue
+                    usingBlock:^(NSNotification*) { emit reduceMotionChanged(); }];
+        m_MotionObserver = [observer retain];
+    }
+    return NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
 }
 
 void ForkWindowChrome::attach(QWindow* window)
@@ -307,6 +322,11 @@ void ForkWindowChrome::attach(QWindow* window)
     }
 
     if (window == nullptr || window == m_Window) {
+        return;
+    }
+
+    // Only a Cocoa window has an NSView behind winId(); the offscreen platform (screenshots) has none
+    if (QGuiApplication::platformName() != QLatin1String("cocoa")) {
         return;
     }
     m_Window = window;

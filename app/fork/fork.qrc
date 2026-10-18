@@ -8,8 +8,47 @@
         <file alias="ForkStretchOption.qml">../gui/ForkStretchOption.qml</file>
         <file alias="ForkNativeToolbar.qml">../gui/ForkNativeToolbar.qml</file>
         <file alias="ForkDialogBackground.qml">../gui/ForkDialogBackground.qml</file>
+        <file alias="ForkPopupBackground.qml">../gui/ForkPopupBackground.qml</file>
+        <file alias="ForkMenuSeparator.qml">../gui/ForkMenuSeparator.qml</file>
+        <file alias="ForkToast.qml">../gui/ForkToast.qml</file>
+        <file alias="ForkShortcutsDialog.qml">../gui/ForkShortcutsDialog.qml</file>
         <file alias="ForkBusyIndicator.qml">../gui/ForkBusyIndicator.qml</file>
         <file alias="ForkAspectRatioPicker.qml">../gui/ForkAspectRatioPicker.qml</file>
         <file alias="ForkCustomResolutionDialog.qml">../gui/ForkCustomResolutionDialog.qml</file>
+        <!-- The redesign (see FORK.md, Look) -->
+        <file alias="ForkThemeData.qml">../gui/ForkThemeData.qml</file>
+        <file alias="ForkText.qml">../gui/ForkText.qml</file>
+        <file alias="ForkSymbol.qml">../gui/ForkSymbol.qml</file>
+        <file alias="ForkMoonMark.qml">../gui/ForkMoonMark.qml</file>
+        <file alias="ForkButton.qml">../gui/ForkButton.qml</file>
+        <file alias="ForkSwitch.qml">../gui/ForkSwitch.qml</file>
+        <file alias="ForkSwitchRow.qml">../gui/ForkSwitchRow.qml</file>
+        <file alias="ForkSegmented.qml">../gui/ForkSegmented.qml</file>
+        <file alias="ForkOptionCard.qml">../gui/ForkOptionCard.qml</file>
+        <file alias="ForkCard.qml">../gui/ForkCard.qml</file>
+        <file alias="ForkKeys.qml">../gui/ForkKeys.qml</file>
+        <file alias="ForkTip.qml">../gui/ForkTip.qml</file>
+        <file alias="ForkWarnBox.qml">../gui/ForkWarnBox.qml</file>
+        <file alias="ForkSlider.qml">../gui/ForkSlider.qml</file>
+        <file alias="ForkTextField.qml">../gui/ForkTextField.qml</file>
+        <file alias="ForkNavButton.qml">../gui/ForkNavButton.qml</file>
+        <file alias="ForkHostCard.qml">../gui/ForkHostCard.qml</file>
+        <file alias="ForkStatusScene.qml">../gui/ForkStatusScene.qml</file>
+        <file alias="ForkPcHeader.qml">../gui/ForkPcHeader.qml</file>
+        <file alias="ForkPcFooter.qml">../gui/ForkPcFooter.qml</file>
+        <file alias="ForkThisMacStrip.qml">../gui/ForkThisMacStrip.qml</file>
+        <file alias="ForkAppsHeader.qml">../gui/ForkAppsHeader.qml</file>
+        <file alias="ForkLaunchPanel.qml">../gui/ForkLaunchPanel.qml</file>
+        <file alias="ForkFpsDialog.qml">../gui/ForkFpsDialog.qml</file>
+        <file alias="ForkSettingsView.qml">../gui/ForkSettingsView.qml</file>
+        <file alias="ForkSettingsDisplay.qml">../gui/ForkSettingsDisplay.qml</file>
+        <file alias="ForkSettingsVideo.qml">../gui/ForkSettingsVideo.qml</file>
+        <file alias="ForkSettingsAudio.qml">../gui/ForkSettingsAudio.qml</file>
+        <file alias="ForkSettingsMouse.qml">../gui/ForkSettingsMouse.qml</file>
+        <file alias="ForkSettingsKeyboard.qml">../gui/ForkSettingsKeyboard.qml</file>
+        <file alias="ForkSettingsGamepads.qml">../gui/ForkSettingsGamepads.qml</file>
+        <file alias="ForkSettingsHost.qml">../gui/ForkSettingsHost.qml</file>
+        <file alias="ForkSettingsApp.qml">../gui/ForkSettingsApp.qml</file>
+        <file alias="ForkSettingsMac.qml">../gui/ForkSettingsMac.qml</file>
     </qresource>
 </RCC>

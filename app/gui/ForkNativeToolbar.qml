@@ -11,7 +11,8 @@ Item {
 
     property var targetWindow
 
-    // Each entry: { id, button, symbol (SF Symbol name), label, toolTip, visible, navigational, focused }
+    // Each entry: { id, button, symbol (SF Symbol name), label, toolTip, visible, navigational, focused,
+    // labeled (shows the label beside the symbol) }
     property var items: []
 
     // Hidden while a stream starts or ends, like the QML toolbar
@@ -31,6 +32,7 @@ Item {
                 "toolTip": item.toolTip || "",
                 "visible": item.visible !== false,
                 "navigational": item.navigational === true,
+                "labeled": item.labeled === true,
                 "focused": item.focused === true
             }
         }))

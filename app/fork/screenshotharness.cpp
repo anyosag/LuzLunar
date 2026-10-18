@@ -29,18 +29,44 @@ namespace
 
     // Each step runs its script, waits, then saves a screenshot
     const Step k_Steps[] = {
+        // A window tall enough for the redesign's Settings cards
+        { nullptr, "window.width = 1280; window.height = 860", 500 },
         { "1-computers", nullptr, 6000 },
-        // The CI Mac has no PCs, so show sample tiles in their states (online, offline, not paired)
+        // The PCs of this Mac, if it has any: the first one's apps, cached from its last visit
+        { "1a-apps",
+          "var pcs = stackView.currentItem.computerModel; "
+          "if (pcs.rowCount() > 0) { "
+          "  var appView = Qt.createComponent('qrc:/gui/AppView.qml').createObject(stackView, "
+          "    { computerIndex: 0, objectName: pcs.data(pcs.index(0, 0), 256) }); "
+          "  stackView.push(appView, StackView.Immediate) "
+          "}", 3000 },
+        { nullptr, "if (stackView.depth > 1) stackView.pop(null, StackView.Immediate)", 500 },
+        // The CI Mac has no PCs, so show sample tiles in their states (running an app, asleep, not paired)
         { "1b-computer-tiles",
           "stackView.currentItem.model = Qt.createQmlObject('import QtQuick; ListModel { "
-          "ListElement { name: \"GonzaloPC\"; online: true; paired: true; statusUnknown: false; serverSupported: true; wakeable: false; details: \"\" } "
-          "ListElement { name: \"Living Room\"; online: false; paired: true; statusUnknown: false; serverSupported: true; wakeable: true; details: \"\" } "
-          "ListElement { name: \"Office PC\"; online: true; paired: false; statusUnknown: false; serverSupported: true; wakeable: false; details: \"\" } "
+          "ListElement { name: \"GonzaloPC\"; online: true; paired: true; busy: true; statusUnknown: false; serverSupported: true; wakeable: true; details: \"\" } "
+          "ListElement { name: \"Living Room\"; online: false; paired: true; busy: false; statusUnknown: false; serverSupported: true; wakeable: true; details: \"\" } "
+          "ListElement { name: \"Office PC\"; online: true; paired: false; busy: false; statusUnknown: false; serverSupported: true; wakeable: false; details: \"\" } "
           "}', window); "
           "stackView.currentItem.currentIndex = 0; stackView.currentItem.forceActiveFocus()", 1500 },
-        { "2-settings-top", "settingsButton.clicked()", 2500 },
-        { "3-settings-middle", "stackView.currentItem.contentY = Math.max(0, stackView.currentItem.contentHeight / 2 - stackView.currentItem.height / 2)", 1500 },
-        { "4-settings-bottom", "stackView.currentItem.contentY = Math.max(0, stackView.currentItem.contentHeight - stackView.currentItem.height)", 1500 },
+        // The stream launch screen, with sample values (a real one needs a stream)
+        { "1c-launch",
+          "stackView.push(Qt.createQmlObject('import QtQuick; Item { ForkLaunchPanel { "
+          "appName: \"Desktop\"; hostName: \"GonzaloPC\"; stageText: \"Starting RTSP handshake...\"; stagesDone: 4; started: true; "
+          "summary: [\"3024×1890 · 16:10\", \"120 fps\", \"81 Mb/s\", \"HEVC · HDR\"] } }', stackView, 'qrc:/gui/HarnessLaunch.qml'), StackView.Immediate)", 2000 },
+        { nullptr, "stackView.pop(null, StackView.Immediate)", 500 },
+        { "2-settings-display", "settingsButton.clicked()", 2500 },
+        { "2b-settings-display-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
+        { "2c-settings-video", "stackView.currentItem.showSection('video')", 1500 },
+        { "2d-settings-audio", "stackView.currentItem.showSection('audio')", 1500 },
+        { "2e-settings-mouse", "stackView.currentItem.showSection('mouse')", 1500 },
+        { "2f-settings-keyboard", "stackView.currentItem.showSection('keyboard')", 1500 },
+        { "2g-settings-keyboard-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
+        { "2h-settings-gamepads", "stackView.currentItem.showSection('gamepads')", 1500 },
+        { "2i-settings-host", "stackView.currentItem.showSection('host')", 1500 },
+        { "2j-settings-app", "stackView.currentItem.showSection('app')", 1500 },
+        { "2k-settings-mac", "stackView.currentItem.showSection('mac')", 1500 },
+        { "2l-settings-mac-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
         { "5-add-pc-dialog", "goBack(); addPcDialog.open()", 2000 },
         { "6-stream-settings-dialog",
           "addPcDialog.close(); "
@@ -92,6 +118,10 @@ namespace
         }
 
         QTimer::singleShot(step.delayMs, [outputDir, index, step]() {
+            if (step.name == nullptr) {
+                runStep(outputDir, index + 1);
+                return;
+            }
             if (QQuickWindow* window = mainWindow()) {
                 QString path = QDir(outputDir).filePath(QString::fromUtf8(step.name) + ".png");
                 if (window->grabWindow().save(path)) {

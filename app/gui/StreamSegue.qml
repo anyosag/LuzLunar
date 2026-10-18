@@ -13,11 +13,16 @@ Item {
                                            qsTr("Starting %1...").arg(appName)
     property bool isResume : false
     property bool quitAfter : false
+    property string hostName: "" // [fork] for the launch screen; AppView sets it
+    property var summary: [] // [fork] the launch screen's chips (AppView.forkStreamSummary)
+    property bool forkStreamed: false // [fork] the stream began, so ending it earns a toast
+    property bool forkQuitting: false // [fork] the host app is being quit after the stream
 
     function stageStarting(stage)
     {
         // Update the spinner text
         stageText = qsTr("Starting %1...").arg(stage)
+        launchPanel.stagesDone++ // [fork]
     }
 
     function stageFailed(stage, errorCode, failingPorts)
@@ -34,9 +39,9 @@ Item {
     {
         // Hide the UI contents so the user doesn't
         // see them briefly when we pop off the StackView
-        stageSpinner.visible = false
-        stageLabel.visible = false
-        hintText.visible = false
+        launchPanel.connected = true // [fork] the last of the launch screen's steps
+        forkStreamed = true // [fork]
+        launchPanel.visible = false // [fork] was the spinner, stage label and hint
 
         // Hide the window now that streaming has begun
         window.visible = false
@@ -51,6 +56,8 @@ Item {
 
     function quitStarting()
     {
+        forkQuitting = true // [fork]
+
         // Avoid the push transition animation
         var component = Qt.createComponent("QuitSegue.qml")
         stackView.replace(stackView.currentItem, component.createObject(stackView, {"appName": appName}), StackView.Immediate)
@@ -89,6 +96,13 @@ Item {
                 streamSegueErrorDialog.quitAfter = quitAfter
                 streamSegueErrorDialog.open()
             }
+        }
+
+        // [fork] The design says what became of the app when a stream ends cleanly
+        if (forkStreamed && !quitAfter && !streamSegueErrorDialog.text) {
+            var pc = hostName !== "" ? hostName : qsTr("your PC")
+            window.forkToast(forkQuitting ? qsTr("Stream ended. %1 quit on %2.").arg(appName).arg(pc)
+                                          : qsTr("Stream ended. %1 is still running on %2.").arg(appName).arg(pc))
         }
     }
 
@@ -152,8 +166,7 @@ Item {
             // in the hintText control itself to synchronize
             // with Session.exec() which requires no concurrent
             // gamepad usage.
-            hintText.text = qsTr("Tip:") + " " + qsTr("Press %1 to disconnect your session").arg(SdlGamepadKeyNavigation.getConnectedGamepads() > 0 ?
-                                                  qsTr("Start+Select+L1+R1") : qsTr("Ctrl+Alt+Shift+Q"))
+            launchPanel.gamepad = SdlGamepadKeyNavigation.getConnectedGamepads() > 0 // [fork] was hintText's tip
 
             // Stop GUI gamepad usage now
             SdlGamepadKeyNavigation.disable()
@@ -168,7 +181,7 @@ Item {
             // This spinner is shown only after session.initialize() has completed
             // to prevent active animations from running during decoder probing,
             // which causes re-entrant event loop livelocks with libdecor-gtk.
-            stageSpinner.visible = true
+            launchPanel.started = true // [fork] was stageSpinner.visible = true
 
             // Don't wait unless we have toasts to display
             startSessionTimer.interval = 0
@@ -200,36 +213,13 @@ Item {
         sourceComponent: Item {}
     }
 
-    Row {
-        anchors.centerIn: parent
-        spacing: 5
-
-        ForkBusyIndicator { // [fork] was BusyIndicator
-            id: stageSpinner
-            running: visible
-            visible: false
-        }
-
-        Label {
-            id: stageLabel
-            height: Math.max(stageSpinner.height, implicitHeight) // [fork] was stageSpinner.height
-            text: stageText
-            textFormat: Text.PlainText // [fork] holds the app name from the host, never markup
-            font.pointSize: 20
-            verticalAlignment: Text.AlignVCenter
-
-            wrapMode: Text.Wrap
-        }
-    }
-
-    Label {
-        id: hintText
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 50
-        anchors.horizontalCenter: parent.horizontalCenter
-        font.pointSize: 18
-        verticalAlignment: Text.AlignVCenter
-
-        wrapMode: Text.Wrap
+    // [fork] The redesign's launch screen, in place of upstream's spinner, stage label and hint
+    ForkLaunchPanel {
+        id: launchPanel
+        appName: parent.appName
+        hostName: parent.hostName
+        isResume: parent.isResume
+        stageText: parent.stageText
+        summary: parent.summary
     }
 }

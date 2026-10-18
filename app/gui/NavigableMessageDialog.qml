@@ -3,6 +3,8 @@ import QtQuick.Controls 2.2
 import QtQuick.Controls.impl 2.15 // [fork] IconImage
 import QtQuick.Layouts 1.2
 
+import ForkTheme 1.0 // [fork]
+
 NavigableDialog {
     id: dialog
 
@@ -13,6 +15,8 @@ NavigableDialog {
     property string helpText
     property string helpUrl : "https://github.com/moonlight-stream/moonlight-docs/wiki/Troubleshooting"
     property string helpTextSeparator : " "
+    // [fork] The design's confirmations have a title and no icon
+    property bool forkShowIcon: true
 
     onOpened: {
         // Force keyboard focus on the label so keyboard navigation works
@@ -42,7 +46,7 @@ NavigableDialog {
                 width: 50
                 height: 50
             }
-            visible: !showSpinner
+            visible: !showSpinner && dialog.forkShowIcon // [fork] was !showSpinner
         }
 
         Label {
@@ -51,6 +55,10 @@ NavigableDialog {
             id: dialogLabel
             text: dialogText + ((helpText && (standardButtons & Dialog.Help)) ? (helpTextSeparator + helpText) : "")
             textFormat: Text.PlainText // [fork] the text can hold host names and host errors, never markup
+            font.pixelSize: 14 // [fork] the design's dialog text
+            color: ForkTheme.text2 // [fork]
+            lineHeightMode: Text.FixedHeight // [fork]
+            lineHeight: 21 // [fork]
             wrapMode: Text.Wrap
             elide: Label.ElideRight
 
@@ -64,9 +72,17 @@ NavigableDialog {
     footer: DialogButtonBox {
         id: dialogButtonBox
         standardButtons: dialog.standardButtons
+        alignment: Qt.AlignRight // [fork] the redesign's dialog buttons
+        buttonLayout: DialogButtonBox.MacLayout // [fork] Cancel, then the confirming button at the right
+        spacing: 8 // [fork]
+        padding: 24 // [fork]
+        topPadding: 4 // [fork]
+        background: Item {} // [fork]
 
-        delegate: Button {
-            flat: true
+        delegate: ForkButton { // [fork] was Button { flat: true }
+            kind: DialogButtonBox.buttonRole === DialogButtonBox.AcceptRole || DialogButtonBox.buttonRole === DialogButtonBox.YesRole
+                  ? (dialog.destructive ? "danger" : "primary") : "default"
+            implicitWidth: Math.max(88, implicitContentWidth + leftPadding + rightPadding)
 
             Keys.onReturnPressed: clicked()
             Keys.onEnterPressed: clicked()

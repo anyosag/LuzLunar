@@ -964,8 +964,10 @@ int main(int argc, char *argv[])
     IdentityManager::get();
 
 #ifdef Q_OS_DARWIN
-    // [fork] LuzLunar uses native macOS controls that follow the system appearance and accent color
-    QQuickStyle::setStyle("macOS");
+    // [fork] LuzLunar's stock controls (dialogs, drop-downs, menus, text fields) use the Fusion style,
+    // which follows the palette main.qml sets from ForkTheme, so they match the redesign. (The
+    // native macOS style draws with AppKit in the system colors, which no palette changes.)
+    QQuickStyle::setStyle("Fusion");
 #else
     // We require the Material theme
     QQuickStyle::setStyle("Material");
