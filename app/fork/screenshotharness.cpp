@@ -1,15 +1,19 @@
 // UI screenshots for CI. Inactive unless LUZLUNAR_SCREENSHOTS is set to an output folder. Then the
 // app opens its main views and dialogs one after another, saves each window as a PNG with Qt's own
-// window grab (no screen recording permission needed), and quits.
+// window grab (no screen recording permission needed), and quits. QML warnings and failed step
+// scripts go to harness-log.txt in the same folder, since the app's own log isn't in CI's output.
 //
 //   LUZLUNAR_SCREENSHOTS=/tmp/shots LUZLUNAR_SCREENSHOT_SCHEME=dark LuzLunar
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QGuiApplication>
 #include <QImage>
 #include <QProcess>
 #include <QQmlContext>
+#include <QQmlEngine>
+#include <QQmlError>
 #include <QQmlExpression>
 #include <QQuickWindow>
 #include <QStyleHints>
@@ -25,6 +29,9 @@ namespace
         const char* name;     // screenshot file name, or null to only run the script
         const char* script;   // evaluated in main.qml's context before the screenshot, or null
         int delayMs;          // time to wait after the script
+        // The objectName of the window's child object the script runs on, so its properties and
+        // functions need no prefix; null runs it on the window
+        const char* target = nullptr;
     };
 
     // Each step runs its script, waits, then saves a screenshot
@@ -69,11 +76,29 @@ namespace
         { "2k-settings-mac", "stackView.currentItem.showSection('mac')", 1500 },
         { "2l-settings-mac-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
         { "5-add-pc-dialog", "goBack(); addPcDialog.open()", 2000 },
+        // An app's stream settings: every row on Global, the Office preset, Office with one row
+        // changed (Custom), the end of the list, and the top again in the window's default height
         { "6-stream-settings-dialog",
           "addPcDialog.close(); "
-          "var d = Qt.createComponent('qrc:/gui/StreamProfileDialog.qml').createObject(window, { appName: 'Office Mode' }); "
+          "var d = Qt.createComponent('qrc:/gui/StreamProfileDialog.qml').createObject(window, "
+          "  { appName: 'Office Mode', objectName: 'harnessStreamSettings' }); "
           "d.fields = d.buildFields(); d.open(); d.refresh()", 2000 },
+        { "6a-stream-settings-office", "applyPreset(officePreset)", 1000, "harnessStreamSettings" },
+        { "6b-stream-settings-custom", "chooseValue('fps', 60)", 1000, "harnessStreamSettings" },
+        { "6c-stream-settings-end", "scrollY = scrollMax", 1000, "harnessStreamSettings" },
+        { nullptr, "window.height = 600", 500 },
+        { "6d-stream-settings-short", "scrollY = 0", 1500, "harnessStreamSettings" },
     };
+
+    // Adds a line to harness-log.txt in the output folder
+    void logLine(const QString& outputDir, const QString& line)
+    {
+        QFile file(QDir(outputDir).filePath("harness-log.txt"));
+        if (file.open(QIODevice::Append | QIODevice::Text)) {
+            file.write(line.toUtf8() + '\n');
+        }
+        qWarning().noquote() << "[fork] Screenshot harness:" << line;
+    }
 
     QQuickWindow* mainWindow()
     {
@@ -110,11 +135,35 @@ namespace
             return;
         }
 
+        // QML's warnings while the steps run, once the main window's engine is there
+        static bool watchingWarnings = false;
+        if (!watchingWarnings) {
+            if (QQmlEngine* engine = qmlEngine(window)) {
+                watchingWarnings = true;
+                QObject::connect(engine, &QQmlEngine::warnings, engine, [outputDir](const QList<QQmlError>& warnings) {
+                    for (const QQmlError& warning : warnings) {
+                        logLine(outputDir, warning.toString());
+                    }
+                });
+            }
+        }
+
         if (step.script != nullptr) {
-            QQmlExpression expression(qmlContext(window), window, QString::fromUtf8(step.script));
-            expression.evaluate();
-            if (expression.hasError()) {
-                qWarning() << "[fork] Screenshot harness script failed:" << expression.error().toString();
+            QString stepName = step.name != nullptr ? QString::fromUtf8(step.name) : QString("step %1").arg(index);
+            QObject* scope = window;
+            if (step.target != nullptr) {
+                scope = window->findChild<QObject*>(QString::fromUtf8(step.target));
+            }
+
+            if (scope == nullptr) {
+                logLine(outputDir, QString("No object named %1 for %2").arg(QString::fromUtf8(step.target), stepName));
+            }
+            else {
+                QQmlExpression expression(qmlContext(window), scope, QString::fromUtf8(step.script));
+                expression.evaluate();
+                if (expression.hasError()) {
+                    logLine(outputDir, QString("Script of %1 failed: %2").arg(stepName, expression.error().toString()));
+                }
             }
         }
 
