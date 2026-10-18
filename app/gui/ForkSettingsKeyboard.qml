@@ -6,9 +6,10 @@ import StreamingPreferences 1.0
 import SystemProperties 1.0
 
 // [fork] Settings › Keyboard & Clipboard: what the Mac's Command, Control and Option keys send to
-// the host PC, whether system shortcuts like ⌘Tab go to the PC, and how the clipboard is shared with
-// Apollo hosts. It holds the settings of upstream's "Capture system keyboard shortcuts" (as a
-// three-way choice) and of ForkSettingsGroupBox's Mac keys and clipboard sync.
+// the host PC, whether system shortcuts like ⌘Tab go to the PC (and on a Mac, which ones), and how
+// the clipboard is shared with Apollo hosts. It holds the settings of upstream's "Capture system
+// keyboard shortcuts" (as a three-way choice), of ForkMacShortcutsOption under it, and of
+// ForkSettingsGroupBox's Mac keys and clipboard sync.
 Column {
     id: keyboardSection
 
@@ -39,6 +40,33 @@ Column {
         default:
             return qsTr("Command does nothing on the PC.")
         }
+    }
+
+    // ---- Mac shortcuts --------------------------------------------------------------------
+
+    // Whether system shortcuts go to the PC at all; the Mac shortcut choices need it
+    readonly property bool captureOn: StreamingPreferences.captureSysKeysMode !== StreamingPreferences.CSK_OFF
+
+    // macShortcutToHost() is a call, not a property, so the switches re-read it when this counts up
+    property int macShortcutsRevision: 0
+
+    Connections {
+        target: ForkPreferences
+
+        function onMacShortcutsChanged() {
+            keyboardSection.macShortcutsRevision++
+        }
+    }
+
+    // What the Mac shortcut choices do now
+    readonly property string macShortcutsNote: {
+        if (!ForkPreferences.macShortcutsSelectable) {
+            return qsTr("This macOS doesn't let LuzLunar pick shortcuts, so while capturing, the Mac keeps them all unless every shortcut goes to the PC.")
+        }
+        if (keyboardSection.captureOn) {
+            return qsTr("The shortcuts turned on here go to the PC while capturing; the rest stay with the Mac. Keys arrive after the Mac key remapping above, so ⌘Space arrives as Ctrl+Space and ⌃← as Win+←. Force Quit (⌥⌘Esc) always stays with the Mac.")
+        }
+        return qsTr("Choose In fullscreen or Always above to send these Mac shortcuts to the PC.")
     }
 
     ForkCard {
@@ -260,6 +288,80 @@ Column {
                     width: parent.width
                     kind: "help"
                     text: qsTr("This captures system-wide shortcuts like ⌘Tab that would normally go to this Mac. Some, like Ctrl+Alt+Del on Windows, can't be captured by any app.")
+                }
+            }
+        }
+
+        // Which Mac shortcuts capture takes (forksystemshortcuts.cpp applies them while streaming),
+        // set off by a line
+        Item {
+            visible: SystemProperties.isDarwin
+            width: parent.width
+            height: macShortcutsColumn.y + macShortcutsColumn.implicitHeight
+
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: ForkTheme.lineSoft
+            }
+
+            Column {
+                id: macShortcutsColumn
+                y: 17
+                width: parent.width
+                spacing: 10
+
+                ForkText {
+                    kind: "label"
+                    font.weight: Font.DemiBold
+                    text: qsTr("Mac shortcuts that go to the PC")
+                }
+
+                ForkText {
+                    width: parent.width
+                    kind: "help"
+                    text: keyboardSection.macShortcutsNote
+                }
+
+                Column {
+                    width: parent.width
+                    spacing: 0
+
+                    Repeater {
+                        model: SystemProperties.isDarwin ? ForkPreferences.macShortcutGroups() : []
+
+                        delegate: ForkSwitchRow {
+                            required property var modelData
+                            required property int index
+
+                            // "Spotlight (⌘Space, ⌥⌘Space)" shows as the name over its keys
+                            readonly property var labelParts: /^(.*) \((.*)\)$/.exec(modelData.label)
+
+                            showDivider: index > 0
+                            label: labelParts ? labelParts[1] : modelData.label
+                            help: labelParts ? labelParts[2] : ""
+                            enabled: keyboardSection.captureOn && ForkPreferences.macShortcutsSelectable && !ForkPreferences.macShortcutsAll
+                            checked: {
+                                keyboardSection.macShortcutsRevision
+                                return ForkPreferences.macShortcutToHost(modelData.key)
+                            }
+                            onToggled: (on) => ForkPreferences.setMacShortcutToHost(modelData.key, on)
+                        }
+                    }
+
+                    ForkSwitchRow {
+                        label: qsTr("Send every Mac shortcut to the PC")
+                        help: qsTr("Moonlight's behavior: while capturing, every system shortcut goes to the PC, including screenshots (⇧⌘4) and other apps' global shortcuts.")
+                        enabled: keyboardSection.captureOn
+                        checked: ForkPreferences.macShortcutsAll
+                        onToggled: (on) => ForkPreferences.macShortcutsAll = on
+                    }
+                }
+
+                ForkTip {
+                    width: parent.width
+                    key: "K"
+                    text: qsTr("Control-Option-Shift-K gives the Mac its shortcuts back for the rest of a stream")
                 }
             }
         }
