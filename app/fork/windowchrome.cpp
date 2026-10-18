@@ -51,4 +51,9 @@ void ForkWindowChrome::apply()
 {
 }
 
+bool ForkWindowChrome::reduceMotion()
+{
+    return false;
+}
+
 #endif

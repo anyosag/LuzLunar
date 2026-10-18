@@ -22,6 +22,7 @@
 #define SER_SRVCERT "srvcert"
 #define SER_CUSTOMNAME "customname"
 #define SER_NVIDIASOFTWARE "nvidiasw"
+#define SER_FORK_APOLLOSOFTWARE "forkapollosw" // [fork]
 
 NvComputer::NvComputer(QSettings& settings)
 {
@@ -39,6 +40,7 @@ NvComputer::NvComputer(QSettings& settings)
                                     settings.value(SER_MANUALPORT, QVariant(DEFAULT_HTTP_PORT)).toUInt());
     this->serverCert = QSslCertificate(settings.value(SER_SRVCERT).toByteArray());
     this->isNvidiaServerSoftware = settings.value(SER_NVIDIASOFTWARE).toBool();
+    this->isApolloServerSoftware = settings.value(SER_FORK_APOLLOSOFTWARE).toBool(); // [fork]
 
     int appCount = settings.beginReadArray(SER_APPLIST);
     this->appList.reserve(appCount);
@@ -92,6 +94,7 @@ void NvComputer::serialize(QSettings& settings, bool serializeApps) const
     settings.setValue(SER_MANUALPORT, manualAddress.port());
     settings.setValue(SER_SRVCERT, serverCert.toPem());
     settings.setValue(SER_NVIDIASOFTWARE, isNvidiaServerSoftware);
+    settings.setValue(SER_FORK_APOLLOSOFTWARE, isApolloServerSoftware); // [fork]
 
     // Avoid deleting an existing applist if we couldn't get one
     if (!appList.isEmpty() && serializeApps) {
@@ -117,6 +120,7 @@ bool NvComputer::isEqualSerialized(const NvComputer &that) const
            this->manualAddress == that.manualAddress &&
            this->serverCert == that.serverCert &&
            this->isNvidiaServerSoftware == that.isNvidiaServerSoftware &&
+           this->isApolloServerSoftware == that.isApolloServerSoftware && // [fork]
            this->appList == that.appList;
 }
 
@@ -216,6 +220,10 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     // codename in the state field and no version of Sunshine does. We can use this to bypass
     // some assumptions about Nvidia hardware that don't apply to Sunshine hosts.
     this->isNvidiaServerSoftware = NvHTTP::getXmlString(serverInfo, "state").contains("MJOLNIR");
+
+    // [fork] Apollo tells a paired client its permission bits, in serverinfo over HTTPS; Sunshine
+    // and Nvidia's software don't, so the redesign can say which host software a PC runs
+    this->isApolloServerSoftware = !NvHTTP::getXmlString(serverInfo, "Permission").isEmpty();
 
     this->pairState = NvHTTP::getXmlString(serverInfo, "PairStatus") == "1" ?
                 PS_PAIRED : PS_NOT_PAIRED;
@@ -599,6 +607,7 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(appVersion);
     ASSIGN_IF_CHANGED(isSupportedServerVersion);
     ASSIGN_IF_CHANGED(isNvidiaServerSoftware);
+    ASSIGN_IF_CHANGED(isApolloServerSoftware); // [fork]
     ASSIGN_IF_CHANGED(maxLumaPixelsHEVC);
     ASSIGN_IF_CHANGED(gpuModel);
     ASSIGN_IF_CHANGED_AND_NONNULL(serverCert);

@@ -117,6 +117,7 @@ public:
     QSslCertificate serverCert;
     QVector<NvApp> appList;
     bool isNvidiaServerSoftware;
+    bool isApolloServerSoftware = false; // [fork] reports this client's <Permission> bits, as Apollo does
     // Remember to update isEqualSerialized() when adding fields here!
 
     // Synchronization

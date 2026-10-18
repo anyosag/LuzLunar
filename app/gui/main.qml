@@ -9,6 +9,7 @@ import AutoUpdateChecker 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
+import ForkTheme 1.0 // [fork]
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -22,9 +23,31 @@ ApplicationWindow {
     width: 1280
     height: 600
 
-    // [fork] With the native chrome, a translucent (Liquid Glass) backdrop sits behind the window,
-    // so the window itself draws no background
-    color: nativeToolbar.active ? "transparent" : palette.window
+    // [fork] The design's opaque Night or Day ground (the native title bar and toolbar sit on
+    // ForkTheme.bar, set in windowchrome_mac.mm)
+    color: ForkTheme.bg // [fork] was palette.window
+
+    // [fork] Stock controls (dialogs, menus, drop-downs, text fields, tooltips) in LuzLunar's colors
+    palette.window: ForkTheme.surface
+    palette.windowText: ForkTheme.text
+    palette.base: ForkTheme.bar
+    palette.alternateBase: ForkTheme.raised
+    palette.text: ForkTheme.text
+    palette.button: ForkTheme.raised
+    palette.buttonText: ForkTheme.text
+    palette.brightText: ForkTheme.text
+    palette.highlight: ForkTheme.accent
+    palette.highlightedText: ForkTheme.textOnAccent
+    palette.placeholderText: ForkTheme.faint
+    palette.light: ForkTheme.lineStrong
+    palette.midlight: ForkTheme.line
+    palette.mid: ForkTheme.line
+    palette.dark: ForkTheme.lineSoft
+    palette.shadow: "#000000"
+    palette.toolTipBase: ForkTheme.surface
+    palette.toolTipText: ForkTheme.text
+    palette.link: ForkTheme.accentInk
+    palette.linkVisited: ForkTheme.accentInk
 
     // This function runs prior to creation of the initial StackView item
     function doEarlyInit() {
@@ -215,6 +238,26 @@ ApplicationWindow {
         SdlGamepadKeyNavigation.notifyWindowFocus(visible && active)
     }
 
+    // [fork] The second line under the toolbar's title: LuzLunar's version in Settings, and the
+    // host software and state of the PC whose apps are showing ("Apollo · online")
+    readonly property string forkToolbarSubtitle: stackView.currentItem instanceof ForkSettingsView ? qsTr("Version %1").arg(SystemProperties.versionString)
+                                                : (stackView.currentItem && stackView.currentItem.forkHostStatus !== undefined ? stackView.currentItem.forkHostStatus : "")
+
+    // [fork] The redesign's toasts: a short confirmation at the bottom of the window, above dialogs
+    // ("Renamed to Office PC"). Any page can call window.forkToast(text).
+    function forkToast(text) {
+        forkToasts.show(text)
+    }
+
+    ForkToast {
+        id: forkToasts
+        parent: Overlay.overlay
+        z: 1000
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 24
+    }
+
     function navigateTo(url, objectType)
     {
         var existingItem = stackView.find(function(item, index) {
@@ -240,35 +283,48 @@ ApplicationWindow {
         targetWindow: window
         shown: toolBar.visible
         title: stackView.currentItem ? stackView.currentItem.objectName : ""
-        subtitle: stackView.currentItem instanceof SettingsView ? qsTr("Version %1").arg(SystemProperties.versionString) : ""
+        subtitle: window.forkToolbarSubtitle // [fork]
         items: [
             { "id": "back", "button": backButton, "symbol": "chevron.left", "label": qsTr("Back"),
               "navigational": true, "visible": stackView.depth > 1, "focused": backButton.activeFocus },
             { "id": "update", "button": updateButton, "symbol": "arrow.down.circle", "label": qsTr("Update"),
               "toolTip": updateButton.ToolTip.text, "visible": updateButton.browserUrl !== "", "focused": updateButton.activeFocus },
             { "id": "discord", "button": discordButton, "symbol": "bubble.left.and.bubble.right", "label": qsTr("Discord"),
-              "toolTip": discordButton.ToolTip.text, "visible": SystemProperties.hasBrowser && stackView.currentItem instanceof SettingsView,
+              "toolTip": discordButton.ToolTip.text, "visible": SystemProperties.hasBrowser && stackView.currentItem instanceof ForkSettingsView,
               "focused": discordButton.activeFocus },
-            { "id": "addPc", "button": addPcButton, "symbol": "plus", "label": qsTr("Add PC"),
+            { "id": "addPc", "button": addPcButton, "symbol": "plus", "label": qsTr("Add PC"), "labeled": true,
               "toolTip": addPcButton.ToolTip.text, "visible": stackView.currentItem instanceof PcView, "focused": addPcButton.activeFocus },
             { "id": "help", "button": helpButton, "symbol": "questionmark.circle", "label": qsTr("Help"),
-              "toolTip": helpButton.ToolTip.text, "visible": SystemProperties.hasBrowser, "focused": helpButton.activeFocus },
+              "toolTip": helpButton.ToolTip.text, "visible": helpButton.visible, "focused": helpButton.activeFocus },
             { "id": "settings", "button": settingsButton, "symbol": "gearshape", "label": qsTr("Settings"),
-              "toolTip": settingsButton.ToolTip.text, "visible": !(stackView.currentItem instanceof SettingsView),
+              "toolTip": settingsButton.ToolTip.text, "visible": !(stackView.currentItem instanceof ForkSettingsView),
               "focused": settingsButton.activeFocus }
         ]
     }
 
     header: ToolBar {
         id: toolBar
-        height: nativeToolbar.active ? 0 : 52 // [fork] macOS toolbar height (was 60), or none with the native toolbar
+        height: nativeToolbar.active ? 0 : 60 // [fork] the design's toolbar height, or none with the native toolbar
         clip: nativeToolbar.active // [fork] draws nothing and takes no clicks, but its buttons keep keyboard focus
         anchors.topMargin: 5
         anchors.bottomMargin: 5
 
+        // [fork] Where the native toolbar isn't shown (macOS before 15, offscreen screenshots), this one
+        // takes the theme's toolbar ground, like the native one's tinted glass
+        background: Rectangle {
+            color: ForkTheme.bar
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: ForkTheme.lineSoft
+            }
+        }
+
         Label {
             id: titleLabel
-            visible: toolBar.width > 700 && !nativeToolbar.active // [fork]
+            visible: false // [fork] the title sits at the left with its subtitle, as in the design (was toolBar.width > 700)
             anchors.fill: parent
             text: stackView.currentItem.objectName
             textFormat: Text.PlainText // [fork] an app grid's title is its host's name, never markup
@@ -310,26 +366,53 @@ ApplicationWindow {
                 }
             }
 
-            // This label will appear when the window gets too small and
-            // we need to ensure the toolbar controls don't collide
-            Label {
+            // [fork] The design's title: LuzLunar's mark and name on Your PCs, otherwise the page's
+            // title over its subtitle, at the left. It fills the row's free space, so the buttons
+            // after it sit at the right. (Was a centered label shown when the window got narrow.)
+            Item {
                 id: titleRowLabel
-                font.pointSize: titleLabel.font.pointSize
-                elide: Label.ElideRight
-                horizontalAlignment: Qt.AlignHCenter
-                verticalAlignment: Qt.AlignVCenter
                 Layout.fillWidth: true
+                Layout.fillHeight: true
 
-                // We need this label to always be visible so it can occupy
-                // the remaining space in the RowLayout. To "hide" it, we
-                // just set the text to empty string.
-                text: !titleLabel.visible ? stackView.currentItem.objectName : ""
-                textFormat: Text.PlainText // [fork] as titleLabel
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    spacing: 10
+
+                    ForkMoonMark {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: stackView.currentItem instanceof PcView
+                        size: 24
+                    }
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 34
+                        spacing: 2
+
+                        ForkText {
+                            width: parent.width
+                            kind: "label"
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                            text: stackView.currentItem ? stackView.currentItem.objectName : ""
+                        }
+
+                        ForkText {
+                            width: parent.width
+                            visible: text !== ""
+                            kind: "help"
+                            wrapMode: Text.NoWrap
+                            elide: Text.ElideRight
+                            text: window.forkToolbarSubtitle
+                        }
+                    }
+                }
             }
 
             Label {
                 id: versionLabel
-                visible: stackView.currentItem instanceof SettingsView
+                visible: false // [fork] the version is the title's subtitle (was stackView.currentItem instanceof ForkSettingsView)
                 text: qsTr("Version %1").arg(SystemProperties.versionString)
                 font.pointSize: 12
                 horizontalAlignment: Qt.AlignRight
@@ -339,7 +422,7 @@ ApplicationWindow {
             NavigableToolButton {
                 id: discordButton
                 visible: SystemProperties.hasBrowser &&
-                         stackView.currentItem instanceof SettingsView
+                         stackView.currentItem instanceof ForkSettingsView
 
                 iconSource: "qrc:/res/discord.svg"
 
@@ -362,6 +445,11 @@ ApplicationWindow {
 
                 iconSource:  "qrc:/res/ic_add_to_queue_white_48px.svg"
                 symbolName: "plus" // [fork]
+
+                // [fork] Labelled, as in the design (the native toolbar's item is labelled too)
+                text: qsTr("Add PC")
+                display: AbstractButton.TextBesideIcon
+                Layout.preferredWidth: implicitWidth
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -424,7 +512,7 @@ ApplicationWindow {
 
             NavigableToolButton {
                 id: helpButton
-                visible: SystemProperties.hasBrowser
+                visible: true // [fork] the shortcuts dialog needs no browser (was SystemProperties.hasBrowser)
 
                 iconSource: "qrc:/res/question_mark.svg"
                 symbolName: "questionmark.circle" // [fork]
@@ -440,8 +528,8 @@ ApplicationWindow {
                     onActivated: helpButton.clicked()
                 }
 
-                // TODO need to make sure browser is brought to foreground.
-                onClicked: Qt.openUrlExternally("https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide");
+                // [fork] The redesign's shortcuts dialog, which links to the setup guide (was the guide itself)
+                onClicked: forkShortcutsDialog.open()
 
                 Keys.onDownPressed: {
                     stackView.currentItem.forceActiveFocus(Qt.TabFocus)
@@ -471,12 +559,12 @@ ApplicationWindow {
                 id: settingsButton
 
                 // [fork] The native toolbar has no Settings item on the Settings page, so focus shouldn't land here
-                visible: !nativeToolbar.active || !(stackView.currentItem instanceof SettingsView)
+                visible: !nativeToolbar.active || !(stackView.currentItem instanceof ForkSettingsView)
 
                 iconSource:  "qrc:/res/settings.svg"
                 symbolName: "gearshape" // [fork]
 
-                onClicked: navigateTo("qrc:/gui/SettingsView.qml", SettingsView)
+                onClicked: navigateTo("qrc:/gui/ForkSettingsView.qml", ForkSettingsView) // [fork] the redesign's Settings (was SettingsView)
 
                 Keys.onDownPressed: {
                     stackView.currentItem.forceActiveFocus(Qt.TabFocus)
@@ -562,11 +650,33 @@ ApplicationWindow {
         }
     }
 
+    // [fork] Help: the shortcuts while streaming
+    ForkShortcutsDialog {
+        id: forkShortcutsDialog
+    }
+
     NavigableDialog {
         id: addPcDialog
-        property string label: qsTr("Enter the IP address of your host PC:")
+        property string label: qsTr("IP address or hostname") // [fork] the design's label (was "Enter the IP address of your host PC:")
+        // [fork] What was last added, for PcView's "Found" toast
+        property string lastAddress: ""
+        // [fork] An address is letters, digits and . - _ : % [ ] (IPv6 and ports included)
+        readonly property string trimmed: editText.text.trim()
+        readonly property bool addressValid: /^[A-Za-z0-9.\-_:%\[\]]+$/.test(trimmed)
 
+        title: qsTr("Add a PC") // [fork]
         standardButtons: Dialog.Ok | Dialog.Cancel
+
+        // [fork] The design's "Add PC" button, enabled once the address could be one
+        function updateOkButton() {
+            var add = standardButton(Dialog.Ok)
+            if (add) {
+                add.text = qsTr("Add PC")
+                add.enabled = addressValid
+            }
+        }
+        onAboutToShow: updateOkButton()
+        onAddressValidChanged: updateOkButton()
 
         onOpened: {
             // Force keyboard focus on the textbox so keyboard navigation works
@@ -578,29 +688,51 @@ ApplicationWindow {
         }
 
         onAccepted: {
-            if (editText.text) {
+            if (editText.text && addressValid) { // [fork] was editText.text
+                lastAddress = trimmed // [fork]
                 ComputerManager.addNewHostManually(editText.text.trim())
             }
         }
 
         ColumnLayout {
-            Label {
+            spacing: 8 // [fork]
+
+            ForkText { // [fork] the design's field label (was a bold Label)
+                kind: "label"
+                font.weight: Font.DemiBold
                 text: addPcDialog.label
-                font.bold: true
             }
 
-            TextField {
+            ForkTextField { // [fork] the redesign's field (was TextField)
                 id: editText
                 Layout.fillWidth: true
+                Layout.preferredWidth: 420 // [fork]
+                mono: true // [fork]
+                placeholderText: "192.168.1.20" // [fork]
+                invalid: addPcDialog.trimmed !== "" && !addPcDialog.addressValid // [fork]
                 focus: true
 
                 Keys.onReturnPressed: {
-                    addPcDialog.accept()
+                    if (addPcDialog.addressValid) { // [fork]
+                        addPcDialog.accept()
+                    }
                 }
 
                 Keys.onEnterPressed: {
-                    addPcDialog.accept()
+                    if (addPcDialog.addressValid) { // [fork]
+                        addPcDialog.accept()
+                    }
                 }
+            }
+
+            // [fork] The design's help, or what's wrong with the address
+            ForkText {
+                Layout.fillWidth: true
+                kind: "help"
+                font.pixelSize: 13
+                color: editText.invalid ? ForkTheme.danger : ForkTheme.muted
+                text: editText.invalid ? qsTr("Use the PC's IP address or hostname: letters, digits, dots, colons and dashes.")
+                                       : qsTr("Find it in Apollo or Sunshine on the PC, or in its network settings.")
             }
         }
     }

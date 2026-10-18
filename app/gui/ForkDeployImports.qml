@@ -3,6 +3,10 @@
 // makes sure the native macOS style plugin ships in LuzLunar.app.
 import QtQuick
 import QtQuick.Controls.macOS
+import QtQuick.Controls.Fusion
+import QtQuick.Controls.Basic
+import QtQuick.Shapes
+import QtQuick.Effects
 
 Item {
 }

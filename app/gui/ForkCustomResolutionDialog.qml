@@ -69,7 +69,7 @@ NavigableDialog {
         RowLayout {
             spacing: 8
 
-            TextField {
+            ForkTextField {
                 id: widthField
                 Layout.preferredWidth: 90
                 maximumLength: 4
@@ -97,7 +97,7 @@ NavigableDialog {
                 font.bold: true
             }
 
-            TextField {
+            ForkTextField {
                 id: heightField
                 Layout.preferredWidth: 90
                 maximumLength: 4

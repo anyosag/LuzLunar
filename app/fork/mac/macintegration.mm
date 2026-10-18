@@ -1,5 +1,7 @@
 #include "macintegration.h"
 
+#include <QGuiApplication>
+
 #include <QWindow>
 
 #import <AppKit/AppKit.h>
@@ -41,6 +43,10 @@ bool MacIntegration::clipboardHasConcealedContent()
 
 long MacIntegration::windowNumber(QWindow* window)
 {
+    // Only a Cocoa window has an NSView behind winId(); the offscreen platform (screenshots) has none
+    if (QGuiApplication::platformName() != QLatin1String("cocoa")) {
+        return 0;
+    }
     NSView* view = reinterpret_cast<NSView*>(window->winId());
     return view.window != nil ? view.window.windowNumber : 0;
 }

@@ -41,6 +41,22 @@ NavigableDialog {
         "framePacing": false
     })
 
+    // [fork] The name a saved profile goes by on the app tiles, the banner and the launch screen:
+    // Office or Gaming where it has every setting of that preset, else Custom
+    function profileName(profile) {
+        function hasAll(preset) {
+            for (var key in preset) {
+                if (profile[key] !== preset[key]) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        return hasAll(officePreset) ? qsTr("Office profile")
+                                    : hasAll(gamingPreset) ? qsTr("Gaming profile") : qsTr("Custom profile")
+    }
+
     // The width and height the stream will use: the profile's where it sets a resolution, else the global one
     readonly property var effectiveSize: selection.resolution !== undefined ? selection.resolution.split("x").map(Number)
                                                                             : [StreamingPreferences.width, StreamingPreferences.height]
@@ -286,6 +302,14 @@ NavigableDialog {
         delete profile.resolution
         delete profile.aspectRatio
         StreamProfiles.saveProfile(hostUuid, appName, profile)
+
+        // [fork] The design confirms what was saved
+        if (Object.keys(profile).length > 0) {
+            window.forkToast(qsTr("Saved %1 for %2").arg(profileName(profile).toLocaleLowerCase()).arg(appName))
+        }
+        else {
+            window.forkToast(qsTr("%1 follows Settings again").arg(appName))
+        }
     }
 
     // The Custom... resolution choice
@@ -307,7 +331,7 @@ NavigableDialog {
         Row {
             spacing: 8
 
-            Button {
+            ForkButton { // [fork] the redesign's buttons
                 text: qsTr("Office")
                 onClicked: applyPreset(officePreset)
 
@@ -316,7 +340,7 @@ NavigableDialog {
                 ToolTip.visible: hovered
             }
 
-            Button {
+            ForkButton {
                 text: qsTr("Gaming")
                 onClicked: applyPreset(gamingPreset)
 
@@ -325,7 +349,8 @@ NavigableDialog {
                 ToolTip.visible: hovered
             }
 
-            Button {
+            ForkButton {
+                kind: "quiet"
                 text: qsTr("Reset to Global")
                 onClicked: {
                     selection = {}

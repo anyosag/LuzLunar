@@ -43,6 +43,15 @@ QVariant ComputerModel::data(const QModelIndex& index, int role) const
         return computer->state == NvComputer::CS_UNKNOWN;
     case ServerSupportedRole:
         return computer->isSupportedServerVersion;
+    case HostSoftwareRole:
+        // [fork] The host software's name for the redesign's cards ("Apollo · paired"). Only a
+        // paired host's verified serverinfo tells Apollo and Sunshine apart, so it's empty otherwise.
+        if (computer->pairState != NvComputer::PS_PAIRED) {
+            return QString();
+        }
+        return computer->isApolloServerSoftware ? QStringLiteral("Apollo")
+             : computer->isNvidiaServerSoftware ? QStringLiteral("GeForce Experience")
+             : QStringLiteral("Sunshine");
     case DetailsRole: {
         QString state, pairState;
 
@@ -111,6 +120,7 @@ QHash<int, QByteArray> ComputerModel::roleNames() const
     names[StatusUnknownRole] = "statusUnknown";
     names[ServerSupportedRole] = "serverSupported";
     names[DetailsRole] = "details";
+    names[HostSoftwareRole] = "hostSoftware"; // [fork]
 
     return names;
 }

@@ -2,6 +2,7 @@ import QtQuick 2.9
 import QtQuick.Controls 2.2
 import QtQuick.Controls.impl 2.15 // [fork] IconImage for tinted, theme-aware icons
 import SfSymbols 1.0 // [fork]
+import ForkTheme 1.0 // [fork]
 import QtQuick.Layouts 1.3
 
 import ComputerModel 1.0
@@ -17,10 +18,31 @@ CenteredGridView {
     id: pcGrid
     focus: true
     activeFocusOnTab: true
-    topMargin: 20
-    bottomMargin: 5
-    cellWidth: 230; cellHeight: 240; // [fork] macOS-sized tiles (was 310x330)
-    objectName: qsTr("Computers")
+    topMargin: 0 // [fork] the header holds the page's top space (was 20)
+    bottomMargin: 24 // [fork] was 5
+    objectName: "LuzLunar" // [fork] the window title; the page's own title is in ForkPcHeader (was qsTr("Computers"))
+
+    // [fork] The design's grid: cards at least 250 wide, 20 apart, stretched to fill a centered
+    // block at most 1152 wide (CenteredGridView), each 330 high (was 310x330 cells)
+    forkStretch: true
+    forkMinItemWidth: 250
+    forkGap: 20
+    readonly property real forkCardHeight: 330
+    cellWidth: forkItemWidth + forkGap
+    cellHeight: forkCardHeight + forkGap
+
+    // [fork] The redesign's title above the PCs, and Add a PC and This Mac below them, as wide as the block
+    header: ForkPcHeader { width: pcGrid.forkContentWidth }
+    footer: ForkPcFooter {
+        width: pcGrid.forkContentWidth
+        count: pcGrid.count
+        columns: pcGrid.itemsPerRow
+        cellWidth: pcGrid.cellWidth
+        cellHeight: pcGrid.cellHeight
+        cardWidth: pcGrid.forkItemWidth
+        cardHeight: pcGrid.forkCardHeight
+        onAddPc: addPcDialog.open()
+    }
 
     Component.onCompleted: {
         // Don't show any highlighted item until interacting with them.
@@ -48,6 +70,17 @@ CenteredGridView {
 
     function pairingComplete(error)
     {
+        // [fork] On success the PIN dialog says so and offers the PC's apps (was closed in both cases)
+        if (error === undefined) {
+            if (pairDialog.visible) {
+                pairDialog.paired = true
+            }
+            else {
+                window.forkToast(qsTr("Paired with %1").arg(pairDialog.pcName))
+            }
+            return
+        }
+
         // Close the PIN dialog
         pairDialog.close()
 
@@ -61,6 +94,11 @@ CenteredGridView {
 
     function addComplete(success, detectedPortBlocking)
     {
+        // [fork] The design confirms a PC that was found
+        if (success) {
+            window.forkToast(addPcDialog.lastAddress !== "" ? qsTr("Found %1").arg(addPcDialog.lastAddress) : qsTr("Found the PC"))
+        }
+
         if (!success) {
             errorDialog.text = qsTr("Unable to connect to the specified PC.")
 
@@ -119,72 +157,60 @@ CenteredGridView {
     model: computerModel
 
     delegate: NavigableItemDelegate {
-        width: 220; height: 230; // [fork] was 300x320
+        id: pcDelegate // [fork]
+        width: pcGrid.forkItemWidth; height: pcGrid.forkCardHeight; // [fork] the design's card (was 300x320)
         grid: pcGrid
+        cornerRadius: 20 // [fork] the card's corners
 
         property alias pcContextMenu : pcContextMenuLoader.item
 
-        // [fork] A system-tinted computer symbol instead of the white-only SVG, so it shows in light mode too
-        IconImage {
-            id: pcIcon
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 16
-            source: SfSymbols.available ? SfSymbols.url("desktopcomputer") : "qrc:/res/desktop_windows-48px.svg"
-            color: palette.windowText
-            // Drawn at 128 pt from a 2x image, so it's sharp on Retina
-            width: 128
-            height: 128
-            sourceSize {
-                width: 256
-                height: 256
+        // [fork] VoiceOver names the card after the PC and its state
+        Accessible.name: model.name
+        Accessible.description: (model.online ? qsTr("Online") : qsTr("Offline")) + ", " + (model.paired ? qsTr("paired") : qsTr("not paired"))
+
+        // [fork] Waking: from sending Wake-on-LAN until the PC comes online (or a minute passes),
+        // the card says so; then a toast says it's awake
+        property bool forkWaking: false
+        readonly property bool forkOnline: model.online
+        function forkWake() {
+            forkWaking = true
+            forkWakeTimeout.restart()
+            computerModel.wakeComputer(index)
+        }
+        onForkOnlineChanged: {
+            if (forkOnline && forkWaking) {
+                forkWaking = false
+                window.forkToast(qsTr("%1 is awake").arg(model.name))
             }
         }
+        Timer {
+            id: forkWakeTimeout
+            interval: 60000
+            onTriggered: pcDelegate.forkWaking = false
+        }
 
-        IconImage {
-            // TODO: Tooltip
-            id: stateIcon
-            anchors.horizontalCenter: pcIcon.horizontalCenter
-            anchors.verticalCenter: pcIcon.verticalCenter
-            anchors.verticalCenterOffset: -10
-            visible: !model.statusUnknown && (!model.online || !model.paired)
-            source: SfSymbols.available ? SfSymbols.url(!model.online ? "exclamationmark.triangle.fill" : "lock.fill")
-                                        : (!model.online ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg" : "qrc:/res/baseline-lock-24px.svg")
-            color: !model.online ? "#FF9F0A" : palette.windowText
-            width: 40
-            height: 40
-            sourceSize {
-                width: 80
-                height: 80
+        // [fork] The redesign's card (ForkHostCard) instead of the computer icon, state icon, spinner and name
+        ForkHostCard {
+            anchors.fill: parent
+            name: model.name
+            online: model.online
+            paired: model.paired
+            busy: model.busy
+            wakeable: model.wakeable
+            waking: pcDelegate.forkWaking
+            statusUnknown: model.statusUnknown
+            serverSupported: model.serverSupported
+            hostSoftware: model.hostSoftware
+            highlighted: parent.highlighted || parent.visualFocus
+            hovered: parent.hovered
+
+            onActivate: parent.clicked()
+            onWake: pcDelegate.forkWake()
+            onDetails: {
+                showPcDetailsDialog.pcDetails = model.details
+                showPcDetailsDialog.open()
             }
-        }
-
-        BusyIndicator {
-            id: statusUnknownSpinner
-            anchors.horizontalCenter: pcIcon.horizontalCenter
-            anchors.verticalCenter: pcIcon.verticalCenter
-            anchors.verticalCenterOffset: -10
-            width: 40
-            height: 40
-            visible: model.statusUnknown
-            running: visible
-        }
-
-        Label {
-            id: pcNameText
-            text: model.name
-            textFormat: Text.PlainText // [fork] the host picks its name, never markup
-
-            width: parent.width
-            anchors.top: pcIcon.bottom
-            anchors.topMargin: 8
-            anchors.bottom: parent.bottom
-            leftPadding: 10
-            rightPadding: 10
-            font.pointSize: 15 // [fork] was 36
-            font.bold: true
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            elide: Text.ElideRight
+            onMenu: pcContextMenu.open()
         }
 
         Loader {
@@ -196,9 +222,12 @@ CenteredGridView {
                 MenuItem {
                     text: qsTr("PC Status: %1").arg(model.online ? qsTr("Online") : qsTr("Offline"))
                     font.bold: true
+                    palette.windowText: ForkTheme.muted // [fork] a quiet heading in the redesign's menu
+                    palette.text: ForkTheme.muted // [fork]
                     enabled: false
                 }
                 NavigableMenuItem {
+                    symbol: "square.grid.2x2" // [fork]
                     text: qsTr("View All Apps")
                     onTriggered: {
                         var component = Qt.createComponent("AppView.qml")
@@ -208,11 +237,13 @@ CenteredGridView {
                     visible: model.online && model.paired
                 }
                 NavigableMenuItem {
+                    symbol: "power" // [fork]
                     text: qsTr("Wake PC")
-                    onTriggered: computerModel.wakeComputer(index)
+                    onTriggered: pcDelegate.forkWake() // [fork] shows the waking state (was computerModel.wakeComputer(index))
                     visible: !model.online && model.wakeable
                 }
                 NavigableMenuItem {
+                    symbol: "network" // [fork]
                     text: qsTr("Test Network")
                     onTriggered: {
                         computerModel.testConnectionForComputer(index)
@@ -221,6 +252,7 @@ CenteredGridView {
                 }
 
                 NavigableMenuItem {
+                    symbol: "pencil" // [fork]
                     text: qsTr("Rename PC")
                     onTriggered: {
                         renamePcDialog.pcIndex = index
@@ -229,18 +261,22 @@ CenteredGridView {
                     }
                 }
                 NavigableMenuItem {
+                    symbol: "info.circle" // [fork] before the line, as in the design (was after Delete)
+                    text: qsTr("View Details")
+                    onTriggered: {
+                        showPcDetailsDialog.pcDetails = model.details
+                        showPcDetailsDialog.open()
+                    }
+                }
+                ForkMenuSeparator {} // [fork]
+                NavigableMenuItem {
+                    symbol: "trash" // [fork]
+                    destructive: true // [fork]
                     text: qsTr("Delete PC")
                     onTriggered: {
                         deletePcDialog.pcIndex = index
                         deletePcDialog.pcName = model.name
                         deletePcDialog.open()
-                    }
-                }
-                NavigableMenuItem {
-                    text: qsTr("View Details")
-                    onTriggered: {
-                        showPcDetailsDialog.pcDetails = model.details
-                        showPcDetailsDialog.open()
                     }
                 }
             }
@@ -256,7 +292,9 @@ CenteredGridView {
                 else if (model.paired) {
                     // go to game view
                     var component = Qt.createComponent("AppView.qml")
-                    var appView = component.createObject(stackView, {"computerIndex": index, "objectName": model.name})
+                    var appView = component.createObject(stackView, {"computerIndex": index, "objectName": model.name,
+                                                                     // [fork] the toolbar's subtitle, e.g. "Apollo · online"
+                                                                     "forkHostStatus": model.hostSoftware !== "" ? qsTr("%1 · online").arg(model.hostSoftware) : qsTr("Online")})
                     stackView.push(appView)
                 }
                 else {
@@ -267,6 +305,9 @@ CenteredGridView {
 
                     // Display the pairing dialog
                     pairDialog.pin = pin
+                    pairDialog.pcIndex = index // [fork]
+                    pairDialog.pcName = model.name // [fork]
+                    pairDialog.paired = false // [fork]
                     pairDialog.open()
                 }
             } else if (!model.online) {
@@ -315,17 +356,94 @@ CenteredGridView {
         helpUrl: "https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide"
     }
 
-    NavigableMessageDialog {
+    // [fork] The design's pairing dialog: the PIN large in a box while LuzLunar waits for the PC,
+    // then "Paired with <PC>" and a way to its apps (was a message dialog with the PIN in a sentence)
+    NavigableDialog {
         id: pairDialog
         closePolicy: Popup.CloseOnEscape
 
         // don't allow edits to the rest of the window while open
         property string pin : "0000"
-        text:qsTr("Please enter %1 on your host PC. This dialog will close when pairing is completed.").arg(pin)+"\n\n"+
-             qsTr("If your host PC is running Sunshine, navigate to the Sunshine web UI to enter the PIN.")
-        standardButtons: Dialog.Cancel
+        property string pcName: ""
+        property int pcIndex: -1
+        property bool paired: false
+
+        title: paired ? qsTr("Paired with %1").arg(pcName) : qsTr("Pair with %1").arg(pcName)
+        standardButtons: paired ? (Dialog.Ok | Dialog.Close) : Dialog.Cancel
+
+        function nameButtons() {
+            var showApps = standardButton(Dialog.Ok)
+            if (showApps) {
+                showApps.text = qsTr("Show apps")
+                showApps.forceActiveFocus(Qt.TabFocusReason)
+            }
+        }
+        onPairedChanged: Qt.callLater(nameButtons)
+        onClosed: paired = false
+
+        onAccepted: {
+            if (paired) {
+                var component = Qt.createComponent("AppView.qml")
+                var appView = component.createObject(stackView, {"computerIndex": pcIndex, "objectName": pcName, "forkHostStatus": qsTr("Online")})
+                stackView.push(appView)
+            }
+        }
         onRejected: {
             // FIXME: We should interrupt pairing here
+        }
+
+        Column {
+            width: 420
+            spacing: 16
+
+            ForkText {
+                width: parent.width
+                kind: "body"
+                font.pixelSize: 14
+                color: ForkTheme.text2
+                text: pairDialog.paired ? qsTr("You can stream from %1 now.").arg(pairDialog.pcName)
+                                        : qsTr("Enter this PIN on %1. With Apollo or Sunshine, enter it in the host's web UI.").arg(pairDialog.pcName)
+            }
+
+            Rectangle {
+                visible: !pairDialog.paired
+                width: parent.width
+                height: pinText.implicitHeight + 36
+                radius: 14
+                color: ForkTheme.bar
+                border.color: ForkTheme.lineSoft
+
+                Text {
+                    id: pinText
+                    anchors.centerIn: parent
+                    text: pairDialog.pin
+                    textFormat: Text.PlainText
+                    font.family: ForkTheme.monoFamily
+                    font.pixelSize: 44
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 8.8
+                    color: ForkTheme.accentInk
+                    Accessible.name: qsTr("PIN %1").arg(pairDialog.pin.split("").join(" "))
+                }
+            }
+
+            Row {
+                visible: !pairDialog.paired
+                spacing: 10
+
+                ForkBusyIndicator {
+                    anchors.verticalCenter: parent.verticalCenter
+                    running: pairDialog.visible && !pairDialog.paired
+                }
+
+                ForkText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "body"
+                    color: ForkTheme.muted
+                    wrapMode: Text.NoWrap
+                    text: qsTr("Waiting for the PC…")
+                }
+            }
         }
     }
 
@@ -334,11 +452,25 @@ CenteredGridView {
         // don't allow edits to the rest of the window while open
         property int pcIndex : -1
         property string pcName : ""
-        text: qsTr("Are you sure you want to remove '%1'?").arg(pcName)
+        // [fork] The design's wording, a red Remove and no icon (was "Are you sure you want to remove '%1'?" with Yes/No)
+        title: qsTr("Remove %1?").arg(pcName)
+        text: qsTr("You'll need to pair again to stream from it.")
+        destructive: true
+        forkShowIcon: false
         standardButtons: Dialog.Yes | Dialog.No
+
+        onAboutToShow: {
+            if (standardButton(Dialog.Yes)) {
+                standardButton(Dialog.Yes).text = qsTr("Remove")
+            }
+            if (standardButton(Dialog.No)) {
+                standardButton(Dialog.No).text = qsTr("Cancel")
+            }
+        }
 
         onAccepted: {
             computerModel.deleteComputer(pcIndex)
+            window.forkToast(qsTr("Removed %1").arg(pcName)) // [fork]
         }
     }
 
@@ -375,11 +507,19 @@ CenteredGridView {
 
     NavigableDialog {
         id: renamePcDialog
-        property string label: qsTr("Enter the new name for this PC:")
+        property string label: qsTr("Name") // [fork] the design's label (was "Enter the new name for this PC:")
         property string originalName
         property int pcIndex : -1;
 
+        title: qsTr("Rename %1").arg(originalName) // [fork]
         standardButtons: Dialog.Ok | Dialog.Cancel
+
+        // [fork] The design's Save button
+        onAboutToShow: {
+            if (standardButton(Dialog.Ok)) {
+                standardButton(Dialog.Ok).text = qsTr("Save")
+            }
+        }
 
         onOpened: {
             // Force keyboard focus on the textbox so keyboard navigation works
@@ -393,19 +533,24 @@ CenteredGridView {
         onAccepted: {
             if (editText.text) {
                 computerModel.renameComputer(pcIndex, editText.text)
+                window.forkToast(qsTr("Renamed to %1").arg(editText.text)) // [fork]
             }
         }
 
         ColumnLayout {
-            Label {
+            spacing: 8 // [fork]
+
+            ForkText { // [fork] the design's field label (was a bold Label)
+                kind: "label"
+                font.weight: Font.DemiBold
                 text: renamePcDialog.label
-                font.bold: true
             }
 
-            TextField {
+            ForkTextField { // [fork] the redesign's field (was TextField)
                 id: editText
                 placeholderText: pcGrid.escapeMarkup(renamePcDialog.originalName) // [fork] was renamePcDialog.originalName
                 Layout.fillWidth: true
+                Layout.preferredWidth: 380 // [fork]
                 focus: true
 
                 Keys.onReturnPressed: {
