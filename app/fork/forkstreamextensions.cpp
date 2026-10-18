@@ -6,6 +6,7 @@
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
 #include "forkpreferences.h"
+#include "forksystemshortcuts.h"
 #include "forkvideoscaling.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
@@ -54,10 +55,14 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
 
     // Renderers and the mouse mapping read this through StreamUtils::scaleSourceToDestinationSurface()
     ForkVideoScaling::activate(window, prefs.fullscreenStretch);
+
+    // Which Mac shortcuts system key capture takes; SdlInputHandler asks it before grabbing
+    ForkSystemShortcuts::activate(window);
 }
 
 ForkStreamExtensions::~ForkStreamExtensions()
 {
+    ForkSystemShortcuts::deactivate();
     ForkVideoScaling::deactivate();
 
     s_Active = nullptr;
@@ -82,4 +87,6 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (m_Clipboard) {
         m_Clipboard->handleEvent(event);
     }
+
+    ForkSystemShortcuts::handleEvent(event);
 }

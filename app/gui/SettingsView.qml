@@ -1447,6 +1447,8 @@ Flickable {
                     }
                 }
 
+                ForkMacShortcutsOption { width: parent.width } // [fork] which Mac shortcuts capture takes
+
                 CheckBox {
                     id: absoluteTouchCheck
                     hoverEnabled: true

@@ -97,6 +97,17 @@ PLIST="$APP/Contents/Info.plist"
 # The build ID as the bundle version, shown by Finder's Get Info and the About panel
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST" || fail "Setting CFBundleVersion failed!"
 
+# No macOS Game Mode. Upstream's Info.plist opts in (ae1c6580: the games category and the
+# Game Mode keys), so a fullscreen stream turned Game Mode on. The game controller keys stay.
+echo Opting out of Game Mode
+/usr/libexec/PlistBuddy -c "Delete :LSApplicationCategoryType" "$PLIST" 2>/dev/null
+for KEY in LSSupportsGameMode GCSupportsGameMode; do
+  /usr/libexec/PlistBuddy -c "Set :$KEY false" "$PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :$KEY bool false" "$PLIST" || fail "Setting $KEY failed!"
+done
+[ "$(/usr/libexec/PlistBuddy -c "Print :LSSupportsGameMode" "$PLIST")" == "false" ] || fail "LSSupportsGameMode isn't false!"
+/usr/libexec/PlistBuddy -c "Print :LSApplicationCategoryType" "$PLIST" >/dev/null 2>&1 && fail "The games category is still set!"
+
 # A layered Icon Composer icon, which macOS 26 renders in Liquid Glass instead of boxing a legacy
 # icon. actool also writes LuzLunar.icns, the same icon flattened, for older macOS.
 echo Compiling the $APP_NAME app icon
@@ -172,5 +183,9 @@ if [ "$LUZLUNAR_INSTALL" == "1" ]; then
   fi
   ditto "$APP" "$INSTALL_PATH" || fail "Copying $APP_NAME.app to /Applications failed!"
   codesign --verify --deep --strict "$INSTALL_PATH" || fail "The installed app's signature doesn't verify!"
+  # LaunchServices caches an app's Info.plist by bundle ID (shared with Moonlight), so refresh it,
+  # or macOS may keep treating the app as a game
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$INSTALL_PATH" || \
+    echo "::warning::lsregister couldn't refresh $INSTALL_PATH"
   echo Installed "$INSTALL_PATH"
 fi

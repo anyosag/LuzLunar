@@ -1,12 +1,19 @@
 #include "forkpreferences.h"
 
+#include <QCoreApplication>
 #include <QSettings>
+#include <QVariantMap>
+
+#include "forkmacshortcuts.h"
+#include "mac/macintegration.h"
 
 #define SER_KEYTARGETS "fork/keyTargets"
 #define SER_CLIPBOARDSYNC "fork/clipboardSync"
 #define SER_NOTCHBAR "fork/notchBar"
 #define SER_DESCRIBEDISPLAY "fork/describeDisplay"
 #define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
+#define SER_MACSHORTCUTS "fork/macShortcuts"
+#define SER_MACSHORTCUTSALL "fork/macShortcutsAll"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
@@ -54,7 +61,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_ClipboardSyncMode(CSM_MANUAL),
       m_NotchBar(true),
       m_DescribeDisplay(true),
-      m_HdrPeakOverride(0)
+      m_HdrPeakOverride(0),
+      m_MacShortcutsAll(false)
 {
     QSettings settings;
 
@@ -85,6 +93,69 @@ ForkPreferences::ForkPreferences(QObject* parent)
     if (peak >= 0 && peak <= MAX_HDR_PEAK) {
         m_HdrPeakOverride = peak;
     }
+
+    m_MacShortcutsAll = settings.value(SER_MACSHORTCUTSALL, m_MacShortcutsAll).toBool();
+    settings.beginGroup(SER_MACSHORTCUTS);
+    for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
+        QString key = QString::fromUtf8(group.key);
+        if (settings.contains(key)) {
+            m_MacShortcutsToHost.insert(key, settings.value(key).toBool());
+        }
+    }
+    settings.endGroup();
+}
+
+QVariantList ForkPreferences::macShortcutGroups() const
+{
+    QVariantList list;
+    for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("key"), QString::fromUtf8(group.key));
+        entry.insert(QStringLiteral("label"), QCoreApplication::translate("ForkMacShortcuts", group.label));
+        list.append(entry);
+    }
+    return list;
+}
+
+bool ForkPreferences::macShortcutToHost(const QString& key) const
+{
+    const ForkMacShortcuts::Group* group = ForkMacShortcuts::findGroup(key.toStdString());
+    if (group == nullptr) {
+        return false;
+    }
+    return m_MacShortcutsToHost.value(key, group->defaultToHost);
+}
+
+void ForkPreferences::setMacShortcutToHost(const QString& key, bool toHost)
+{
+    if (ForkMacShortcuts::findGroup(key.toStdString()) == nullptr || macShortcutToHost(key) == toHost) {
+        return;
+    }
+
+    m_MacShortcutsToHost.insert(key, toHost);
+
+    QSettings settings;
+    settings.beginGroup(SER_MACSHORTCUTS);
+    settings.setValue(key, toHost);
+    settings.endGroup();
+
+    emit macShortcutsChanged();
+}
+
+void ForkPreferences::setMacShortcutsAll(bool all)
+{
+    if (all == m_MacShortcutsAll) {
+        return;
+    }
+
+    m_MacShortcutsAll = all;
+    QSettings().setValue(SER_MACSHORTCUTSALL, all);
+    emit macShortcutsChanged();
+}
+
+bool ForkPreferences::macShortcutsSelectable() const
+{
+    return MacIntegration::symbolicHotKeysAvailable();
 }
 
 void ForkPreferences::setDescribeDisplay(bool enabled)
