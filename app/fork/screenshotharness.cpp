@@ -27,6 +27,12 @@ namespace
         int delayMs;          // time to wait after the script
     };
 
+    // Starts a step's script with the open stream settings dialog (d) and its scrolling content (s)
+#define FIND_PROFILE_DIALOG \
+    "var find = function(item) { if (item.objectName === 'streamProfileScroller') return item; " \
+    "for (var i = 0; i < item.children.length; i++) { var found = find(item.children[i]); if (found) return found } return null }; " \
+    "var s = find(window.overlay); var d = s.dialog; "
+
     // Each step runs its script, waits, then saves a screenshot
     const Step k_Steps[] = {
         // A window tall enough for the redesign's Settings cards
@@ -69,10 +75,16 @@ namespace
         { "2k-settings-mac", "stackView.currentItem.showSection('mac')", 1500 },
         { "2l-settings-mac-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
         { "5-add-pc-dialog", "goBack(); addPcDialog.open()", 2000 },
+        // An app's stream settings: every row on Global, the Office preset, Office with one row
+        // changed (Custom), the end of the list, and the top again in the window's default height
         { "6-stream-settings-dialog",
           "addPcDialog.close(); "
           "var d = Qt.createComponent('qrc:/gui/StreamProfileDialog.qml').createObject(window, { appName: 'Office Mode' }); "
           "d.fields = d.buildFields(); d.open(); d.refresh()", 2000 },
+        { "6a-stream-settings-office", FIND_PROFILE_DIALOG "d.applyPreset(d.officePreset)", 1000 },
+        { "6b-stream-settings-custom", FIND_PROFILE_DIALOG "d.chooseValue('fps', 60)", 1000 },
+        { "6c-stream-settings-end", FIND_PROFILE_DIALOG "s.contentY = s.contentHeight - s.height", 1000 },
+        { "6d-stream-settings-short", FIND_PROFILE_DIALOG "window.height = 600; s.contentY = 0", 1500 },
     };
 
     QQuickWindow* mainWindow()
