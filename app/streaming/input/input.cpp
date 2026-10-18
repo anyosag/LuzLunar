@@ -4,6 +4,7 @@
 #include "settings/mappingmanager.h"
 #include "path.h"
 #include "utils.h"
+#include "fork/forksystemshortcuts.h" // [fork]
 
 #include <QtGlobal>
 #include <QDir>
@@ -317,7 +318,8 @@ void SdlInputHandler::updateKeyboardGrabState()
 #if SDL_VERSION_ATLEAST(2, 0, 15)
     // On SDL 2.0.15+, we can get keyboard-only grab on Win32, X11, and Wayland.
     // SDL 2.0.18 adds keyboard grab on macOS (if built with non-AppStore APIs).
-    SDL_SetWindowKeyboardGrab(m_Window, shouldGrab ? SDL_TRUE : SDL_FALSE);
+    // [fork] On macOS, takes only the Mac shortcuts chosen in Settings instead (forksystemshortcuts.cpp)
+    SDL_SetWindowKeyboardGrab(m_Window, ForkSystemShortcuts::keyboardGrab(shouldGrab) ? SDL_TRUE : SDL_FALSE);
 #endif
 
     m_KeyboardCaptureActive = shouldGrab;

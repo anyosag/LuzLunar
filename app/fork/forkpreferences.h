@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
+#include <QVariantList>
 
 #include "forkkeymap.h"
 
@@ -45,9 +47,28 @@ public:
     // This build, like "6.2.0-fork.ee5b3ba" (not a preference; shown in Settings)
     Q_PROPERTY(QString buildId READ buildId CONSTANT)
 
+    // While system key capture is on, send every Mac shortcut to the host (screenshots included),
+    // as Moonlight does, instead of only the groups chosen in Settings (forkmacshortcuts.*)
+    Q_PROPERTY(bool macShortcutsAll READ macShortcutsAll WRITE setMacShortcutsAll NOTIFY macShortcutsChanged)
+
+    // Whether this macOS lets LuzLunar choose shortcuts one group at a time
+    Q_PROPERTY(bool macShortcutsSelectable READ macShortcutsSelectable CONSTANT)
+
     static ForkPreferences* get();
 
     QString buildId() const;
+
+    // The shortcut groups for Settings, in order: [{ "key": ..., "label": ... }]
+    Q_INVOKABLE QVariantList macShortcutGroups() const;
+
+    // Whether a group of Mac shortcuts goes to the host while capture is on
+    Q_INVOKABLE bool macShortcutToHost(const QString& key) const;
+    Q_INVOKABLE void setMacShortcutToHost(const QString& key, bool toHost);
+
+    bool macShortcutsAll() const { return m_MacShortcutsAll; }
+    void setMacShortcutsAll(bool all);
+
+    bool macShortcutsSelectable() const;
 
     int clipboardSyncMode() const { return m_ClipboardSyncMode; }
     void setClipboardSyncMode(int mode);
@@ -77,6 +98,7 @@ signals:
     void notchBarChanged();
     void describeDisplayChanged();
     void hdrPeakOverrideChanged();
+    void macShortcutsChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -88,4 +110,7 @@ private:
     bool m_NotchBar;
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;
+    bool m_MacShortcutsAll;
+    // Saved choices by group key; groups not in it use the table's default
+    QHash<QString, bool> m_MacShortcutsToHost;
 };
