@@ -5,6 +5,7 @@
 #include "path.h"
 #include "utils.h"
 #include "fork/forksystemshortcuts.h" // [fork]
+#include "fork/forktrackpadpassthrough.h" // [fork]
 
 #include <QtGlobal>
 #include <QDir>
@@ -404,6 +405,9 @@ void SdlInputHandler::setCaptureActive(bool active)
 
     // Now update the keyboard grab
     updateKeyboardGrabState();
+
+    // [fork] Trackpad passthrough runs only while the stream has the mouse
+    ForkTrackpadPassthrough::update();
 }
 
 void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)

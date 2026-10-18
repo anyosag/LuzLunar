@@ -12,8 +12,6 @@
 #include "settings/streamingpreferences.h"
 
 #ifdef Q_OS_DARWIN
-#include <libproc.h>
-#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -167,19 +165,6 @@ namespace
     }
 
 #ifdef Q_OS_DARWIN
-    // True if pid is a running copy of this program
-    bool isRunningCopy(long pid)
-    {
-        if (pid <= 0 || kill(static_cast<pid_t>(pid), 0) != 0) {
-            return false;
-        }
-        char other[PROC_PIDPATHINFO_MAXSIZE];
-        char self[PROC_PIDPATHINFO_MAXSIZE];
-        return proc_pidpath(static_cast<int>(pid), other, sizeof(other)) > 0 &&
-               proc_pidpath(getpid(), self, sizeof(self)) > 0 &&
-               strcmp(other, self) == 0;
-    }
-
     void startup()
     {
         QSettings settings;
@@ -193,7 +178,7 @@ namespace
             if (!ForkMacShortcuts::parseRecord(record.toStdString(), &pid, &ids)) {
                 settings.remove(SER_HELDMACSHORTCUTS);
             }
-            else if (!isRunningCopy(pid)) {
+            else if (!MacIntegration::isRunningCopy(pid)) {
                 for (int id : ids) {
                     MacIntegration::setSymbolicHotKeyEnabled(id, true, false);
                 }

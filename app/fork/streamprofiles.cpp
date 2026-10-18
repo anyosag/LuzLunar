@@ -19,6 +19,7 @@ namespace
     // Keys whose values are booleans; the rest are integers (including the codec enum)
     const QStringList k_BoolKeys = {
         "enableHdr", "enableYUV444", "absoluteMouseMode", "enableVsync", "framePacing", "fullscreenStretch",
+        "trackpadPassthrough",
     };
 
     QString groupFor(const QString& hostUuid, const QString& appName)
@@ -63,7 +64,7 @@ const QStringList& StreamProfiles::overridableKeys()
 {
     static const QStringList keys = {
         "videoCodecConfig", "enableHdr", "enableYUV444", "absoluteMouseMode", "enableVsync", "framePacing",
-        "fullscreenStretch", "width", "height", "fps", "bitrateKbps",
+        "fullscreenStretch", "trackpadPassthrough", "width", "height", "fps", "bitrateKbps",
     };
     return keys;
 }
@@ -171,6 +172,13 @@ Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, Streami
                     prefs->width, prefs->height, evenWidth, evenHeight);
         prefs->width = evenWidth;
         prefs->height = evenHeight;
+    }
+
+    // Trackpad passthrough needs the captured pointer: the hidden Mac cursor stays in the stream, so
+    // it can't wander out of the window and click on the Mac while Windows moves its own pointer
+    if (prefs->trackpadPassthrough && prefs->absoluteMouseMode) {
+        prefs->absoluteMouseMode = false;
+        applied.append(QStringLiteral("absoluteMouseMode=false (trackpad passthrough)"));
     }
 
     // Scale the bitrate with a profile's resolution or frame rate, unless a custom bitrate is in use

@@ -60,6 +60,7 @@ namespace
         { "2c-settings-video", "stackView.currentItem.showSection('video')", 1500 },
         { "2d-settings-audio", "stackView.currentItem.showSection('audio')", 1500 },
         { "2e-settings-mouse", "stackView.currentItem.showSection('mouse')", 1500 },
+        { "2e2-settings-mouse-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
         { "2f-settings-keyboard", "stackView.currentItem.showSection('keyboard')", 1500 },
         { "2g-settings-keyboard-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
         { "2h-settings-gamepads", "stackView.currentItem.showSection('gamepads')", 1500 },

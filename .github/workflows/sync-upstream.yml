@@ -146,5 +146,7 @@ jobs:
     # A pull request opened with SYNC_TOKEN already runs fork-macos.yml, so only build here otherwise.
     if: (needs.sync.outputs.updated == 'true' && needs.sync.outputs.has_pat != 'true') || inputs.build
     uses: ./.github/workflows/fork-macos.yml
+    # The signing certificate, so builds of the sync keep the app's permissions
+    secrets: inherit
     with:
       ref: ${{ needs.sync.outputs.sha }}

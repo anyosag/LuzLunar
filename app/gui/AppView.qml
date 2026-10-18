@@ -131,7 +131,9 @@ CenteredGridView {
                                                                                             StreamingPreferences.fps, StreamingPreferences.enableYUV444)) {
             bitrate = StreamingPreferences.getDefaultBitrate(w, h, fps, yuv)
         }
-        return { "profile": p, "width": w, "height": h, "fps": fps, "yuv": yuv, "hdr": hdr, "codec": codec, "bitrate": bitrate }
+        var touchpad = has("trackpadPassthrough") ? p.trackpadPassthrough : StreamingPreferences.trackpadPassthrough
+        return { "profile": p, "width": w, "height": h, "fps": fps, "yuv": yuv, "hdr": hdr, "codec": codec, "bitrate": bitrate,
+                 "touchpad": touchpad }
     }
 
     function forkCodecName(codec) {
@@ -155,6 +157,9 @@ CenteredGridView {
                      qsTr("%1 Mb/s").arg(e.bitrate / 1000), forkCodecName(e.codec) + (e.hdr ? " · HDR" : "")]
         if (e.yuv) {
             chips.push("4:4:4")
+        }
+        if (e.touchpad) {
+            chips.push(qsTr("Touchpad"))
         }
         var profile = forkProfileName(e.profile)
         if (profile !== "") {
@@ -321,8 +326,8 @@ CenteredGridView {
         onForkRunningChanged: appGrid.forkNoteRunning(index, forkRunning, model.name, appIcon.isPlaceholder ? "" : model.boxart)
         Component.onCompleted: appGrid.forkNoteRunning(index, model.running, model.name, appIcon.isPlaceholder ? "" : model.boxart)
 
-        // [fork] This app's chips: its stream profile (Office, Gaming or Custom, with Stretch and
-        // the aspect ratio when the profile sets them), direct launch, hidden
+        // [fork] This app's chips: its stream profile (Office, Gaming or Custom, with Stretch,
+        // Touchpad and the aspect ratio when the profile sets them), direct launch, hidden
         readonly property var forkChips: {
             appGrid.forkProfileRevision
             var chips = []
@@ -331,6 +336,9 @@ CenteredGridView {
                 chips.push(appGrid.forkProfileName(profile))
                 if (profile.fullscreenStretch === true) {
                     chips.push(qsTr("Stretch"))
+                }
+                if (profile.trackpadPassthrough === true) {
+                    chips.push(qsTr("Touchpad"))
                 }
                 if (profile.width !== undefined && profile.height !== undefined) {
                     chips.push(AspectRatios.ratioLabel(profile.width, profile.height))
