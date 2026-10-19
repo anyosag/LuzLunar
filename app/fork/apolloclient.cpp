@@ -30,23 +30,25 @@ ApolloClient::ApolloClient(const Target& target)
 {
 }
 
-qint64 ApolloClient::permissions()
+ApolloClient::HostInfo ApolloClient::hostInfo()
 {
+    HostInfo info;
     if (m_Target.address.isNull() || m_Target.serverCert.isNull()) {
-        return -1;
+        return info;
     }
 
     try {
         NvHTTP http(m_Target.address, m_Target.httpsPort, m_Target.serverCert, m_Target.useTrueUid);
-        QString permission = NvHTTP::getXmlString(http.getServerInfo(NvHTTP::NVLL_ERROR, true), "Permission");
+        QString serverInfo = http.getServerInfo(NvHTTP::NVLL_ERROR, true);
 
         bool ok;
-        qint64 bits = permission.toLongLong(&ok);
-        return ok ? bits : -1;
+        qint64 bits = NvHTTP::getXmlString(serverInfo, "Permission").toLongLong(&ok);
+        info.permissions = ok ? bits : -1;
+        info.clipboardFiles = NvHTTP::getXmlString(serverInfo, "LuzClipboardFiles") == "1";
     }
     catch (...) {
-        return -1;
     }
+    return info;
 }
 
 ApolloClient::Response ApolloClient::request(const QString& command, const QString& arguments, const QByteArray* postBody, int timeoutMs)

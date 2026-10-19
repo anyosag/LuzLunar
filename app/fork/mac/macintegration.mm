@@ -123,6 +123,13 @@ void MacIntegration::setStreamShortcutGuard(bool enabled)
     }
 }
 
+void MacIntegration::setDockBadge(const QString& text)
+{
+    @autoreleasepool {
+        NSApp.dockTile.badgeLabel = text.isEmpty() ? nil : text.toNSString();
+    }
+}
+
 bool MacIntegration::clipboardHasConcealedContent()
 {
     @autoreleasepool {

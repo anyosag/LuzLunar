@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QString>
 #include <QtGlobal>
 
 #include <string>
@@ -43,6 +44,9 @@ namespace MacIntegration
 
     // True if pid is a running copy of this program, for crash records another copy left
     bool isRunningCopy(long pid);
+
+    // The text on the app's Dock icon, like a transfer's progress; empty removes it. Main thread.
+    void setDockBadge(const QString& text);
 #else
     inline void setStreamShortcutGuard(bool) {}
     inline bool clipboardHasConcealedContent() { return false; }
@@ -53,5 +57,6 @@ namespace MacIntegration
     inline std::string symbolicHotKeyName(int) { return std::string(); }
     inline bool screenshotOverlayVisible() { return false; }
     inline bool isRunningCopy(long) { return false; }
+    inline void setDockBadge(const QString&) {}
 #endif
 }

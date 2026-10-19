@@ -107,6 +107,17 @@ namespace
             kinds.push_back(kindOf(type));
         }
 
+        if (snapshot.fileCopy) {
+            NSArray<NSURL*>* urls = [pasteboard readObjectsForClasses:@[[NSURL class]]
+                                                              options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
+            for (NSURL* url in urls) {
+                const char* path = url.filePathURL.fileSystemRepresentation;
+                if (path != nullptr && path[0] != '\0') {
+                    snapshot.files.push_back(path);
+                }
+            }
+        }
+
         std::vector<std::pair<size_t, clipbundle::item>> items;
         auto add = [&items](size_t position, const char* type, std::string data) {
             items.push_back({position, clipbundle::item { type, std::move(data) }});
@@ -277,6 +288,29 @@ long MacPasteboard::write(const std::vector<clipbundle::item>& items, bool conce
         NSPasteboard* pasteboard = pasteboardNamed(pasteboardName);
         [pasteboard clearContents];
         if (![pasteboard writeObjects:@[item]]) {
+            return 0;
+        }
+        return pasteboard.changeCount;
+    }
+}
+
+long MacPasteboard::writeFiles(const std::vector<std::string>& paths, const std::string& pasteboardName)
+{
+    @autoreleasepool {
+        NSMutableArray<NSURL*>* urls = [NSMutableArray array];
+        for (const std::string& path : paths) {
+            NSString* string = [[NSFileManager defaultManager] stringWithFileSystemRepresentation:path.c_str() length:path.size()];
+            if (string != nil) {
+                [urls addObject:[NSURL fileURLWithPath:string]];
+            }
+        }
+        if (urls.count == 0) {
+            return 0;
+        }
+
+        NSPasteboard* pasteboard = pasteboardNamed(pasteboardName);
+        [pasteboard clearContents];
+        if (![pasteboard writeObjects:urls]) {
             return 0;
         }
         return pasteboard.changeCount;

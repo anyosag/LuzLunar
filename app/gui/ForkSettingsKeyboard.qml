@@ -474,7 +474,7 @@ Column {
                             { "symbol": "textformat", "label": qsTr("Text") },
                             { "symbol": "tablecells", "label": qsTr("Formatting from Word, Excel and PowerPoint") },
                             { "symbol": "photo", "label": qsTr("Images") }
-                        ]
+                        ].concat(ForkPreferences.clipboardFiles ? [{ "symbol": "folder", "label": qsTr("Files and folders") }] : [])
 
                         delegate: Rectangle {
                             id: chip
@@ -513,10 +513,18 @@ Column {
                     }
                 }
 
+                ForkSwitchRow {
+                    showDivider: false
+                    label: qsTr("Copy files too")
+                    help: qsTr("Files and folders copied in Finder or Explorer cross over and paste as copies: up to 1 GB when the sync is automatic, and up to 20 GB or 10,000 files with the shortcuts. Files from the PC wait in LuzLunar's cache, which keeps the last 3 copies for a day.")
+                    checked: ForkPreferences.clipboardFiles
+                    onToggled: (on) => ForkPreferences.clipboardFiles = on
+                }
+
                 ForkText {
                     width: parent.width
                     kind: "help"
-                    text: qsTr("Formatting and images need LuzLunar's Apollo build; other Apollo versions share text only. Apollo must give this device its Clipboard permissions.")
+                    text: qsTr("Formatting, images and files need LuzLunar's Apollo build; other Apollo versions share text only. Apollo must give this device its Clipboard permissions, and File Upload and File Download for files.")
                 }
             }
         }
