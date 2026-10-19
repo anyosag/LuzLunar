@@ -42,8 +42,13 @@ public:
 
     explicit ApolloClient(const Target& target);
 
-    // The <Permission> bits Apollo reports for this client, or -1 if the host isn't Apollo or didn't answer
-    qint64 permissions();
+    // What /serverinfo says of this client and the host
+    struct HostInfo {
+        qint64 permissions = -1;     // the <Permission> bits Apollo reports, or -1 if the host isn't Apollo or didn't answer
+        bool clipboardFiles = false; // <LuzClipboardFiles>: LuzLunar's Apollo takes file copies through the clipboard
+    };
+
+    HostInfo hostInfo();
 
     // GET command?arguments, or POST postBody to it when postBody isn't null
     Response request(const QString& command, const QString& arguments, const QByteArray* postBody, int timeoutMs);

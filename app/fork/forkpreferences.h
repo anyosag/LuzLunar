@@ -35,6 +35,9 @@ public:
     // Clipboard sync with Apollo hosts
     Q_PROPERTY(int clipboardSyncMode READ clipboardSyncMode WRITE setClipboardSyncMode NOTIFY clipboardSyncModeChanged)
 
+    // Files copied in Finder or Explorer cross with the clipboard too (clipfiles.*, clipboardsync.cpp)
+    Q_PROPERTY(bool clipboardFiles READ clipboardFiles WRITE setClipboardFiles NOTIFY clipboardFilesChanged)
+
     // The app name and stream stats beside the camera notch in fullscreen (macOS)
     Q_PROPERTY(bool notchBar READ notchBar WRITE setNotchBar NOTIFY notchBarChanged)
 
@@ -94,6 +97,9 @@ public:
     int clipboardSyncMode() const { return m_ClipboardSyncMode; }
     void setClipboardSyncMode(int mode);
 
+    bool clipboardFiles() const { return m_ClipboardFiles; }
+    void setClipboardFiles(bool enabled);
+
     bool notchBar() const { return m_NotchBar; }
     void setNotchBar(bool enabled);
 
@@ -116,6 +122,7 @@ public:
 signals:
     void keyTargetsChanged();
     void clipboardSyncModeChanged();
+    void clipboardFilesChanged();
     void notchBarChanged();
     void describeDisplayChanged();
     void hdrPeakOverrideChanged();
@@ -130,6 +137,7 @@ private:
 
     ForkKeymap::Map m_KeyMap;
     int m_ClipboardSyncMode;
+    bool m_ClipboardFiles;
     bool m_NotchBar;
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;

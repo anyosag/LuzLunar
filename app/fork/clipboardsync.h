@@ -18,6 +18,11 @@ class NvComputer;
 // travel together as a clipbundle (type=bundle, see clipbundle.h), and only clipboard content that
 // changed is transferred. Other hosts, and other platforms, sync plain text (type=text).
 //
+// Files copied in Finder or Explorer go too, when the host offers them and Apollo gives this device
+// its File Upload and File Download permissions: their list travels in the bundle and their contents
+// in chunks (type=file), and the other side's clipboard changes once they've all arrived. Copies from
+// the PC land in LuzLunar's cache (clipfiles.h). Their progress shows on the Dock icon.
+//
 // Automatic mode sends the local clipboard when the stream starts or regains focus, and fetches
 // the host's clipboard when the stream loses focus or ends. Ctrl+Option+Shift+U / G send and
 // fetch manually in either mode.
@@ -50,6 +55,9 @@ public:
         bool rich = false;      // rich sync: the worker already applied the result
         bool failed = false;    // rich sync: response holds the failure to report
         QString toast;          // rich sync and notices: a message to show
+        bool whenBack = false;  // the toast waits until the stream has focus again
+        bool setBadge = false;  // file copies: badge replaces the text on the Dock icon
+        QString badge;
     };
 
     struct Shared;
@@ -73,6 +81,9 @@ private:
     bool m_CanSend;
     bool m_CanReceive;
     bool m_AutoFailureShown;    // an automatic sync failed and said so; once per stream
+    bool m_HasFocus;
+    QString m_ToastWhenBack;    // a message that came while the stream was in the background
+    bool m_BadgeShown;          // a file copy's progress is on the Dock icon
     QString m_LastKnownHost;    // text sync: what we believe the host's clipboard holds, with LF line endings
     QString m_PendingUpload;    // text sync
     QString m_ToastText;

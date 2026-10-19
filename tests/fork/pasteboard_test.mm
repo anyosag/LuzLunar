@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #import <AppKit/AppKit.h>
 #include <unistd.h>
@@ -107,12 +108,21 @@ int main()
         CHECK(MacPasteboard::write({ { "text/plain", "secret" } }, true, name) != 0);
         CHECK(MacPasteboard::read(name).concealed);
 
-        // A Finder file copy sends only its text
+        // A Finder file copy: its paths, in order, and no image
         [pasteboard clearContents];
-        [pasteboard writeObjects:@[[NSURL fileURLWithPath:@"/System"]]];
+        [pasteboard writeObjects:@[[NSURL fileURLWithPath:@"/System"], [NSURL fileURLWithPath:@"/etc/hosts"]]];
         MacPasteboard::Snapshot files = MacPasteboard::read(name);
         CHECK(files.fileCopy);
+        CHECK(files.files.size() == 2);
+        CHECK(files.files.size() == 2 && files.files[0] == "/System" && files.files[1] == "/etc/hosts");
         CHECK(find(files, "image/png") == nullptr);
+
+        // Files written for a paste in Finder read back the same
+        CHECK(MacPasteboard::writeFiles({ "/System", "/usr/bin" }, name) != 0);
+        MacPasteboard::Snapshot written = MacPasteboard::read(name);
+        CHECK(written.fileCopy);
+        CHECK(written.files == std::vector<std::string>({ "/System", "/usr/bin" }));
+        CHECK(MacPasteboard::writeFiles({}, name) == 0);
 
         // Office's drawing format keeps its Mac name
         CHECK(MacPasteboard::write({ { "ms/gvml", std::string("PK\x05\x06", 4) + std::string(18, '\0') } }, false, name) != 0);

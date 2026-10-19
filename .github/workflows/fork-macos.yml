@@ -177,6 +177,11 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -DCLIPBUNDLE_WITH_ZLIB -Iapp/fork \
             tests/fork/clipbundle_test.cpp app/fork/clipbundle.cpp -lz -o "$RUNNER_TEMP/clipbundle_test"
           "$RUNNER_TEMP/clipbundle_test"
+          # File copies through the clipboard: a Finder copy walked and read in chunks, a copy from the PC
+          # written into the cache, and old copies cleared
+          clang++ -std=c++17 -Wall -Wextra -DCLIPBUNDLE_WITH_ZLIB -Iapp/fork \
+            tests/fork/clipfiles_test.cpp app/fork/clipfiles.cpp app/fork/clipbundle.cpp -lz -o "$RUNNER_TEMP/clipfiles_test"
+          "$RUNNER_TEMP/clipfiles_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"

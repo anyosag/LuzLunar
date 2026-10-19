@@ -16,6 +16,7 @@
 #define SER_MACSHORTCUTS "fork/macShortcuts"
 #define SER_MACSHORTCUTSALL "fork/macShortcutsAll"
 #define SER_TRACKPADPAUSEMACSETTINGS "fork/trackpadPauseMacSettings"
+#define SER_CLIPBOARDFILES "fork/clipboardFiles"
 #define SER_TRACKPADSCROLLSPEED "fork/trackpadScrollSpeed"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
@@ -66,6 +67,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
     : QObject(parent),
       m_KeyMap(defaultKeyMap()),
       m_ClipboardSyncMode(CSM_MANUAL),
+      m_ClipboardFiles(true),
       m_NotchBar(true),
       m_DescribeDisplay(true),
       m_HdrPeakOverride(0),
@@ -95,6 +97,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
         m_ClipboardSyncMode = mode;
     }
 
+    m_ClipboardFiles = settings.value(SER_CLIPBOARDFILES, m_ClipboardFiles).toBool();
     m_NotchBar = settings.value(SER_NOTCHBAR, m_NotchBar).toBool();
     m_DescribeDisplay = settings.value(SER_DESCRIBEDISPLAY, m_DescribeDisplay).toBool();
 
@@ -181,6 +184,17 @@ void ForkPreferences::setTrackpadPauseMacSettings(bool pause)
     m_TrackpadPauseMacSettings = pause;
     QSettings().setValue(SER_TRACKPADPAUSEMACSETTINGS, pause);
     emit trackpadPauseMacSettingsChanged();
+}
+
+void ForkPreferences::setClipboardFiles(bool enabled)
+{
+    if (enabled == m_ClipboardFiles) {
+        return;
+    }
+
+    m_ClipboardFiles = enabled;
+    QSettings().setValue(SER_CLIPBOARDFILES, enabled);
+    emit clipboardFilesChanged();
 }
 
 void ForkPreferences::setTrackpadScrollSpeed(double speed)
