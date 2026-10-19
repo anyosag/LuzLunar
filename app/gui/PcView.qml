@@ -3,6 +3,7 @@ import QtQuick.Controls 2.2
 import QtQuick.Controls.impl 2.15 // [fork] IconImage for tinted, theme-aware icons
 import SfSymbols 1.0 // [fork]
 import ForkTheme 1.0 // [fork]
+import ForkHostUpdates 1.0 // [fork]
 import QtQuick.Layouts 1.3
 
 import ComputerModel 1.0
@@ -172,6 +173,12 @@ CenteredGridView {
         // the card says so; then a toast says it's awake
         property bool forkWaking: false
         readonly property bool forkOnline: model.online
+
+        // [fork] A newer Apollo build is out and this Mac may install it (ForkHostUpdates)
+        readonly property bool forkHostUpdate: {
+            var info = ForkHostUpdates.revision >= 0 ? ForkHostUpdates.status(model.uuid) : {}
+            return !!info.update && !!info.permitted && !!info.supported && !info.updating
+        }
         function forkWake() {
             forkWaking = true
             forkWakeTimeout.restart()
@@ -201,6 +208,7 @@ CenteredGridView {
             statusUnknown: model.statusUnknown
             serverSupported: model.serverSupported
             hostSoftware: model.hostSoftware
+            hostUpdate: pcDelegate.forkHostUpdate
             highlighted: parent.highlighted || parent.visualFocus
             hovered: parent.hovered
 
@@ -241,6 +249,16 @@ CenteredGridView {
                     text: qsTr("Wake PC")
                     onTriggered: pcDelegate.forkWake() // [fork] shows the waking state (was computerModel.wakeComputer(index))
                     visible: !model.online && model.wakeable
+                }
+                // [fork] Apollo's over-the-air update (ForkHostUpdates; Settings › Updates has the rest)
+                NavigableMenuItem {
+                    symbol: "arrow.down.circle"
+                    text: qsTr("Update Apollo")
+                    onTriggered: {
+                        ForkHostUpdates.install(model.uuid)
+                        window.forkToast(qsTr("Updating Apollo on %1").arg(model.name))
+                    }
+                    visible: model.online && pcDelegate.forkHostUpdate
                 }
                 NavigableMenuItem {
                     symbol: "network" // [fork]

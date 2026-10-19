@@ -52,6 +52,8 @@ QVariant ComputerModel::data(const QModelIndex& index, int role) const
         return computer->isApolloServerSoftware ? QStringLiteral("Apollo")
              : computer->isNvidiaServerSoftware ? QStringLiteral("GeForce Experience")
              : QStringLiteral("Sunshine");
+    case UuidRole: // [fork]
+        return computer->uuid;
     case DetailsRole: {
         QString state, pairState;
 
@@ -121,6 +123,7 @@ QHash<int, QByteArray> ComputerModel::roleNames() const
     names[ServerSupportedRole] = "serverSupported";
     names[DetailsRole] = "details";
     names[HostSoftwareRole] = "hostSoftware"; // [fork]
+    names[UuidRole] = "uuid"; // [fork]
 
     return names;
 }

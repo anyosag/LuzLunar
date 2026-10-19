@@ -17,7 +17,8 @@ class ComputerModel : public QAbstractListModel
         StatusUnknownRole,
         ServerSupportedRole,
         DetailsRole,
-        HostSoftwareRole // [fork]
+        HostSoftwareRole, // [fork]
+        UuidRole // [fork] which PC, for ForkHostUpdates
     };
 
 public:

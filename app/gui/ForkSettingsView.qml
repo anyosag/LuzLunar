@@ -32,6 +32,7 @@ FocusScope {
         { "id": "gamepads", "label": qsTr("Gamepads"), "symbol": "gamecontroller", "file": "ForkSettingsGamepads.qml" },
         { "id": "host", "label": qsTr("Host & network"), "symbol": "server.rack", "file": "ForkSettingsHost.qml" },
         { "id": "app", "label": qsTr("App"), "symbol": "square.grid.2x2", "file": "ForkSettingsApp.qml" },
+        { "id": "updates", "label": qsTr("Updates"), "symbol": "arrow.down.circle", "file": "ForkSettingsUpdates.qml" },
         { "id": "mac", "label": qsTr("This Mac"), "symbol": "laptopcomputer", "file": "ForkSettingsMac.qml", "darwinOnly": true }
     ]
 

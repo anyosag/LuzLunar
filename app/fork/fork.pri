@@ -11,6 +11,14 @@
     DEFINES += FORK_BUILD_ID=\\\"$$FORK_BUILD_ID\\\"
 }
 
+# Which CI run built this, and whether from master, for over-the-air updates (forkupdater.cpp)
+!isEmpty(FORK_BUILD_RUN) {
+    DEFINES += FORK_BUILD_RUN=$$FORK_BUILD_RUN
+}
+!isEmpty(FORK_BUILD_CHANNEL) {
+    DEFINES += FORK_BUILD_CHANNEL=\\\"$$FORK_BUILD_CHANNEL\\\"
+}
+
 SOURCES += \
     $$PWD/apolloclient.cpp \
     $$PWD/clientdisplay.cpp \
@@ -19,6 +27,7 @@ SOURCES += \
     $$PWD/clipboardsync.cpp \
     $$PWD/forkaspect.cpp \
     $$PWD/forkaspectratios.cpp \
+    $$PWD/forkhostupdates.cpp \
     $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
@@ -32,6 +41,8 @@ SOURCES += \
     $$PWD/forktrackpad.cpp \
     $$PWD/forktrackpadgestures.cpp \
     $$PWD/forktrackpadpassthrough.cpp \
+    $$PWD/forkupdater.cpp \
+    $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
@@ -46,6 +57,7 @@ HEADERS += \
     $$PWD/clipboardsync.h \
     $$PWD/forkaspect.h \
     $$PWD/forkaspectratios.h \
+    $$PWD/forkhostupdates.h \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
@@ -58,6 +70,8 @@ HEADERS += \
     $$PWD/forktrackpad.h \
     $$PWD/forktrackpadgestures.h \
     $$PWD/forktrackpadpassthrough.h \
+    $$PWD/forkupdater.h \
+    $$PWD/forkupdaterules.h \
     $$PWD/forkvideoscaling.h \
     $$PWD/luztouchpad.h \
     $$PWD/sfsymbols.h \
@@ -68,7 +82,9 @@ HEADERS += \
     $$PWD/mac/macintegration.h \
     $$PWD/mac/notchbar.h \
     $$PWD/mac/pasteboard.h \
-    $$PWD/mac/trackpadcapture_mac.h
+    $$PWD/mac/selfupdate_mac.h \
+    $$PWD/mac/trackpadcapture_mac.h \
+    $$PWD/updatekey.h
 
 macx {
     SOURCES += \
@@ -78,6 +94,7 @@ macx {
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/pasteboard_mac.mm \
+        $$PWD/mac/selfupdate_mac.mm \
         $$PWD/mac/sfsymbolprovider.mm \
         $$PWD/mac/trackpadcapture_mac.mm \
         $$PWD/mac/windowchrome_mac.mm
@@ -87,6 +104,9 @@ macx {
 
     # Trackpad passthrough's gesture blocker: the event tap and the Accessibility check
     LIBS += -framework ApplicationServices
+
+    # Over-the-air updates: the new build's code signature against this one's (mac/selfupdate_mac.mm)
+    LIBS += -framework Security
     DEFINES += CLIPBUNDLE_WITH_ZLIB
 }
 
