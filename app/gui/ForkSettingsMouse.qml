@@ -7,7 +7,7 @@ import StreamingPreferences 1.0
 
 // [fork] Settings › Mouse & trackpad: whether the stream holds the pointer (games) or lets it
 // cross in and out like any window (remote desktop), the mouse button and scrolling options, and
-// trackpad passthrough (the Mac trackpad as a Windows touchpad).
+// what the Mac trackpad is in a stream (Mac trackpad, Windows touchpad or Mac mouse).
 // Upstream's "Use touchscreen as a virtual trackpad" (absoluteTouchMode) is left out on purpose:
 // Macs have no touchscreen, so the setting could never do anything here.
 Column {
@@ -266,21 +266,122 @@ Column {
     // Trackpad passthrough (app/fork/forktrackpadpassthrough.cpp). Each app can choose otherwise in
     // its Stream Settings.
     ForkCard {
+        id: trackpadCard
         title: qsTr("Trackpad")
         spacing: 8
         height: implicitHeight - 8
 
+        readonly property int mode: StreamingPreferences.trackpadMode
+
+        Column {
+            width: parent.width
+            spacing: 10
+
+            ForkSegmented {
+                accessibleName: qsTr("Trackpad")
+                options: [
+                    { "value": StreamingPreferences.TM_MAC_TRACKPAD, "label": qsTr("Mac trackpad") },
+                    { "value": StreamingPreferences.TM_WINDOWS_TOUCHPAD, "label": qsTr("Windows touchpad") },
+                    { "value": StreamingPreferences.TM_MAC_MOUSE, "label": qsTr("Mac mouse") }
+                ]
+                value: trackpadCard.mode
+                onActivated: (value) => StreamingPreferences.trackpadMode = value
+            }
+
+            ForkText {
+                width: parent.width
+                kind: "body"
+                color: ForkTheme.text2
+                wrapMode: Text.WordWrap
+                text: trackpadCard.mode === StreamingPreferences.TM_MAC_TRACKPAD
+                      ? qsTr("macOS points, clicks and scrolls, with its own speed, palm rejection and momentum, so the trackpad feels as it does on this Mac. Three- and four-finger swipes and pinches go to Windows as touchpad gestures. While the stream runs, Apollo turns Windows' pointer acceleration off so it doesn't add to macOS's. Needs LuzLunar's Apollo on Windows 11.")
+                      : trackpadCard.mode === StreamingPreferences.TM_WINDOWS_TOUCHPAD
+                      ? qsTr("Windows gets every finger, except palms and resting thumbs, and makes its own pointer, taps, scrolling and gestures, with its touchpad settings. Needs LuzLunar's Apollo on Windows 11.")
+                      : qsTr("The trackpad is a mouse, as in Moonlight: macOS's pointer and clicks, scrolling a notch at a time, and no Windows gestures.")
+            }
+
+            ForkText {
+                width: parent.width
+                visible: trackpadCard.mode !== StreamingPreferences.TM_MAC_MOUSE
+                kind: "help"
+                wrapMode: Text.WordWrap
+                text: qsTr("The stream captures the pointer, and macOS's trackpad gestures wait while the stream is in front. Apps can choose otherwise in Stream Settings.")
+            }
+        }
+
+        // How far Windows scrolls for the fingers' scrolling, in Mac trackpad mode
+        Column {
+            width: parent.width
+            visible: trackpadCard.mode === StreamingPreferences.TM_MAC_TRACKPAD
+            topPadding: 6
+            spacing: 8
+
+            Item {
+                width: parent.width
+                height: scrollSpeedLabel.implicitHeight
+
+                ForkText {
+                    id: scrollSpeedLabel
+                    kind: "label"
+                    font.weight: Font.DemiBold
+                    text: qsTr("Scroll speed")
+                }
+
+                ForkText {
+                    anchors.right: parent.right
+                    kind: "mono"
+                    font.pixelSize: 14
+                    color: ForkTheme.accentInk
+                    text: qsTr("%1×").arg(ForkPreferences.trackpadScrollSpeed.toFixed(2))
+                }
+            }
+
+            ForkSlider {
+                id: scrollSpeedSlider
+                width: parent.width
+                from: 0.25
+                to: 3
+                stepSize: 0.05
+                Accessible.name: qsTr("Scroll speed")
+
+                onMoved: ForkPreferences.trackpadScrollSpeed = Math.round(value * 20) / 20
+
+                Binding on value {
+                    value: ForkPreferences.trackpadScrollSpeed
+                    when: !scrollSpeedSlider.pressed
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: Math.max(scrollSpeedHelp.implicitHeight, scrollSpeedDefault.implicitHeight)
+
+                ForkText {
+                    id: scrollSpeedHelp
+                    anchors.left: parent.left
+                    anchors.right: scrollSpeedDefault.left
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "help"
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Raise it if Windows scrolls less than your fingers move, lower it if more")
+                }
+
+                ForkButton {
+                    id: scrollSpeedDefault
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "link"
+                    visible: ForkPreferences.trackpadScrollSpeed !== 1
+                    text: qsTr("Use default (1×)")
+                    onClicked: ForkPreferences.trackpadScrollSpeed = 1
+                }
+            }
+        }
+
         Column {
             width: parent.width
             spacing: 0
-
-            ForkSwitchRow {
-                showDivider: false
-                label: qsTr("Send the trackpad to Windows as a touchpad")
-                help: qsTr("Windows gets every finger and makes its own pointer, taps, scrolling and gestures, with its touchpad settings. The stream captures the pointer, and macOS's trackpad gestures wait while the stream is in front. Needs LuzLunar's Apollo on Windows 11. Apps can choose otherwise in Stream Settings.")
-                checked: StreamingPreferences.trackpadPassthrough
-                onToggled: (on) => StreamingPreferences.trackpadPassthrough = on
-            }
 
             ForkSwitchRow {
                 label: qsTr("Also pause Notification Center's swipe and three-finger drag")

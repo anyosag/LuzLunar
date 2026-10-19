@@ -54,7 +54,7 @@ NavigableDialog {
         { "title": qsTr("Video"), "keys": ["videoCodecConfig", "enableYUV444", "bitrateKbps"] },
         { "title": qsTr("Window"), "keys": ["fullscreenStretch", "enableVsync", "framePacing"],
           "help": qsTr("Fullscreen fill only applies in fullscreen, and frame pacing only with V-Sync on.") },
-        { "title": qsTr("Mouse & trackpad"), "keys": ["absoluteMouseMode", "trackpadPassthrough"] }
+        { "title": qsTr("Mouse & trackpad"), "keys": ["absoluteMouseMode", "trackpadMode"] }
     ]
 
     // The card that's selected: "office" or "gaming" while the choices are exactly that preset,
@@ -152,6 +152,17 @@ NavigableDialog {
 
     function onOffOptions() {
         return [ { "text": qsTr("On"), "value": true }, { "text": qsTr("Off"), "value": false } ]
+    }
+
+    function trackpadModeName(value) {
+        switch (value) {
+        case StreamingPreferences.TM_MAC_TRACKPAD:
+            return qsTr("Mac trackpad")
+        case StreamingPreferences.TM_WINDOWS_TOUCHPAD:
+            return qsTr("Windows touchpad")
+        default:
+            return qsTr("Mac mouse")
+        }
     }
 
     // The aspect ratio the resolution list is for: the chosen one, else the ratio of the size the stream will use
@@ -364,10 +375,12 @@ NavigableDialog {
               "current": StreamingPreferences.absoluteMouseMode ? qsTr("Remote desktop") : qsTr("Games"),
               "options": [ { "text": qsTr("Remote desktop (cursor not captured)"), "short": qsTr("Remote desktop"), "value": true },
                            { "text": qsTr("Games (cursor captured)"), "short": qsTr("Games"), "value": false } ] },
-            { "key": "trackpadPassthrough", "label": qsTr("Trackpad"),
-              "current": StreamingPreferences.trackpadPassthrough ? qsTr("Windows touchpad") : qsTr("Mac mouse"),
-              "options": [ { "text": qsTr("Windows touchpad (gestures go to Windows)"), "short": qsTr("Windows touchpad"), "value": true },
-                           { "text": qsTr("Mac mouse"), "value": false } ] }
+            { "key": "trackpadMode", "label": qsTr("Trackpad"), "current": trackpadModeName(StreamingPreferences.trackpadMode),
+              "options": [ { "text": qsTr("Mac trackpad (Windows gets the gestures)"), "short": qsTr("Mac trackpad"),
+                             "value": StreamingPreferences.TM_MAC_TRACKPAD },
+                           { "text": qsTr("Windows touchpad (Windows gets every finger)"), "short": qsTr("Windows touchpad"),
+                             "value": StreamingPreferences.TM_WINDOWS_TOUCHPAD },
+                           { "text": qsTr("Mac mouse"), "value": StreamingPreferences.TM_MAC_MOUSE } ] }
         ]
     }
 

@@ -18,7 +18,7 @@ namespace
     QString s_Args;
 }
 
-void capture(QWindow* qtWindow)
+void capture(QWindow* qtWindow, bool macTrackpad)
 {
     QString args;
 
@@ -50,6 +50,12 @@ void capture(QWindow* qtWindow)
 #else
     (void)qtWindow;
 #endif
+
+    // Sent before the host's features are known, which come with the stream; a host that doesn't
+    // offer the mode ignores it
+    if (macTrackpad) {
+        args += QStringLiteral("&luzTrackpad=mac");
+    }
 
     QMutexLocker lock(&s_Lock);
     s_Args = args;

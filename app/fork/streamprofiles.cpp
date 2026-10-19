@@ -19,8 +19,11 @@ namespace
     // Keys whose values are booleans; the rest are integers (including the codec enum)
     const QStringList k_BoolKeys = {
         "enableHdr", "enableYUV444", "absoluteMouseMode", "enableVsync", "framePacing", "fullscreenStretch",
-        "trackpadPassthrough",
     };
+
+    // Before trackpadMode, a profile could turn the trackpad passthrough on or off. On is now Mac
+    // trackpad mode, which sends the trackpad to Windows the new way.
+    const QString k_LegacyTrackpadKey = QStringLiteral("trackpadPassthrough");
 
     QString groupFor(const QString& hostUuid, const QString& appName)
     {
@@ -64,7 +67,7 @@ const QStringList& StreamProfiles::overridableKeys()
 {
     static const QStringList keys = {
         "videoCodecConfig", "enableHdr", "enableYUV444", "absoluteMouseMode", "enableVsync", "framePacing",
-        "fullscreenStretch", "trackpadPassthrough", "width", "height", "fps", "bitrateKbps",
+        "fullscreenStretch", "trackpadMode", "width", "height", "fps", "bitrateKbps",
     };
     return keys;
 }
@@ -99,6 +102,10 @@ QVariantMap StreamProfiles::profile(const QString& hostUuid, const QString& appN
         if (settings.contains(key)) {
             profile.insert(key, typedValue(key, settings.value(key)));
         }
+    }
+    if (!profile.contains("trackpadMode") && settings.contains(k_LegacyTrackpadKey)) {
+        profile.insert("trackpadMode", static_cast<int>(settings.value(k_LegacyTrackpadKey).toBool() ? StreamingPreferences::TM_MAC_TRACKPAD
+                                                                                                     : StreamingPreferences::TM_MAC_MOUSE));
     }
     return profile;
 }
@@ -176,7 +183,7 @@ Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, Streami
 
     // Trackpad passthrough needs the captured pointer: the hidden Mac cursor stays in the stream, so
     // it can't wander out of the window and click on the Mac while Windows moves its own pointer
-    if (prefs->trackpadPassthrough && prefs->absoluteMouseMode) {
+    if (prefs->trackpadMode != StreamingPreferences::TM_MAC_MOUSE && prefs->absoluteMouseMode) {
         prefs->absoluteMouseMode = false;
         applied.append(QStringLiteral("absoluteMouseMode=false (trackpad passthrough)"));
     }
