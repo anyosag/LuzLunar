@@ -91,6 +91,17 @@ luztouchpad::frame ContactTracker::baseFrame(std::uint32_t timeMs) const
     return f;
 }
 
+bool ContactTracker::fingerMoving(std::uint32_t timeMs) const
+{
+    for (const Slot& s : m_Slots) {
+        if (s.used && !s.liftNext && s.moved && since(timeMs, s.movedAt) >= 0 &&
+                since(timeMs, s.movedAt) <= static_cast<std::int32_t>(k_MovingMs)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool ContactTracker::fingersDown() const
 {
     return usedSlots() > 0;
@@ -137,8 +148,11 @@ void ContactTracker::observe(Pending& p, const Touch& t, std::uint32_t timeMs)
     else if (p.frames < k_DecideFrames && wide(t)) {
         p.wideFrames++;
     }
-    if (t.hasContact && t.fingerId == 1) {
-        p.thumb = true;
+    if (t.hasContact) {
+        p.sized = true;
+        if (t.fingerId == 1) {
+            p.thumb = true;
+        }
     }
     p.frames++;
     p.x = t.x;
@@ -176,8 +190,7 @@ bool ContactTracker::adopt(std::uintptr_t identity, const Pending& p, std::array
 
 void ContactTracker::decide(std::uint32_t timeMs, std::array<bool, luztouchpad::k_max_contacts>& began, bool& changed)
 {
-    bool othersMoving = m_FingerMoved && since(timeMs, m_LastFingerMove) >= 0 &&
-                        since(timeMs, m_LastFingerMove) <= static_cast<std::int32_t>(k_MovingMs);
+    bool othersMoving = fingerMoving(timeMs);
 
     for (auto it = m_Pending.begin(); it != m_Pending.end();) {
         Pending& p = it->second;
@@ -197,7 +210,9 @@ void ContactTracker::decide(std::uint32_t timeMs, std::array<bool, luztouchpad::
             ++it;
             continue;
         }
-        if (p.thumb && p.startY >= k_ThumbZone && movedMm(p) < k_ThumbStillMm && othersMoving) {
+        // Without hand parts, anything that lands like a resting thumb is one
+        bool thumb = p.thumb || !p.sized;
+        if (thumb && p.startY >= k_ThumbZone && movedMm(p) < k_ThumbStillMm && othersMoving) {
             m_Ignored.emplace(it->first, p.device);
             m_Rejected.thumbs++;
             it = m_Pending.erase(it);
@@ -328,8 +343,8 @@ std::optional<luztouchpad::frame> ContactTracker::update(const std::vector<Touch
                 s.x = x;
                 s.y = y;
                 changed = true;
-                m_FingerMoved = true;
-                m_LastFingerMove = timeMs;
+                s.moved = true;
+                s.movedAt = timeMs;
             }
             if (t.phase == TouchPhase::Ended) {
                 ending[slot] = luztouchpad::phase_up;
@@ -559,7 +574,6 @@ void ContactTracker::reset()
     m_Buttons = 0;
     m_Sent = false;
     m_Open = false;
-    m_FingerMoved = false;
 }
 
 void MuteFilter::touching(bool any, std::uint32_t timeMs)

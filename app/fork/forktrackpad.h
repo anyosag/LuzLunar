@@ -18,7 +18,7 @@
 // - A touch that lands while you type is a palm: within k_FirstKeyMs of a first key, or k_TypingMs
 //   of the last while keys keep coming (libinput's disable-while-typing).
 // - A thumb that lands in the bottom of the pad and stays still while another finger moves is a
-//   resting thumb.
+//   resting thumb. Without MultitouchSupport's hand parts, any touch that does so is.
 //
 // Mac trackpad mode (setGestureOnly): macOS's own pointer, clicks and scrolling go to Windows as
 // mouse input instead, so frames only carry 3- and 4-finger gestures and pinch. Fingers are
@@ -148,6 +148,8 @@ namespace ForkTrackpad
             std::uint16_t y = 0;
             int wideRun = 0;  // Palm-sized frames in a row
             bool liftNext = false;  // A quick tap: it went down in the last frame and lifts in the next
+            bool moved = false;
+            std::uint32_t movedAt = 0;  // When it last moved
         };
 
         // A touch not sent yet, until it's decided
@@ -159,7 +161,8 @@ namespace ForkTrackpad
             int frames = 0;  // Frames since then
             int wideFrames = 0;  // Of those, palm-sized
             bool resting = false;
-            bool thumb = false;  // MultitouchSupport calls it a thumb
+            bool sized = false;  // MultitouchSupport found it
+            bool thumb = false;  // and calls it a thumb
             double startX = 0;  // Where it began or stopped resting: 0-1, y from the top
             double startY = 0;
             double x = 0;
@@ -170,6 +173,7 @@ namespace ForkTrackpad
         int slotOf(std::uintptr_t identity) const;
         int freeSlot() const;
         int usedSlots() const;
+        bool fingerMoving(std::uint32_t timeMs) const;
         bool typing(std::uint32_t timeMs) const;
         void observe(Pending& p, const Touch& t, std::uint32_t timeMs);
         void decide(std::uint32_t timeMs, std::array<bool, luztouchpad::k_max_contacts>& began, bool& changed);
@@ -191,8 +195,6 @@ namespace ForkTrackpad
         bool m_KeyTyped = false;
         std::uint32_t m_LastKey = 0;
         std::uint32_t m_TypingUntil = 0;
-        bool m_FingerMoved = false;
-        std::uint32_t m_LastFingerMove = 0;
 
         bool m_GestureOnly = false;
         bool m_Open = false;

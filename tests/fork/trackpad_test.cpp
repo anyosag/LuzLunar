@@ -324,6 +324,25 @@ static void testRestingThumb()
     ContactTracker alone;
     auto down = settle(alone, {sized(touch(1, TouchPhase::Began, 0.3, 0.05), 1, 8.0f)}, 0);
     CHECK(down && down->contacts[0].phase == luztouchpad::phase_down);
+
+    // Without MultitouchSupport, any touch that lands like a resting thumb is one
+    ContactTracker plain;
+    settle(plain, {touch(1, TouchPhase::Began, 0.5, 0.6)}, 0);
+    Touch still = touch(2, TouchPhase::Began, 0.3, 0.05);
+    plain.update({touch(1, TouchPhase::Moved, 0.52, 0.6), still}, 24);
+    plain.update({touch(1, TouchPhase::Moved, 0.54, 0.6), with(still, TouchPhase::Stationary)}, 32);
+    plain.update({touch(1, TouchPhase::Moved, 0.56, 0.6), with(still, TouchPhase::Stationary)}, 40);
+    CHECK(plain.rejected().thumbs == 1);
+
+    // With it, a finger the driver doesn't call a thumb isn't one wherever it lands
+    ContactTracker named;
+    settle(named, {sized(touch(1, TouchPhase::Began, 0.5, 0.6), 2, 8.0f)}, 0);
+    Touch index = sized(touch(2, TouchPhase::Began, 0.3, 0.05), 2, 8.0f);
+    named.update({sized(touch(1, TouchPhase::Moved, 0.52, 0.6), 2, 8.0f), index}, 24);
+    named.update({sized(touch(1, TouchPhase::Moved, 0.54, 0.6), 2, 8.0f), with(index, TouchPhase::Stationary)}, 32);
+    auto both = named.update({sized(touch(1, TouchPhase::Moved, 0.56, 0.6), 2, 8.0f), with(index, TouchPhase::Stationary)}, 40);
+    CHECK(both && both->count == 2);
+    CHECK(named.rejected().thumbs == 0);
 }
 
 static void testVanished()
