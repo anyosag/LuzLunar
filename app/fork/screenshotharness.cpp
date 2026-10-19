@@ -66,6 +66,7 @@ namespace
         { "2h-settings-gamepads", "stackView.currentItem.showSection('gamepads')", 1500 },
         { "2i-settings-host", "stackView.currentItem.showSection('host')", 1500 },
         { "2j-settings-app", "stackView.currentItem.showSection('app')", 1500 },
+        { "2j2-settings-updates", "stackView.currentItem.showSection('updates')", 1500 },
         { "2k-settings-mac", "stackView.currentItem.showSection('mac')", 1500 },
         { "2l-settings-mac-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
         { "5-add-pc-dialog", "goBack(); addPcDialog.open()", 2000 },

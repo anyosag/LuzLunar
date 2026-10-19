@@ -19,6 +19,7 @@ Rectangle {
     property bool statusUnknown: false
     property bool serverSupported: true
     property string hostSoftware: ""   // "Apollo", "Sunshine"… for a paired PC (ComputerModel)
+    property bool hostUpdate: false    // a newer Apollo build is out and this Mac may install it (ForkHostUpdates)
     property bool highlighted: false   // keyboard or gamepad focus
     property bool hovered: false
 
@@ -132,6 +133,7 @@ Rectangle {
             elide: Text.ElideRight
             text: !card.serverSupported ? qsTr("Update the host to stream from it")
                 : !card.paired ? qsTr("Found on your network · not paired")
+                : card.hostSoftware !== "" && card.hostUpdate ? qsTr("%1 · update available").arg(card.hostSoftware)
                 : card.hostSoftware !== "" ? qsTr("%1 · paired").arg(card.hostSoftware)
                 : qsTr("Paired")
         }

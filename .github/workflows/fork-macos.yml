@@ -81,6 +81,8 @@ jobs:
     name: macOS arm64
     needs: setup
     runs-on: ${{ needs.setup.outputs.os }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
@@ -125,9 +127,24 @@ jobs:
           # qtimageformats plugin; macdeployqt then bundles it.
           modules: 'qtimageformats'
 
+      # The run number orders builds for over-the-air updates (app/fork/forkupdater.cpp); only a push
+      # to master is a master build, which updates may replace by themselves and the publish job releases.
       - name: Set version
+        id: version
         shell: bash
-        run: echo "CI_VERSION=$(cat app/version.txt)-fork.$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+        env:
+          FORK_BUILD_RUN: ${{ github.run_number }}
+          IS_MASTER_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        run: |
+          version="$(cat app/version.txt)-fork.$(git rev-parse --short=7 HEAD)"
+          echo "CI_VERSION=$version" >> "$GITHUB_ENV"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "FORK_BUILD_RUN=$FORK_BUILD_RUN" >> "$GITHUB_ENV"
+          if [ "$IS_MASTER_PUSH" = true ]; then
+            echo "FORK_BUILD_CHANNEL=master" >> "$GITHUB_ENV"
+          else
+            echo "FORK_BUILD_CHANNEL=branch" >> "$GITHUB_ENV"
+          fi
 
       - name: Fork unit tests
         shell: bash
@@ -172,6 +189,12 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/trackpadgestures_test.cpp app/fork/forktrackpadgestures.cpp -o "$RUNNER_TEMP/trackpadgestures_test"
           "$RUNNER_TEMP/trackpadgestures_test"
+          # Over-the-air updates: manifests, when they install, and the Ed25519 check (Homebrew's OpenSSL)
+          openssl_prefix=$(brew --prefix openssl@3)
+          clang++ -std=c++17 -Wall -Wextra -Iapp/fork -I"$openssl_prefix/include" \
+            tests/fork/updaterules_test.cpp app/fork/forkupdaterules.cpp \
+            -L"$openssl_prefix/lib" -lcrypto -o "$RUNNER_TEMP/updaterules_test"
+          "$RUNNER_TEMP/updaterules_test"
           # The probe for checking passthrough on a Mac (uploaded below); built here so it keeps building
           mkdir -p "$RUNNER_TEMP/probe"
           clang++ -std=c++17 -fobjc-arc -Wall -Iapp/fork -framework AppKit -framework ApplicationServices \
@@ -248,6 +271,15 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
+      # The signed app zipped for over-the-air updates (build-mac.sh); the publish job releases it
+      - name: Upload the update zip
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: LuzLunar-update-${{ env.CI_VERSION }}
+          path: build/installer-Release/LuzLunar-macOS-arm64.zip
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Upload Symbols
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
@@ -284,3 +316,113 @@ jobs:
           name: LuzLunar-screenshots-${{ env.CI_VERSION }}
           path: ${{ runner.temp }}/screenshots
           if-no-files-found: warn
+
+  # Over-the-air updates (FORK.md, "Updates"): each master build becomes a GitHub release with an
+  # update.json that LuzLunar checks against the public key in app/fork/updatekey.h. The signing
+  # key is the FORK_UPDATE_KEY secret of the `release` environment, which only master may use.
+  publish:
+    name: Publish update
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write  # create the release
+    concurrency:
+      group: publish-update
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          sparse-checkout: app/fork/updatekey.h
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Download the update zip
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
+        with:
+          name: LuzLunar-update-${{ needs.build.outputs.version }}
+          path: artifacts
+
+      - name: Download the DMG
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
+        with:
+          name: LuzLunar-macOS-arm64-${{ needs.build.outputs.version }}
+          path: artifacts
+
+      - name: Write and sign update.json
+        id: sign
+        env:
+          FORK_UPDATE_KEY: ${{ secrets.FORK_UPDATE_KEY }}
+          RUN: ${{ github.run_number }}
+          VERSION: ${{ needs.build.outputs.version }}
+          COMMIT: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FORK_UPDATE_KEY" ]; then
+            echo "::warning::The release environment has no FORK_UPDATE_KEY secret, so this build isn't published as an update (FORK.md, \"Updates\")"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cd artifacts
+          file=LuzLunar-macOS-arm64.zip
+          tag="luzlunar-b$RUN"
+          notes="${HEAD_MESSAGE%%$'\n'*}"
+          notes="${notes:0:500}"
+          jq -n \
+            --argjson run "$RUN" --arg version "$VERSION" --arg commit "$COMMIT" \
+            --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg notes "$notes" \
+            --arg name "$file" --arg url "https://github.com/$REPO/releases/download/$tag/$file" \
+            --arg sha256 "$(sha256sum "$file" | cut -d' ' -f1)" --argjson size "$(stat -c %s "$file")" \
+            '{product: "luzlunar", channel: "master", run: $run, version: $version, commit: $commit,
+              published: $published, notes: $notes,
+              asset: {name: $name, url: $url, sha256: $sha256, size: $size}}' > update.json
+          cat update.json
+
+          key="$RUNNER_TEMP/update-key.pem"
+          (umask 077; printf '%s\n' "$FORK_UPDATE_KEY" > "$key")
+          openssl pkeyutl -sign -inkey "$key" -rawin -in update.json -out "$RUNNER_TEMP/update.sig"
+          rm -f "$key"
+          base64 -w0 "$RUNNER_TEMP/update.sig" > update.json.sig
+
+          # The secret must match the public key LuzLunar has, or every LuzLunar would refuse this update
+          hex=$(grep -o '0x[0-9a-f][0-9a-f]' ../app/fork/updatekey.h | head -n 32 | sed 's/0x//' | tr -d '\n')
+          { echo '-----BEGIN PUBLIC KEY-----'; echo "302a300506032b6570032100$hex" | xxd -r -p | base64; echo '-----END PUBLIC KEY-----'; } > "$RUNNER_TEMP/update-pub.pem"
+          openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/update-pub.pem" -rawin -in update.json -sigfile "$RUNNER_TEMP/update.sig"
+
+          {
+            echo "publish=true"
+            echo "tag=$tag"
+            echo "notes=$notes"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the release
+        if: steps.sign.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.sign.outputs.tag }}
+          NOTES: ${{ steps.sign.outputs.notes }}
+          VERSION: ${{ needs.build.outputs.version }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          files=(LuzLunar-macOS-arm64.zip LuzLunar-*.dmg update.json update.json.sig)
+          if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$REPO" --clobber "${files[@]}"
+          else
+            gh release create "$TAG" --repo "$REPO" --target "$COMMIT" --title "LuzLunar $VERSION" \
+              --notes "$NOTES" --latest "${files[@]}"
+          fi
+
+          # Keep the newest 15 updates
+          gh release list --repo "$REPO" --limit 200 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("luzlunar-b"))] | sort_by(.createdAt) | reverse | .[15:] | .[].tagName' |
+          while read -r old; do
+            echo "Removing $old"
+            gh release delete "$old" --repo "$REPO" --yes --cleanup-tag
+          done

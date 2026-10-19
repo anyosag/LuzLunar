@@ -10,6 +10,8 @@ import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
 import ForkTheme 1.0 // [fork]
+import ForkUpdater 1.0 // [fork]
+import ForkHostUpdates 1.0 // [fork]
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -487,22 +489,41 @@ ApplicationWindow {
                 // an update is available
                 visible: false
 
+                // [fork] LuzLunar's own update, in Settings › Updates (was upstream's download page)
                 onClicked: {
-                    if (SystemProperties.hasBrowser) {
-                        Qt.openUrlExternally(browserUrl);
+                    navigateTo("qrc:/gui/ForkSettingsView.qml", ForkSettingsView)
+                    if (stackView.currentItem instanceof ForkSettingsView) {
+                        stackView.currentItem.showSection("updates")
                     }
                 }
 
                 function updateAvailable(version, url)
                 {
-                    ToolTip.text = qsTr("Update available for Moonlight: Version %1").arg(version)
+                    ToolTip.text = qsTr("LuzLunar %1 is ready to install").arg(version) // [fork]
                     updateButton.browserUrl = url
                     updateButton.visible = true
                 }
 
+                // [fork] LuzLunar's own over-the-air updates (ForkUpdater) instead of upstream
+                // Moonlight's releases (AutoUpdateChecker), and Apollo PCs' (ForkHostUpdates)
                 Component.onCompleted: {
-                    AutoUpdateChecker.onUpdateAvailable.connect(updateAvailable)
-                    AutoUpdateChecker.start()
+                    ForkUpdater.changed.connect(function() {
+                        if (ForkUpdater.updateReady && ForkUpdater.supported) {
+                            updateAvailable(ForkUpdater.latestVersion, "luzlunar:update")
+                        }
+                        else {
+                            updateButton.visible = false
+                            updateButton.browserUrl = ""
+                        }
+                    })
+                    ForkUpdater.start()
+                    if (ForkUpdater.lastResult !== "") {
+                        window.forkToast(ForkUpdater.lastResult)
+                    }
+                    ForkHostUpdates.setComputerManager(ComputerManager)
+                    ForkHostUpdates.finished.connect(function(uuid, text) {
+                        window.forkToast(text)
+                    })
                 }
 
                 Keys.onDownPressed: {

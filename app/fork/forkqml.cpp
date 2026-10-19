@@ -7,7 +7,9 @@
 
 #include "clienthardware.h"
 #include "forkaspectratios.h"
+#include "forkhostupdates.h"
 #include "forkpreferences.h"
+#include "forkupdater.h"
 #include "sfsymbols.h"
 #include "streamprofiles.h"
 #include "windowchrome.h"
@@ -57,6 +59,19 @@ namespace
             ForkWindowChrome* chrome = ForkWindowChrome::get();
             QQmlEngine::setObjectOwnership(chrome, QQmlEngine::CppOwnership);
             return chrome;
+        });
+        // Over-the-air updates of LuzLunar and of Apollo PCs (FORK.md, "Updates")
+        qmlRegisterSingletonType<ForkUpdater>("ForkUpdater", 1, 0, "ForkUpdater",
+                                              [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkUpdater* updater = ForkUpdater::get();
+            QQmlEngine::setObjectOwnership(updater, QQmlEngine::CppOwnership);
+            return updater;
+        });
+        qmlRegisterSingletonType<ForkHostUpdates>("ForkHostUpdates", 1, 0, "ForkHostUpdates",
+                                                  [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkHostUpdates* updates = ForkHostUpdates::get();
+            QQmlEngine::setObjectOwnership(updates, QQmlEngine::CppOwnership);
+            return updates;
         });
     }
 }

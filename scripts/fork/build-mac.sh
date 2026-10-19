@@ -63,9 +63,15 @@ export CFLAGS=-flto=thin
 export CXXFLAGS=-flto=thin
 export LDFLAGS=-flto=thin
 
+# Over-the-air updates order builds by CI run and only replace master builds by themselves
+# (app/fork/forkupdater.cpp). CI sets both; a local build is run 0 on the "local" channel.
+UPDATE_ARGS=()
+if [[ "$FORK_BUILD_RUN" =~ ^[0-9]+$ ]]; then UPDATE_ARGS+=(FORK_BUILD_RUN="$FORK_BUILD_RUN"); fi
+if [[ "$FORK_BUILD_CHANNEL" =~ ^[a-z]+$ ]]; then UPDATE_ARGS+=(FORK_BUILD_CHANNEL="$FORK_BUILD_CHANNEL"); fi
+
 echo Configuring the project for arm64
 pushd "$BUILD_FOLDER"
-"$QMAKE" "$SOURCE_ROOT/moonlight-qt.pro" QMAKE_APPLE_DEVICE_ARCHS="arm64" FORK_BUILD_ID="$VERSION" || fail "Qmake failed!"
+"$QMAKE" "$SOURCE_ROOT/moonlight-qt.pro" QMAKE_APPLE_DEVICE_ARCHS="arm64" FORK_BUILD_ID="$VERSION" "${UPDATE_ARGS[@]}" || fail "Qmake failed!"
 popd
 
 echo Compiling Moonlight in $BUILD_CONFIG configuration
@@ -141,8 +147,11 @@ if [ -n "$LUZLUNAR_SIGN_IDENTITY" ]; then
   codesign --verify --deep --strict --verbose=2 "$APP" || fail "Signature verification failed!"
   codesign -dv "$APP" 2>&1 | grep -q 'Signature=adhoc' && fail "Bundle is still ad-hoc signed!"
   # The designated requirement names the certificate. It must read the same in every build, or
-  # macOS treats the update as a different app and drops its permissions.
-  codesign -d -r- "$APP" 2>&1 | grep designated
+  # macOS treats the update as a different app and drops its permissions, and over-the-air
+  # updates refuse it (app/fork/mac/selfupdate_mac.mm checks a new build against it).
+  REQUIREMENT=$(codesign -d -r- "$APP" 2>&1 | grep designated)
+  echo "$REQUIREMENT"
+  echo "$REQUIREMENT" | grep -q 'certificate leaf' || fail "The designated requirement doesn't name the signing certificate!"
 else
   echo Signing app bundle ad-hoc
   codesign --force --deep --sign - "$APP" || fail "Ad-hoc signing failed!"
@@ -158,6 +167,12 @@ case $STATUS in
   137) fail "$APP_NAME was killed at launch (SIGKILL), which usually means an invalid code signature" ;;
   *) echo "::warning::$APP_NAME --version exited with status $STATUS (not a signature failure)" ;;
 esac
+
+# The app as over-the-air updates download it (app/fork/forkupdater.cpp). ditto keeps the signature
+# and the bundle's extended attributes, and LuzLunar unpacks it with ditto too.
+echo Creating the update zip
+rm -f "$INSTALLER_FOLDER/$APP_NAME-macOS-arm64.zip"
+ditto -c -k --keepParent "$APP" "$INSTALLER_FOLDER/$APP_NAME-macOS-arm64.zip" || fail "Creating the update zip failed!"
 
 if [ "$LUZLUNAR_SKIP_DMG" == "1" ]; then
   echo Skipping the DMG
