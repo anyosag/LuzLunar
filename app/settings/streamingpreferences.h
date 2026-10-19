@@ -119,6 +119,15 @@ public:
     };
     Q_ENUM(CaptureSysKeysMode);
 
+    // [fork] What the Mac trackpad is in a stream (forktrackpadpassthrough.cpp)
+    enum TrackpadMode
+    {
+        TM_MAC_MOUSE, // macOS's mouse events, as in Moonlight
+        TM_WINDOWS_TOUCHPAD, // every finger goes to a Windows touchpad
+        TM_MAC_TRACKPAD, // macOS's pointer, clicks and scrolling, and Windows' gestures
+    };
+    Q_ENUM(TrackpadMode);
+
     Q_PROPERTY(int width MEMBER width NOTIFY displayModeChanged)
     Q_PROPERTY(int height MEMBER height NOTIFY displayModeChanged)
     Q_PROPERTY(int fps MEMBER fps NOTIFY displayModeChanged)
@@ -148,7 +157,7 @@ public:
     Q_PROPERTY(RendererSelection rendererSelection MEMBER rendererSelection NOTIFY rendererSelectionChanged)
     Q_PROPERTY(WindowMode windowMode MEMBER windowMode NOTIFY windowModeChanged)
     Q_PROPERTY(bool fullscreenStretch MEMBER fullscreenStretch NOTIFY fullscreenStretchChanged) // [fork]
-    Q_PROPERTY(bool trackpadPassthrough MEMBER trackpadPassthrough NOTIFY trackpadPassthroughChanged) // [fork]
+    Q_PROPERTY(TrackpadMode trackpadMode MEMBER trackpadMode NOTIFY trackpadModeChanged) // [fork]
     Q_PROPERTY(WindowMode recommendedFullScreenMode MEMBER recommendedFullScreenMode CONSTANT)
     Q_PROPERTY(UIDisplayMode uiDisplayMode MEMBER uiDisplayMode NOTIFY uiDisplayModeChanged)
     Q_PROPERTY(bool swapMouseButtons MEMBER swapMouseButtons NOTIFY mouseButtonsChanged)
@@ -198,7 +207,7 @@ public:
     VideoDecoderSelection videoDecoderSelection;
     WindowMode windowMode;
     bool fullscreenStretch; // [fork] fill the screen in fullscreen instead of letterboxing
-    bool trackpadPassthrough; // [fork] the Mac trackpad goes to Windows as a touchpad (forktrackpadpassthrough.cpp)
+    TrackpadMode trackpadMode; // [fork]
     WindowMode recommendedFullScreenMode;
     UIDisplayMode uiDisplayMode;
     Language language;
@@ -227,7 +236,7 @@ signals:
     void uiDisplayModeChanged();
     void windowModeChanged();
     void fullscreenStretchChanged(); // [fork]
-    void trackpadPassthroughChanged(); // [fork]
+    void trackpadModeChanged(); // [fork]
     void framePacingChanged();
     void connectionWarningsChanged();
     void configurationWarningsChanged();

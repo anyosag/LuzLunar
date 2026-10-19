@@ -131,9 +131,16 @@ CenteredGridView {
                                                                                             StreamingPreferences.fps, StreamingPreferences.enableYUV444)) {
             bitrate = StreamingPreferences.getDefaultBitrate(w, h, fps, yuv)
         }
-        var touchpad = has("trackpadPassthrough") ? p.trackpadPassthrough : StreamingPreferences.trackpadPassthrough
+        var trackpad = has("trackpadMode") ? p.trackpadMode : StreamingPreferences.trackpadMode
         return { "profile": p, "width": w, "height": h, "fps": fps, "yuv": yuv, "hdr": hdr, "codec": codec, "bitrate": bitrate,
-                 "touchpad": touchpad }
+                 "trackpad": trackpad }
+    }
+
+    // "Mac trackpad" or "Touchpad" (the Windows touchpad), or nothing for a trackpad that's a mouse
+    function forkTrackpadChip(mode) {
+        return mode === StreamingPreferences.TM_MAC_TRACKPAD ? qsTr("Mac trackpad")
+             : mode === StreamingPreferences.TM_WINDOWS_TOUCHPAD ? qsTr("Touchpad")
+             : ""
     }
 
     function forkCodecName(codec) {
@@ -158,8 +165,8 @@ CenteredGridView {
         if (e.yuv) {
             chips.push("4:4:4")
         }
-        if (e.touchpad) {
-            chips.push(qsTr("Touchpad"))
+        if (forkTrackpadChip(e.trackpad) !== "") {
+            chips.push(forkTrackpadChip(e.trackpad))
         }
         var profile = forkProfileName(e.profile)
         if (profile !== "") {
@@ -326,8 +333,8 @@ CenteredGridView {
         onForkRunningChanged: appGrid.forkNoteRunning(index, forkRunning, model.name, appIcon.isPlaceholder ? "" : model.boxart)
         Component.onCompleted: appGrid.forkNoteRunning(index, model.running, model.name, appIcon.isPlaceholder ? "" : model.boxart)
 
-        // [fork] This app's chips: its stream profile (Office, Gaming or Custom, with Stretch,
-        // Touchpad and the aspect ratio when the profile sets them), direct launch, hidden
+        // [fork] This app's chips: its stream profile (Office, Gaming or Custom, with Stretch, Mac
+        // trackpad or Touchpad, and the aspect ratio when the profile sets them), direct launch, hidden
         readonly property var forkChips: {
             appGrid.forkProfileRevision
             var chips = []
@@ -337,8 +344,8 @@ CenteredGridView {
                 if (profile.fullscreenStretch === true) {
                     chips.push(qsTr("Stretch"))
                 }
-                if (profile.trackpadPassthrough === true) {
-                    chips.push(qsTr("Touchpad"))
+                if (profile.trackpadMode !== undefined && appGrid.forkTrackpadChip(profile.trackpadMode) !== "") {
+                    chips.push(appGrid.forkTrackpadChip(profile.trackpadMode))
                 }
                 if (profile.width !== undefined && profile.height !== undefined) {
                     chips.push(AspectRatios.ratioLabel(profile.width, profile.height))

@@ -1,13 +1,22 @@
 // LuzLunar: probe for what trackpad passthrough relies on, to check on a real Mac and again after
-// a macOS update: AppKit's trackpad touches, the Dock's gesture events (CGEventType 30) that the
-// event tap drops, and System Settings' private MTTGestureBackEnd that switches the two other
-// gestures off.
+// a macOS update: AppKit's trackpad touches, MultitouchSupport's contact sizes for palm rejection,
+// macOS's own pointer and scroll deltas for Mac trackpad mode, the Dock's gesture events
+// (CGEventType 30) that the event tap drops, and System Settings' private MTTGestureBackEnd that
+// switches the two other gestures off.
 //
 // Build (CI builds it too): clang++ -std=c++17 -fobjc-arc -Iapp/fork -framework AppKit \
-//   -framework ApplicationServices scripts/fork/trackpad-probe.mm app/fork/forktrackpadgestures.cpp -o /tmp/trackpad-probe
+//   -framework ApplicationServices scripts/fork/trackpad-probe.mm app/fork/forktrackpadgestures.cpp \
+//   app/fork/forkmultitouch.cpp -o /tmp/trackpad-probe
 //
-//   trackpad-probe touches [SECONDS]       a window that logs every trackpad touch AppKit gives it
-//                                          (identity, phase, position, pad size, resting)
+//   trackpad-probe touches [--no-resting] [SECONDS]
+//                                          a window that logs every trackpad touch AppKit gives it
+//                                          (identity, phase, position, pad size, resting), with
+//                                          resting touches asked for as LuzLunar does, or not
+//   trackpad-probe mt [SECONDS]            the same touches with MultitouchSupport's contact for
+//                                          each (hand part, axes) and the contacts AppKit leaves
+//                                          out, to set palm rejection's thresholds
+//   trackpad-probe pointer [SECONDS]       macOS's pointer deltas, precise scrolling (with its
+//                                          momentum) and pinches, as Mac trackpad mode reads them
 //   trackpad-probe tap [SECONDS]           logs the Dock's gesture events and their non-zero fields,
 //                                          to find the one that tells a gesture's start from its end
 //   trackpad-probe tap --drop [--arm-after S] [SECONDS]
@@ -30,6 +39,7 @@
 #include <cstring>
 #include <string>
 
+#include "forkmultitouch.h"
 #include "forktrackpadgestures.h"
 
 static const int k_DockControlEventType = 30;
@@ -65,7 +75,8 @@ static const char* phaseName(NSTouchPhase phase)
     }
 }
 
-static int touches(double seconds)
+// A window over which the trackpad's touches are reported, as LuzLunar's stream window asks for them
+static NSWindow* probeWindow(NSString* title, bool resting)
 {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -74,31 +85,19 @@ static int touches(double seconds)
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
-    window.title = @"trackpad-probe: touch the trackpad";
+    window.title = title;
+    window.acceptsMouseMovedEvents = YES;
     ProbeView* view = [[ProbeView alloc] initWithFrame:window.contentView.bounds];
     view.allowedTouchTypes = NSTouchTypeMaskIndirect;
-    view.wantsRestingTouches = NO;
+    view.wantsRestingTouches = resting ? YES : NO;
     window.contentView = view;
     [window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+    return window;
+}
 
-    __block int events = 0;
-    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskGesture handler:^NSEvent*(NSEvent* event) {
-        NSSet<NSTouch*>* all = [event allTouches];
-        std::printf("event %d type %ld at %.3f (%.1f ms old), %lu touches\n", ++events, (long)event.type,
-                    event.timestamp, (now() - event.timestamp) * 1000.0, (unsigned long)all.count);
-        for (NSTouch* t in all) {
-            std::printf("  id %lx device %lx %s %s pos %.4f,%.4f pad %.1fx%.1f pt%s\n",
-                        (unsigned long)[(id<NSObject>)t.identity hash], (unsigned long)[(id<NSObject>)t.device hash],
-                        t.type == NSTouchTypeIndirect ? "indirect" : "direct", phaseName(t.phase),
-                        t.normalizedPosition.x, t.normalizedPosition.y, t.deviceSize.width, t.deviceSize.height,
-                        t.isResting ? " resting" : "");
-        }
-        std::fflush(stdout);
-        return event;
-    }];
-
-    std::printf("Touch the trackpad over the window for %.0f s (close it to stop)\n", seconds);
+static void runFor(NSWindow* window, double seconds)
+{
     NSDate* until = [NSDate dateWithTimeIntervalSinceNow:seconds];
     while ([until timeIntervalSinceNow] > 0 && window.isVisible) {
         @autoreleasepool {
@@ -109,7 +108,177 @@ static int touches(double seconds)
             }
         }
     }
+}
+
+static void printTouch(NSTouch* t)
+{
+    std::printf("  id %lx device %lx %s %s pos %.4f,%.4f pad %.1fx%.1f pt%s",
+                (unsigned long)[(id<NSObject>)t.identity hash], (unsigned long)[(id<NSObject>)t.device hash],
+                t.type == NSTouchTypeIndirect ? "indirect" : "direct", phaseName(t.phase),
+                t.normalizedPosition.x, t.normalizedPosition.y, t.deviceSize.width, t.deviceSize.height,
+                t.isResting ? " resting" : "");
+}
+
+static int touches(double seconds, bool resting)
+{
+    NSWindow* window = probeWindow(@"trackpad-probe: touch the trackpad", resting);
+
+    __block int events = 0;
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskGesture handler:^NSEvent*(NSEvent* event) {
+        NSSet<NSTouch*>* all = [event allTouches];
+        std::printf("event %d type %ld at %.3f (%.1f ms old), %lu touches\n", ++events, (long)event.type,
+                    event.timestamp, (now() - event.timestamp) * 1000.0, (unsigned long)all.count);
+        for (NSTouch* t in all) {
+            printTouch(t);
+            std::printf("\n");
+        }
+        std::fflush(stdout);
+        return event;
+    }];
+
+    std::printf("Touch the trackpad over the window for %.0f s (close it to stop); resting touches %s\n", seconds,
+                resting ? "asked for" : "not asked for");
+    runFor(window, seconds);
     std::printf("%d touch events\n", events);
+    return events > 0 ? 0 : 1;
+}
+
+// ---- mt ------------------------------------------------------------------------------------
+
+static const char* handPart(int fingerId)
+{
+    switch (fingerId) {
+    case 1: return "thumb";
+    case 2: return "index";
+    case 3: return "middle";
+    case 4: return "ring";
+    case 5: return "little";
+    case 6:
+    case 7: return "palm";
+    default: return "unknown";
+    }
+}
+
+static void printContact(const ForkMultitouch::Contact& c)
+{
+    std::printf("%s (fingerID %d) state %d minor %.1f mm major %.1f mm at %.4f,%.4f", handPart(c.fingerId), c.fingerId,
+                c.state, c.minorAxisMm, c.majorAxisMm, c.x, c.y);
+}
+
+static int mt(double seconds)
+{
+    if (!ForkMultitouch::start()) {
+        std::printf("MultitouchSupport didn't start: %s\n", ForkMultitouch::why().c_str());
+        return 1;
+    }
+    NSWindow* window = probeWindow(@"trackpad-probe: rest a palm, a thumb, a fingertip", true);
+
+    __block int events = 0;
+    __block float widestFinger = 0;
+    __block float narrowestPalm = 1000;
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskGesture handler:^NSEvent*(NSEvent* event) {
+        NSArray<NSTouch*>* all = [[event allTouches] allObjects];
+        std::vector<ForkTrackpad::Touch> touches;
+        for (NSTouch* t in all) {
+            ForkTrackpad::Touch touch;
+            touch.x = t.normalizedPosition.x;
+            touch.y = t.normalizedPosition.y;
+            touches.push_back(touch);
+        }
+        std::vector<ForkMultitouch::Contact> contacts = ForkMultitouch::contactsNow();
+        ForkMultitouch::annotate(touches, contacts);
+
+        std::printf("event %d at %.3f, %lu touches, %zu contacts\n", ++events, event.timestamp, (unsigned long)all.count,
+                    contacts.size());
+        for (NSUInteger i = 0; i < all.count; i++) {
+            printTouch(all[i]);
+            const ForkTrackpad::Touch& touch = touches[i];
+            if (touch.hasContact) {
+                std::printf(" -> %s, minor %.1f mm\n", handPart(touch.fingerId), touch.minorAxisMm);
+            }
+            else {
+                std::printf(" -> no contact\n");
+            }
+        }
+        for (const ForkMultitouch::Contact& c : contacts) {
+            std::printf("  contact ");
+            printContact(c);
+            std::printf("\n");
+            if (!ForkMultitouch::touchingState(c.state)) {
+                continue;
+            }
+            if (c.fingerId >= 2 && c.fingerId <= 5 && c.minorAxisMm > widestFinger) {
+                widestFinger = c.minorAxisMm;
+            }
+            if ((c.fingerId == 6 || c.fingerId == 7) && c.minorAxisMm < narrowestPalm) {
+                narrowestPalm = c.minorAxisMm;
+            }
+        }
+        std::fflush(stdout);
+        return event;
+    }];
+
+    std::printf("Over the window for %.0f s (close it to stop): rest your palm as you type and as you point, rest a "
+                "thumb as you click, then touch with a fingertip and a flat finger\n", seconds);
+    runFor(window, seconds);
+    ForkMultitouch::stop();
+    std::printf("%d touch events. Widest finger %.1f mm, narrowest palm %.1f mm (LuzLunar calls %.1f mm a palm)\n",
+                events, widestFinger, narrowestPalm < 1000 ? narrowestPalm : 0.0f, ForkTrackpad::k_PalmMinorMm);
+    std::string why = ForkMultitouch::why();
+    if (!why.empty() && why != "stopped") {
+        std::printf("MultitouchSupport: %s\n", why.c_str());
+    }
+    return events > 0 ? 0 : 1;
+}
+
+// ---- pointer -------------------------------------------------------------------------------
+
+static const char* eventPhase(NSEventPhase phase)
+{
+    switch (phase) {
+    case NSEventPhaseNone: return "-";
+    case NSEventPhaseBegan: return "began";
+    case NSEventPhaseStationary: return "stationary";
+    case NSEventPhaseChanged: return "changed";
+    case NSEventPhaseEnded: return "ended";
+    case NSEventPhaseCancelled: return "cancelled";
+    case NSEventPhaseMayBegin: return "may-begin";
+    default: return "?";
+    }
+}
+
+static int pointerProbe(double seconds)
+{
+    NSWindow* window = probeWindow(@"trackpad-probe: point, scroll and pinch", true);
+
+    __block int events = 0;
+    __block double movedX = 0;
+    __block double movedY = 0;
+    NSEventMask mask = NSEventMaskMouseMoved | NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged |
+                       NSEventMaskScrollWheel | NSEventMaskMagnify;
+    [NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent*(NSEvent* event) {
+        events++;
+        if (event.type == NSEventTypeScrollWheel) {
+            std::printf("scroll %s%.2f,%.2f pt, phase %s, momentum %s%s\n", event.hasPreciseScrollingDeltas ? "" : "(lines) ",
+                        event.scrollingDeltaX, event.scrollingDeltaY, eventPhase(event.phase), eventPhase(event.momentumPhase),
+                        event.directionInvertedFromDevice ? ", natural" : "");
+        }
+        else if (event.type == NSEventTypeMagnify) {
+            std::printf("pinch %+.4f, phase %s\n", event.magnification, eventPhase(event.phase));
+        }
+        else {
+            movedX += event.deltaX;
+            movedY += event.deltaY;
+            std::printf("pointer %+.2f,%+.2f pt (%.1f,%.1f so far)\n", event.deltaX, event.deltaY, movedX, movedY);
+        }
+        std::fflush(stdout);
+        return event;
+    }];
+
+    std::printf("Over the window for %.0f s (close it to stop): move a finger across the trackpad at one speed with "
+                "the tracking speed slider low, then high; scroll and fling; pinch\n", seconds);
+    runFor(window, seconds);
+    std::printf("%d events\n", events);
     return events > 0 ? 0 : 1;
 }
 
@@ -291,7 +460,23 @@ int main(int argc, char** argv)
 {
     @autoreleasepool {
         if (argc >= 2 && std::strcmp(argv[1], "touches") == 0) {
-            return touches(argc >= 3 ? std::atof(argv[2]) : 30);
+            bool resting = true;
+            double seconds = 30;
+            for (int i = 2; i < argc; i++) {
+                if (std::strcmp(argv[i], "--no-resting") == 0) {
+                    resting = false;
+                }
+                else {
+                    seconds = std::atof(argv[i]);
+                }
+            }
+            return touches(seconds, resting);
+        }
+        if (argc >= 2 && std::strcmp(argv[1], "mt") == 0) {
+            return mt(argc >= 3 ? std::atof(argv[2]) : 60);
+        }
+        if (argc >= 2 && std::strcmp(argv[1], "pointer") == 0) {
+            return pointerProbe(argc >= 3 ? std::atof(argv[2]) : 30);
         }
         if (argc >= 2 && std::strcmp(argv[1], "tap") == 0) {
             double seconds = 30;
@@ -316,7 +501,8 @@ int main(int argc, char** argv)
             }
             return status;
         }
-        std::printf("usage: trackpad-probe touches [SECONDS] | tap [--drop] [--arm-after S] [SECONDS] | mtt ...\n");
+        std::printf("usage: trackpad-probe touches [--no-resting] [SECONDS] | mt [SECONDS] | pointer [SECONDS] | "
+                    "tap [--drop] [--arm-after S] [SECONDS] | mtt ...\n");
         return 2;
     }
 }

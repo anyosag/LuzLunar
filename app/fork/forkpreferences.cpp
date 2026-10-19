@@ -16,9 +16,14 @@
 #define SER_MACSHORTCUTS "fork/macShortcuts"
 #define SER_MACSHORTCUTSALL "fork/macShortcutsAll"
 #define SER_TRACKPADPAUSEMACSETTINGS "fork/trackpadPauseMacSettings"
+#define SER_TRACKPADSCROLLSPEED "fork/trackpadScrollSpeed"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
+
+// From a quarter of the fingers' scrolling to three times it
+#define MIN_TRACKPAD_SCROLL_SPEED 0.25
+#define MAX_TRACKPAD_SCROLL_SPEED 3.0
 
 namespace
 {
@@ -65,7 +70,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_DescribeDisplay(true),
       m_HdrPeakOverride(0),
       m_MacShortcutsAll(false),
-      m_TrackpadPauseMacSettings(true)
+      m_TrackpadPauseMacSettings(true),
+      m_TrackpadScrollSpeed(1.0)
 {
     QSettings settings;
 
@@ -99,6 +105,10 @@ ForkPreferences::ForkPreferences(QObject* parent)
 
     m_MacShortcutsAll = settings.value(SER_MACSHORTCUTSALL, m_MacShortcutsAll).toBool();
     m_TrackpadPauseMacSettings = settings.value(SER_TRACKPADPAUSEMACSETTINGS, m_TrackpadPauseMacSettings).toBool();
+    double scrollSpeed = settings.value(SER_TRACKPADSCROLLSPEED, m_TrackpadScrollSpeed).toDouble();
+    if (scrollSpeed >= MIN_TRACKPAD_SCROLL_SPEED && scrollSpeed <= MAX_TRACKPAD_SCROLL_SPEED) {
+        m_TrackpadScrollSpeed = scrollSpeed;
+    }
     settings.beginGroup(SER_MACSHORTCUTS);
     for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
         QString key = QString::fromUtf8(group.key);
@@ -171,6 +181,17 @@ void ForkPreferences::setTrackpadPauseMacSettings(bool pause)
     m_TrackpadPauseMacSettings = pause;
     QSettings().setValue(SER_TRACKPADPAUSEMACSETTINGS, pause);
     emit trackpadPauseMacSettingsChanged();
+}
+
+void ForkPreferences::setTrackpadScrollSpeed(double speed)
+{
+    if (!(speed >= MIN_TRACKPAD_SCROLL_SPEED && speed <= MAX_TRACKPAD_SCROLL_SPEED) || speed == m_TrackpadScrollSpeed) {
+        return;
+    }
+
+    m_TrackpadScrollSpeed = speed;
+    QSettings().setValue(SER_TRACKPADSCROLLSPEED, speed);
+    emit trackpadScrollSpeedChanged();
 }
 
 bool ForkPreferences::accessibilityTrusted() const

@@ -653,7 +653,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
     }
 #endif
 
-    ForkLaunchArgs::capture(m_QtWindow); // [fork]
+    ForkLaunchArgs::capture(m_QtWindow, m_Preferences->trackpadMode == StreamingPreferences::TM_MAC_TRACKPAD); // [fork]
 
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,

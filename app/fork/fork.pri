@@ -33,6 +33,7 @@ SOURCES += \
     $$PWD/forkkeymap.cpp \
     $$PWD/forklaunchargs.cpp \
     $$PWD/forkmacshortcuts.cpp \
+    $$PWD/forkmultitouch.cpp \
     $$PWD/forkpolicy.cpp \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
@@ -63,6 +64,7 @@ HEADERS += \
     $$PWD/forkkeymap.h \
     $$PWD/forklaunchargs.h \
     $$PWD/forkmacshortcuts.h \
+    $$PWD/forkmultitouch.h \
     $$PWD/forkpolicy.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \

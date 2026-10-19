@@ -181,10 +181,15 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"
           "$RUNNER_TEMP/luztouchpad_test"
-          # Trackpad passthrough: Mac touches to frames, and which trackpad mouse events are held back
+          # Trackpad passthrough: Mac touches to frames with palms left out, Mac trackpad mode, and
+          # which trackpad mouse events are held back
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/trackpad_test.cpp app/fork/forktrackpad.cpp -o "$RUNNER_TEMP/trackpad_test"
           "$RUNNER_TEMP/trackpad_test"
+          # Palm rejection's contact sizes: MultitouchSupport's contacts paired with AppKit's touches
+          clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
+            tests/fork/multitouch_test.cpp app/fork/forkmultitouch.cpp -o "$RUNNER_TEMP/multitouch_test"
+          "$RUNNER_TEMP/multitouch_test"
           # Which Dock gestures it holds back, and the System Settings values it puts back after a crash
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/trackpadgestures_test.cpp app/fork/forktrackpadgestures.cpp -o "$RUNNER_TEMP/trackpadgestures_test"
@@ -198,7 +203,8 @@ jobs:
           # The probe for checking passthrough on a Mac (uploaded below); built here so it keeps building
           mkdir -p "$RUNNER_TEMP/probe"
           clang++ -std=c++17 -fobjc-arc -Wall -Iapp/fork -framework AppKit -framework ApplicationServices \
-            scripts/fork/trackpad-probe.mm app/fork/forktrackpadgestures.cpp -o "$RUNNER_TEMP/probe/trackpad-probe"
+            scripts/fork/trackpad-probe.mm app/fork/forktrackpadgestures.cpp app/fork/forkmultitouch.cpp \
+            -o "$RUNNER_TEMP/probe/trackpad-probe"
           # The Mac pasteboard in the bundle's formats, on a private pasteboard
           clang++ -std=c++17 -Wall -DCLIPBUNDLE_WITH_ZLIB -Iapp \
             tests/fork/pasteboard_test.mm app/fork/mac/pasteboard_mac.mm app/fork/clipbundle.cpp \

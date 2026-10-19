@@ -59,10 +59,17 @@ public:
     // and turn them back on afterwards (forktrackpadgestures.*)
     Q_PROPERTY(bool trackpadPauseMacSettings READ trackpadPauseMacSettings WRITE setTrackpadPauseMacSettings NOTIFY trackpadPauseMacSettingsChanged)
 
+    // Mac trackpad mode: how far Windows scrolls for the fingers' scrolling, in wheel units per
+    // point (120 a notch), 0.25 to 3
+    Q_PROPERTY(double trackpadScrollSpeed READ trackpadScrollSpeed WRITE setTrackpadScrollSpeed NOTIFY trackpadScrollSpeedChanged)
+
     static ForkPreferences* get();
 
     bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
     void setTrackpadPauseMacSettings(bool pause);
+
+    double trackpadScrollSpeed() const { return m_TrackpadScrollSpeed; }
+    void setTrackpadScrollSpeed(double speed);
 
     // Whether macOS lets LuzLunar hold back its trackpad gestures (Privacy & Security › Accessibility)
     Q_INVOKABLE bool accessibilityTrusted() const;
@@ -114,6 +121,7 @@ signals:
     void hdrPeakOverrideChanged();
     void macShortcutsChanged();
     void trackpadPauseMacSettingsChanged();
+    void trackpadScrollSpeedChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -127,6 +135,7 @@ private:
     int m_HdrPeakOverride;
     bool m_MacShortcutsAll;
     bool m_TrackpadPauseMacSettings;
+    double m_TrackpadScrollSpeed;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };
