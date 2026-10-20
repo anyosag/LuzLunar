@@ -5,6 +5,7 @@
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
+#include "forknetworklink.h"
 #include "forkpreferences.h"
 #include "forksystemshortcuts.h"
 #include "forktrackpadpassthrough.h"
@@ -44,6 +45,10 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         m_NotchBar = NotchBar::create(window, app.name + QString::fromUtf8(" · ") + hostName);
     }
 
+    // Which connection the stream uses, for the notch bar; also remembers a network it goes over
+    // the LAN on, so it's checked even without the bar
+    ForkNetworkLink::start(m_NotchBar != nullptr);
+
     if (m_Clipboard && m_NotchBar) {
         // Clipboard messages appear beside the notch while the bar is on screen
         NotchBar* notchBar = m_NotchBar.get();
@@ -73,6 +78,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
 
 ForkStreamExtensions::~ForkStreamExtensions()
 {
+    ForkNetworkLink::stop();
     ForkTrackpadPassthrough::deactivate();
     ForkTrackpadPassthrough::setMessageSink(nullptr);
     ForkSystemShortcuts::deactivate();

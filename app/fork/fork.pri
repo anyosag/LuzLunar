@@ -33,8 +33,10 @@ SOURCES += \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
     $$PWD/forklaunchargs.cpp \
+    $$PWD/forklinkrules.cpp \
     $$PWD/forkmacshortcuts.cpp \
     $$PWD/forkmultitouch.cpp \
+    $$PWD/forknetworklink.cpp \
     $$PWD/forkpolicy.cpp \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
@@ -65,8 +67,10 @@ HEADERS += \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
     $$PWD/forklaunchargs.h \
+    $$PWD/forklinkrules.h \
     $$PWD/forkmacshortcuts.h \
     $$PWD/forkmultitouch.h \
+    $$PWD/forknetworklink.h \
     $$PWD/forkpolicy.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
@@ -84,6 +88,7 @@ HEADERS += \
     $$PWD/windowchrome.h \
     $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macintegration.h \
+    $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
     $$PWD/mac/pasteboard.h \
     $$PWD/mac/selfupdate_mac.h \
@@ -96,6 +101,7 @@ macx {
         $$PWD/mac/clienthardware_mac.mm \
         $$PWD/mac/gesturesuppressor_mac.mm \
         $$PWD/mac/macintegration.mm \
+        $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/pasteboard_mac.mm \
         $$PWD/mac/selfupdate_mac.mm \
@@ -111,6 +117,9 @@ macx {
 
     # Over-the-air updates: the new build's code signature against this one's (mac/selfupdate_mac.mm)
     LIBS += -framework Security
+
+    # The notch bar's link badge: the interface's kind and network, and Wi-Fi's rate (mac/networklink_mac.mm)
+    LIBS += -framework SystemConfiguration -framework CoreWLAN
     DEFINES += CLIPBUNDLE_WITH_ZLIB
 }
 

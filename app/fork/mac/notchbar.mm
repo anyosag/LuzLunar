@@ -1,5 +1,6 @@
 #include "notchbar.h"
 
+#include "fork/forknetworklink.h"
 #include "fork/forkpolicy.h"
 #include "fork/streamstats.h"
 #include "SDL_compat.h"
@@ -1208,7 +1209,10 @@ namespace
             ForkStreamStats::setListener([controller](const ForkStreamStats::Snapshot& stats) {
                 // Runs on the decode thread, which has no autorelease pool of its own
                 @autoreleasepool {
-                    NSString* text = [[NSString alloc] initWithFormat:@"%.0f fps · %u ms · %.1f Mb/s · %@ · %.1f%% loss",
+                    // First the connection the stream uses, like "Ethernet 1 Gb/s", where it's shown
+                    QString link = ForkNetworkLink::badge();
+                    NSString* text = [[NSString alloc] initWithFormat:@"%@%.0f fps · %u ms · %.1f Mb/s · %@ · %.1f%% loss",
+                                                                      link.isEmpty() ? @"" : [link.toNSString() stringByAppendingString:@" · "],
                                                                       stats.fps, stats.rttMs, stats.mbps,
                                                                       stats.codec.toNSString(), stats.dropPercent];
                     [controller retain];
