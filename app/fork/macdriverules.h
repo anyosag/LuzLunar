@@ -31,6 +31,7 @@ namespace MacDriveRules
         None,               // it asks
         Off,                // the setting is off (nothing to say)
         NotLan,             // the stream doesn't go over the LAN (nothing to say)
+        NotApollo,          // the PC didn't answer as Apollo: another host, or no answer (nothing to say)
         HostTooOld,
         HostOff,
         NoPermission,       // Apollo doesn't give this Mac its Network Drive permission
@@ -51,7 +52,8 @@ namespace MacDriveRules
 
     Skip skip(const Facts& facts);
 
-    // Whether a reason is worth telling: the setting being off or a stream away from home isn't
+    // Whether a reason is worth telling. The setting being off, a stream away from home and a host
+    // that isn't Apollo aren't.
     bool silent(Skip reason);
 
     // Apollo's answer to POST or GET /actions/drive, as parsed

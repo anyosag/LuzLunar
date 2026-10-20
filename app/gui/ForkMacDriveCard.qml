@@ -101,7 +101,7 @@ ForkCard {
             ForkText {
                 width: parent.width
                 kind: "help"
-                text: qsTr("The password of %1, this Mac's account. LuzLunar checks it and keeps it in your keychain.").arg(card.setup.userName)
+                text: qsTr("The password of %1, this Mac's account. LuzLunar checks it and keeps it in your keychain. After each LuzLunar update, macOS asks once, on the first LAN stream, to let the new version read it: choose Always Allow.").arg(card.setup.userName)
             }
 
             Row {

@@ -76,6 +76,14 @@ static void testSkip()
     CHECK(silent(Skip::Off));
     CHECK(!silent(Skip::NoPassword));
 
+    // A host that doesn't answer as Apollo, with no <Permission>, is another host or didn't answer:
+    // not an Apollo to update
+    facts = ready();
+    facts.permissions = -1;
+    facts.host = HostSupport::Missing;
+    CHECK(skip(facts) == Skip::NotApollo);
+    CHECK(silent(Skip::NotApollo));
+
     facts = ready();
     facts.host = HostSupport::Missing;
     CHECK(skip(facts) == Skip::HostTooOld);
@@ -86,7 +94,7 @@ static void testSkip()
     facts = ready();
     facts.permissions = 0x073F1F00;
     CHECK(skip(facts) == Skip::NoPermission);
-    facts.permissions = -1;
+    facts.permissions = 0;
     CHECK(skip(facts) == Skip::NoPermission);
     facts.permissions = k_PermClientDrive;
     CHECK(skip(facts) == Skip::None);

@@ -212,12 +212,12 @@ Fixes to code the fork doesn't own (`moonlight-common-c`) live in `patches/<name
     - Apollo maps the first that the Mac offers and the account may open, and when only the home folder works, the message says so.
   - When it asks:
     - `ForkNetworkLink`'s first probe of a stream says whether it goes over the LAN, by the notch bar's rule: Moonlight's `RI_LAN` check, else the PC being on-link, and never through a VPN.
-    - Then, on a worker thread, it checks serverinfo's `<LuzMacDrive>` and the "Network Drive" permission (`0x00400000`). It reads the password from the keychain and checks it again, so a changed password is caught here, not on the PC. It checks that File Sharing answers.
+    - Then, on a worker thread, it checks serverinfo's `<LuzMacDrive>` and the "Network Drive" permission (`0x00400000`); a PC that answers without `<Permission>` isn't Apollo (or didn't answer), so it isn't asked and nothing shows beside the notch. It reads the password from the keychain and checks it again, so a changed password is caught here, not on the PC. It checks that File Sharing answers.
     - Then it sends `POST /actions/drive` `{"action": "map", "shares", "user", "password", "name"}`, and a `GET` every 500 ms for up to 15 s until the drive is mapped or failed. Apollo takes the request's own address, so nothing tells it where the Mac is.
   - The password:
     - It leaves the Mac only in that request's body, over the paired TLS connection with its pinned certificate, and Apollo keeps it in memory only.
     - Logs show the PC, the shares and Apollo's answer, never the password.
-    - The keychain item is tied to LuzLunar's signature, so a build signed with another certificate (or an ad-hoc build) asks once to be allowed to read it.
+    - macOS ties the keychain item to the build that saved it: LuzLunar's certificate isn't Apple's, so the item's partition is that build's code hash (securityd's `cdhash:`). After each update, the first LAN stream's read makes macOS ask for the login keychain password; "Always Allow" lets that build read it without asking again. The stream waits for the answer, and gets the drive once it's allowed.
   - Messages beside the notch (or in the corner pill of a windowed stream):
     - "On the PC, this Mac is drive M:", or the same for the home folder;
     - each failure with what fixes it: Windows File Sharing for the account, the PC blocking NTLM, File Sharing unreachable, a connection to this Mac under another account, nobody signed in to Windows…;

@@ -39,13 +39,17 @@ Skip skip(const Facts& facts)
     if (!facts.viaLan) {
         return Skip::NotLan;
     }
+    // Apollo always reports the client's permissions
+    if (facts.permissions < 0) {
+        return Skip::NotApollo;
+    }
     if (facts.host == HostSupport::Missing) {
         return Skip::HostTooOld;
     }
     if (facts.host == HostSupport::Off) {
         return Skip::HostOff;
     }
-    if (facts.permissions < 0 || (facts.permissions & k_PermClientDrive) == 0) {
+    if ((facts.permissions & k_PermClientDrive) == 0) {
         return Skip::NoPermission;
     }
     if (!facts.passwordSaved) {
@@ -62,7 +66,7 @@ Skip skip(const Facts& facts)
 
 bool silent(Skip reason)
 {
-    return reason == Skip::None || reason == Skip::Off || reason == Skip::NotLan;
+    return reason == Skip::None || reason == Skip::Off || reason == Skip::NotLan || reason == Skip::NotApollo;
 }
 
 Outcome outcome(const Reply& reply, const std::vector<std::string>& sent)

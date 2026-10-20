@@ -100,6 +100,8 @@ namespace
             return MD_TR("Your Mac password changed: save it again in Settings › This Mac");
         case Skip::SharingOff:
             return MD_TR("Turn on File Sharing in System Settings to see this Mac on the PC");
+        case Skip::NotApollo:
+            return MD_TR("The PC didn't answer as an Apollo PC, so it wasn't asked for this Mac's disk");
         case Skip::NotLan:
         case Skip::Off:
         case Skip::None:
