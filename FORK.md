@@ -193,6 +193,42 @@ Fixes to code the fork doesn't own (`moonlight-common-c`) live in `patches/<name
     - Not covered: files that aren't on disk (Outlook attachments, files inside a zip), the PC's mapped network drives (Apollo runs as SYSTEM), cut and paste, and resuming a broken copy.
     - Unit tests: `tests/fork/clipfiles_test.cpp`, the manifest in `tests/fork/clipbundle_test.cpp`, and file URLs on a private pasteboard in `tests/fork/pasteboard_test.mm`.
   - Messages ("Clipboard sent to the PC", errors) appear beside the notch while the notch bar is on screen, and in Moonlight's status overlay otherwise.
+- **This Mac as a drive on the PC** (`app/fork/macdrive.*`, `macdriverules.*`, `mac/macdrivesetup*`, `app/gui/ForkMacDriveCard.qml`):
+  - With anyosag/Apollo, a stream over the LAN can give the PC this Mac's disk as a network drive: File Explorer shows it as `M:` (or another free letter) under this Mac's name, until a minute after the stream ends (Apollo's FORK.md, "Mac drive for LuzLunar"). Streams over a VPN or the internet never ask.
+  - It's macOS's own File Sharing (SMB). It's set up once, in Settings › This Mac › "This Mac on the PC":
+    - turn on "Show this Mac's disk on the PC" (`fork/macDrive`, off by default);
+    - turn on File Sharing in System Settings › General › Sharing (the card's button opens it), and under its ⓘ › Options…, Windows File Sharing for this account: macOS keeps the hash Windows' NTLM sign-in needs only then;
+    - save the account's password. LuzLunar checks that it opens the account (`-[ODRecord verifyPassword:error:]`) and keeps it in the login keychain (a generic password, service "LuzLunar Mac drive"), never in its settings.
+  - The card says what's still missing, and looks again every 2 s while it's shown:
+    - File Sharing off (nothing answers on 127.0.0.1:445);
+    - Windows File Sharing off for the account: its `AuthenticationAuthority` lists no `SMB-NT` hash. That's a hint, since the record's format isn't documented;
+    - no share of the whole disk, for a standard account;
+    - no password;
+    - and what the last LAN stream got (`fork/macDriveLast`).
+  - The whole disk:
+    - File Sharing's share of the startup disk if there is one: a SharePoints record for `/` with SMB on, by its SMB name;
+    - else, for an administrator, macOS's share of the startup volume, by its name (`Macintosh HD`);
+    - then the home folder (the account's short name), which macOS shares with its own account;
+    - Apollo maps the first that the Mac offers and the account may open, and when only the home folder works, the message says so.
+  - When it asks:
+    - `ForkNetworkLink`'s first probe of a stream says whether it goes over the LAN, by the notch bar's rule: Moonlight's `RI_LAN` check, else the PC being on-link, and never through a VPN.
+    - Then, on a worker thread, it checks serverinfo's `<LuzMacDrive>` and the "Network Drive" permission (`0x00400000`). It reads the password from the keychain and checks it again, so a changed password is caught here, not on the PC. It checks that File Sharing answers.
+    - Then it sends `POST /actions/drive` `{"action": "map", "shares", "user", "password", "name"}`, and a `GET` every 500 ms for up to 15 s until the drive is mapped or failed. Apollo takes the request's own address, so nothing tells it where the Mac is.
+  - The password:
+    - It leaves the Mac only in that request's body, over the paired TLS connection with its pinned certificate, and Apollo keeps it in memory only.
+    - Logs show the PC, the shares and Apollo's answer, never the password.
+    - The keychain item is tied to LuzLunar's signature, so a build signed with another certificate (or an ad-hoc build) asks once to be allowed to read it.
+  - Messages beside the notch (or in the corner pill of a windowed stream):
+    - "On the PC, this Mac is drive M:", or the same for the home folder;
+    - each failure with what fixes it: Windows File Sharing for the account, the PC blocking NTLM, File Sharing unreachable, a connection to this Mac under another account, nobody signed in to Windows…;
+    - nothing for a drive kept from an earlier stream;
+    - without the notch bar they're only logged and shown in Settings.
+  - Unit tests: `tests/fork/macdriverules_test.cpp` (the shares, when a stream asks, Apollo's answers) and `tests/fork/macdrivesetup_mac_test.mm` (the account, File Sharing, the shares and a keychain item of its own, on the CI Mac).
+  - **Untested** on a real Mac and PC:
+    - the shares macOS 26 offers Windows (an administrator's `Macintosh HD` in particular);
+    - the System Settings link, whose id isn't documented;
+    - the `SMB-NT` hint;
+    - what macOS's privacy protections let File Sharing serve from Desktop, Documents and Downloads.
 - **Notch info bar** (`app/fork/mac/notchbar.*`, `app/fork/streamstats.*`):
   - In fullscreen on a MacBook with a camera notch, the strip beside the notch shows the app and PC name on the left. On the right it shows the frame rate, network latency, bitrate, codec and loss.
   - **The connection** (`app/fork/forknetworklink.*`, `forklinkrules.*`, `mac/networklink*`): first on the right, which interface carries the stream and how fast: `Ethernet 1 Gb/s`, `Wi-Fi 5 GHz 866 Mb/s`, `Thunderbolt Bridge`, `VPN over Wi-Fi`.

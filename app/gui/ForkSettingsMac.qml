@@ -8,8 +8,9 @@ import SystemProperties 1.0
 
 // [fork] Settings › This Mac: the chip, each display's shape and the hardware video decoders that
 // the warnings about stream settings are checked against (what ForkThisMacGroupBox lists for
-// upstream's page), and how the Mac's screen is described to Apollo hosts. Everything shown is
-// read from ClientHardware; "Check again" reads it again.
+// upstream's page), how the Mac's screen is described to Apollo hosts, and this Mac's disk as a
+// drive on the PC (ForkMacDriveCard). The hardware shown is read from ClientHardware; "Check
+// again" reads it again.
 Column {
     id: macSection
 
@@ -474,5 +475,11 @@ Column {
                 onActivated: (value) => ForkPreferences.hdrPeakOverride = value
             }
         }
+    }
+
+    // ---- This Mac on the PC -----------------------------------------------------------------
+
+    ForkMacDriveCard {
+        visible: SystemProperties.isDarwin
     }
 }

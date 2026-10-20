@@ -45,6 +45,7 @@ ApolloClient::HostInfo ApolloClient::hostInfo()
         qint64 bits = NvHTTP::getXmlString(serverInfo, "Permission").toLongLong(&ok);
         info.permissions = ok ? bits : -1;
         info.clipboardFiles = NvHTTP::getXmlString(serverInfo, "LuzClipboardFiles") == "1";
+        info.macDrive = NvHTTP::getXmlString(serverInfo, "LuzMacDrive");
     }
     catch (...) {
     }
