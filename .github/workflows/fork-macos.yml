@@ -182,6 +182,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -DCLIPBUNDLE_WITH_ZLIB -Iapp/fork \
             tests/fork/clipfiles_test.cpp app/fork/clipfiles.cpp app/fork/clipbundle.cpp -lz -o "$RUNNER_TEMP/clipfiles_test"
           "$RUNNER_TEMP/clipfiles_test"
+          # The notch bar's link badge: its text, when it shows, and the networks remembered
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/forklinkrules_test.cpp app/fork/forklinkrules.cpp -o "$RUNNER_TEMP/forklinkrules_test"
+          "$RUNNER_TEMP/forklinkrules_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"
@@ -215,6 +219,11 @@ jobs:
             tests/fork/pasteboard_test.mm app/fork/mac/pasteboard_mac.mm app/fork/clipbundle.cpp \
             -framework AppKit -framework ImageIO -lz -o "$RUNNER_TEMP/pasteboard_test"
           "$RUNNER_TEMP/pasteboard_test"
+          # The interface, speed and network of the route to an address on this Mac, with nothing sent
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/networklink_mac_test.mm app/fork/mac/networklink_mac.mm app/fork/forklinkrules.cpp \
+            -framework Foundation -framework SystemConfiguration -framework CoreWLAN -o "$RUNNER_TEMP/networklink_mac_test"
+          "$RUNNER_TEMP/networklink_mac_test"
 
       # Stream profiles give each Session its own StreamingPreferences copy. Streaming code that
       # reads the global settings directly would bypass the profile, so flag any new such read.

@@ -3,6 +3,7 @@
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
 #include "fork/forklaunchargs.h" // [fork]
+#include "fork/forknetworklink.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
 #include "fork/forkvideoscaling.h" // [fork]
 #include "fork/streamstats.h" // [fork]
@@ -1673,6 +1674,7 @@ bool Session::startConnectionAsync()
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Using custom packet size: %d bytes",
                     m_Preferences->packetSize);
+        ForkNetworkLink::noteStreamStart(m_Computer); // [fork] reachability isn't checked
     }
     else {
         // Use 1392 byte video packets by default
@@ -1680,7 +1682,9 @@ bool Session::startConnectionAsync()
 
         // getActiveAddressReachability() does network I/O, so we only attempt to check
         // reachability if we've already contacted the PC successfully.
-        switch (m_Computer->getActiveAddressReachability()) {
+        NvComputer::ReachabilityType reachability = m_Computer->getActiveAddressReachability(); // [fork] kept for ForkNetworkLink
+        ForkNetworkLink::noteStreamStart(m_Computer, reachability); // [fork]
+        switch (reachability) {
         case NvComputer::RI_LAN:
             // This address is on-link, so treat it as a local address
             // even if it's not in RFC 1918 space or it's an IPv6 address.
