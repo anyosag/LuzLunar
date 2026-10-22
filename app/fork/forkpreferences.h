@@ -73,6 +73,13 @@ public:
     // Lower the stream's bitrate while the network struggles, and raise it back (adaptivebitrate.*)
     Q_PROPERTY(bool adaptiveBitrate READ adaptiveBitrate WRITE setAdaptiveBitrate NOTIFY adaptiveBitrateChanged)
 
+    // How a stream smaller than its area on screen is upscaled: UpscaleRules::Mode's values,
+    // 0 Off, 1 Fast, 2 Quality (forkupscaling.*)
+    Q_PROPERTY(int upscaling READ upscaling WRITE setUpscaling NOTIFY upscalingChanged)
+
+    // Whether this Mac has Quality's engine, VideoToolbox's super resolution (macOS 26)
+    Q_PROPERTY(bool superResolutionAvailable READ superResolutionAvailable CONSTANT)
+
     static ForkPreferences* get();
 
     bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
@@ -86,6 +93,11 @@ public:
 
     bool adaptiveBitrate() const { return m_AdaptiveBitrate; }
     void setAdaptiveBitrate(bool enabled);
+
+    int upscaling() const { return m_Upscaling; }
+    void setUpscaling(int mode);
+
+    bool superResolutionAvailable() const;
 
     // What the Mac drive needs from macOS, for Settings › This Mac: { "fileSharing": bool,
     // "windowsSharing": "on" | "off" | "unknown", "diskShare": the startup disk's share or "",
@@ -157,6 +169,7 @@ signals:
     void trackpadScrollSpeedChanged();
     void macDriveChanged();
     void adaptiveBitrateChanged();
+    void upscalingChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -174,6 +187,7 @@ private:
     double m_TrackpadScrollSpeed;
     bool m_MacDrive;
     bool m_AdaptiveBitrate;
+    int m_Upscaling;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };

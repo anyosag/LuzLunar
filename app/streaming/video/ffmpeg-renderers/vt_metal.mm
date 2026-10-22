@@ -10,6 +10,8 @@
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
 #include "fork/forkvideoscaling.h" // [fork]
+#include "fork/forkupscaling.h" // [fork]
+#include "fork/mac/metalfxscaler.h" // [fork]
 #include "path.h"
 
 #import <Cocoa/Cocoa.h>
@@ -498,7 +500,13 @@ public:
         renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
         renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
         auto commandBuffer = [m_CommandQueue commandBuffer];
-        auto renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+
+        // [fork] Upscaling with MetalFX: the colors go into a texture at the frame's size first
+        id<MTLTexture> forkScalerInput = m_ForkMetalFx.begin(m_MetalLayer.device, m_ShaderLibrary, m_MetalLayer.pixelFormat,
+                                                             frame->width, frame->height,
+                                                             m_LastDrawableWidth, m_LastDrawableHeight);
+        auto renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:forkScalerInput ? ForkMetalFxScaler::inputPass(forkScalerInput)
+                                                                                                : renderPassDescriptor];
 
         // Bind textures and buffers then draw the video region
         [renderEncoder setRenderPipelineState:m_VideoPipelineState];
@@ -519,8 +527,18 @@ public:
             }
         }
         [renderEncoder setFragmentBuffer:m_CscParamsBuffer offset:0 atIndex:0];
-        [renderEncoder setVertexBuffer:m_VideoVertexBuffer offset:0 atIndex:0];
-        [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+        if (forkScalerInput) {
+            // [fork] ...which MetalFX scales to the video's area, drawn into the drawable as it is
+            ForkMetalFxScaler::drawFullFrame(renderEncoder);
+            [renderEncoder endEncoding];
+            m_ForkMetalFx.encodeUpscale(commandBuffer);
+            renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+            m_ForkMetalFx.drawResult(renderEncoder, m_VideoVertexBuffer);
+        }
+        else {
+            [renderEncoder setVertexBuffer:m_VideoVertexBuffer offset:0 atIndex:0];
+            [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+        }
 
         // Now draw any overlays that are enabled
         for (int i = 0; i < Overlay::OverlayMax; i++) {
@@ -580,6 +598,14 @@ public:
     // Caller frees frame after we return
     virtual void renderFrame(AVFrame* frame) override
     { @autoreleasepool {
+        // [fork] Upscaling's Quality: VideoToolbox's super resolution makes a larger frame first
+        int forkDrawableWidth, forkDrawableHeight;
+        SDL_Metal_GetDrawableSize(m_Window, &forkDrawableWidth, &forkDrawableHeight);
+        ForkUpscaling::ScopedFrame forkUpscaled(ForkUpscaling::superResolve(frame, forkDrawableWidth, forkDrawableHeight));
+        if (forkUpscaled) {
+            frame = forkUpscaled.get();
+        }
+
         // Handle changes to the frame's colorspace from last time we rendered
         if (!updateColorSpaceForFrame(frame)) {
             // Trigger the main thread to recreate the decoder
@@ -967,6 +993,7 @@ private:
     int m_LastDrawableWidth;
     int m_LastDrawableHeight;
     bool m_LastStretch; // [fork]
+    ForkMetalFxScaler m_ForkMetalFx; // [fork]
 };
 
 @implementation DisplayLinkDelegate {
