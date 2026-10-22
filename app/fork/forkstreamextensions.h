@@ -7,6 +7,7 @@
 class ClipboardSync;
 class MacDrive;
 class NotchBar;
+class PowerNotice;
 class NvComputer;
 class NvApp;
 class StreamingPreferences;
@@ -38,4 +39,5 @@ private:
     std::unique_ptr<ClipboardSync> m_Clipboard;
     std::unique_ptr<NotchBar> m_NotchBar;
     std::unique_ptr<MacDrive> m_MacDrive;
+    std::unique_ptr<PowerNotice> m_PowerNotice;
 };

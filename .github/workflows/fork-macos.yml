@@ -194,6 +194,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/macdriverules_test.cpp app/fork/macdriverules.cpp -o "$RUNNER_TEMP/macdriverules_test"
           "$RUNNER_TEMP/macdriverules_test"
+          # How evenly the PC sends frames: the score, its window, and what breaks it
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/hostcadence_test.cpp -o "$RUNNER_TEMP/hostcadence_test"
+          "$RUNNER_TEMP/hostcadence_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"

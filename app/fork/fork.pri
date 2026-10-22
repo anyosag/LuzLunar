@@ -29,6 +29,7 @@ SOURCES += \
     $$PWD/forkaspect.cpp \
     $$PWD/forkaspectratios.cpp \
     $$PWD/forkevents.cpp \
+    $$PWD/forkhostpower.cpp \
     $$PWD/forkhostupdates.cpp \
     $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
@@ -49,8 +50,10 @@ SOURCES += \
     $$PWD/forkupdater.cpp \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
+    $$PWD/hostpacing.cpp \
     $$PWD/macdrive.cpp \
     $$PWD/macdriverules.cpp \
+    $$PWD/powernotice.cpp \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
     $$PWD/streamstats.cpp \
@@ -66,6 +69,7 @@ HEADERS += \
     $$PWD/forkaspect.h \
     $$PWD/forkaspectratios.h \
     $$PWD/forkevents.h \
+    $$PWD/forkhostpower.h \
     $$PWD/forkhostupdates.h \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \
@@ -85,13 +89,17 @@ HEADERS += \
     $$PWD/forkupdater.h \
     $$PWD/forkupdaterules.h \
     $$PWD/forkvideoscaling.h \
+    $$PWD/hostcadence.h \
+    $$PWD/hostpacing.h \
     $$PWD/luztouchpad.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
+    $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
+    $$PWD/mac/displaytiming.h \
     $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macdrivesetup.h \
     $$PWD/mac/macintegration.h \
@@ -106,6 +114,7 @@ macx {
     SOURCES += \
         $$PWD/screenshotharness.cpp \
         $$PWD/mac/clienthardware_mac.mm \
+        $$PWD/mac/displaytiming_mac.mm \
         $$PWD/mac/gesturesuppressor_mac.mm \
         $$PWD/mac/macdrivesetup_mac.mm \
         $$PWD/mac/macintegration.mm \

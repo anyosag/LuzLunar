@@ -10,9 +10,11 @@
 #include "forksystemshortcuts.h"
 #include "forktrackpadpassthrough.h"
 #include "forkvideoscaling.h"
+#include "hostpacing.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
 #include "macdrive.h"
+#include "powernotice.h"
 #include "settings/streamingpreferences.h"
 
 namespace
@@ -57,6 +59,18 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
             });
         }
     }
+
+    // A stream above 60 fps while Low Power Mode holds the screen to 60: said beside the notch
+    m_PowerNotice = std::make_unique<PowerNotice>(prefs.fps);
+    if (m_NotchBar) {
+        NotchBar* notchBar = m_NotchBar.get();
+        m_PowerNotice->setMessageSink([notchBar](const QString& text) {
+            return notchBar->showToast(text);
+        });
+    }
+
+    // How evenly the PC sends this stream's frames, for the stats overlay and the log
+    ForkHostPacing::reset();
 
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
     // the LAN on, so it's checked even without the bar
@@ -106,6 +120,9 @@ ForkStreamExtensions::~ForkStreamExtensions()
     if (m_MacDrive) {
         m_MacDrive->setMessageSink(nullptr);
     }
+    m_PowerNotice->setMessageSink(nullptr);
+
+    ForkHostPacing::logSummary();
 
     if (m_ShortcutGuard) {
         MacIntegration::setStreamShortcutGuard(false);
@@ -125,6 +142,7 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (m_MacDrive) {
         m_MacDrive->handleEvent(event);
     }
+    m_PowerNotice->handleEvent(event);
 
     ForkSystemShortcuts::handleEvent(event);
     ForkTrackpadPassthrough::handleEvent(event);
