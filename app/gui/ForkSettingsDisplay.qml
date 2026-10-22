@@ -195,17 +195,22 @@ Column {
 
     // ---- Frame rate -----------------------------------------------------------------------
 
-    // 30 and 60, each display's refresh rate, the saved rate if it's none of those, then Custom
+    // 30 and 60, each display's refresh rate, the saved rate if it's none of those, then Custom.
+    // SDL can read a ProMotion screen as 0 Hz, so macOS's highest rate for each screen counts too.
     readonly property var fpsOptions: {
         displaysLoaded
         var rates = [30, 60]
-        for (var i = 0; ; i++) {
+        for (var i = 0; i < 16; i++) {
             var rate = SystemProperties.getRefreshRate(i)
-            if (rate === 0) {
-                break
-            }
-            if (rates.indexOf(rate) < 0) {
+            if (rate > 0 && rates.indexOf(rate) < 0) {
                 rates.push(rate)
+            }
+        }
+        var displays = ClientHardware.displays
+        for (var j = 0; j < displays.length; j++) {
+            var maxRate = displays[j].maxRefresh
+            if (maxRate > 0 && rates.indexOf(maxRate) < 0) {
+                rates.push(maxRate)
             }
         }
         if (rates.indexOf(StreamingPreferences.fps) < 0) {
