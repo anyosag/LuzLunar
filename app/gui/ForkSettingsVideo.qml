@@ -1,13 +1,14 @@
 import QtQuick
 
 import ClientHardware 1.0
+import ForkPreferences 1.0
 import ForkTheme 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 
 // [fork] Settings › Video: how the stream is decoded and drawn on this Mac (codec, decoder,
-// renderer), and the two settings that trade picture quality for bandwidth (full color, the
-// bitrate limit). Each forced codec's card says whether this Mac decodes it in hardware, from
+// renderer), the two settings that trade picture quality for bandwidth (full color, the
+// bitrate limit), and how a stream smaller than its area on screen is upscaled. Each forced codec's card says whether this Mac decodes it in hardware, from
 // ClientHardware. A saved codec or renderer that none of the cards stands for (the deprecated
 // HEVC HDR codec, say) shows Automatic selected but isn't rewritten until the user picks one.
 Column {
@@ -260,6 +261,49 @@ Column {
                     StreamingPreferences.unlockBitrate = on
                     // Locking the limit again brings a bitrate above it back down
                     StreamingPreferences.bitrateKbps = Math.min(StreamingPreferences.bitrateKbps, on ? 500000 : 150000)
+                }
+            }
+        }
+    }
+
+    // ---- Upscaling ------------------------------------------------------------------------
+
+    ForkCard {
+        title: qsTr("Upscaling")
+
+        Column {
+            width: parent.width
+            spacing: 10
+
+            ForkSegmented {
+                accessibleName: qsTr("Upscaling")
+                options: [
+                    { "value": 0, "label": qsTr("Off") },
+                    { "value": 1, "label": qsTr("Fast") },
+                    { "value": 2, "label": qsTr("Quality"), "enabled": ForkPreferences.superResolutionAvailable }
+                ]
+                value: ForkPreferences.upscaling
+                onActivated: (value) => ForkPreferences.upscaling = value
+            }
+
+            ForkText {
+                width: parent.width
+                kind: "help"
+                wrapMode: Text.WordWrap
+                text: {
+                    var help
+                    if (ForkPreferences.upscaling === 2) {
+                        help = ForkPreferences.superResolutionAvailable
+                            ? qsTr("Apple's machine-learning super resolution, made for video over slow networks: it also cleans up compression artifacts. It uses more power, so Low Power Mode and full color streams use Fast instead.")
+                            : qsTr("Quality needs macOS 26 on a Mac that supports it. This Mac uses Fast instead.")
+                    }
+                    else if (ForkPreferences.upscaling === 1) {
+                        help = qsTr("Sharper scaling at little cost: Lanczos with the Vulkan renderer, MetalFX with Metal.")
+                    }
+                    else {
+                        help = qsTr("The renderer's plain bilinear scaling.")
+                    }
+                    return help + " " + qsTr("Only for a stream smaller than its area on screen. The stats overlay shows what's used.")
                 }
             }
         }

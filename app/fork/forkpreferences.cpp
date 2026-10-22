@@ -8,6 +8,7 @@
 #include <QVariantMap>
 
 #include "forkmacshortcuts.h"
+#include "forkupscaling.h"
 #include "mac/gesturesuppressor_mac.h"
 #include "mac/macdrivesetup.h"
 #include "mac/macintegration.h"
@@ -25,6 +26,7 @@
 #define SER_MACDRIVE "fork/macDrive"
 #define SER_MACDRIVELAST "fork/macDriveLast"
 #define SER_ADAPTIVEBITRATE "fork/adaptiveBitrate"
+#define SER_UPSCALING "fork/upscaling"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
@@ -82,7 +84,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_TrackpadPauseMacSettings(true),
       m_TrackpadScrollSpeed(1.0),
       m_MacDrive(false),
-      m_AdaptiveBitrate(true)
+      m_AdaptiveBitrate(true),
+      m_Upscaling(static_cast<int>(UpscaleRules::Mode::Off))
 {
     QSettings settings;
 
@@ -123,6 +126,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
     m_MacDrive = settings.value(SER_MACDRIVE, m_MacDrive).toBool();
     m_AdaptiveBitrate = settings.value(SER_ADAPTIVEBITRATE, m_AdaptiveBitrate).toBool();
+    m_Upscaling = static_cast<int>(UpscaleRules::modeFromInt(settings.value(SER_UPSCALING, m_Upscaling).toInt()));
     settings.beginGroup(SER_MACSHORTCUTS);
     for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
         QString key = QString::fromUtf8(group.key);
@@ -271,6 +275,23 @@ void ForkPreferences::setAdaptiveBitrate(bool enabled)
     m_AdaptiveBitrate = enabled;
     QSettings().setValue(SER_ADAPTIVEBITRATE, enabled);
     emit adaptiveBitrateChanged();
+}
+
+void ForkPreferences::setUpscaling(int mode)
+{
+    mode = static_cast<int>(UpscaleRules::modeFromInt(mode));
+    if (mode == m_Upscaling) {
+        return;
+    }
+
+    m_Upscaling = mode;
+    QSettings().setValue(SER_UPSCALING, mode);
+    emit upscalingChanged();
+}
+
+bool ForkPreferences::superResolutionAvailable() const
+{
+    return ForkUpscaling::superResolutionSupported();
 }
 
 QVariantMap ForkPreferences::macDriveSetup() const

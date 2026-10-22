@@ -49,6 +49,7 @@ SOURCES += \
     $$PWD/forktrackpadpassthrough.cpp \
     $$PWD/forkupdater.cpp \
     $$PWD/forkupdaterules.cpp \
+    $$PWD/forkupscaling.cpp \
     $$PWD/forkvideoscaling.cpp \
     $$PWD/adaptivebitrate.cpp \
     $$PWD/bitraterules.cpp \
@@ -59,6 +60,7 @@ SOURCES += \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
     $$PWD/streamstats.cpp \
+    $$PWD/upscalerules.cpp \
     $$PWD/windowchrome.cpp
 
 HEADERS += \
@@ -90,6 +92,7 @@ HEADERS += \
     $$PWD/forktrackpadpassthrough.h \
     $$PWD/forkupdater.h \
     $$PWD/forkupdaterules.h \
+    $$PWD/forkupscaling.h \
     $$PWD/forkvideoscaling.h \
     $$PWD/hostcadence.h \
     $$PWD/hostpacing.h \
@@ -102,11 +105,13 @@ HEADERS += \
     $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
+    $$PWD/upscalerules.h \
     $$PWD/windowchrome.h \
     $$PWD/mac/displaytiming.h \
     $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macdrivesetup.h \
     $$PWD/mac/macintegration.h \
+    $$PWD/mac/metalfxscaler.h \
     $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
     $$PWD/mac/pasteboard.h \
@@ -122,10 +127,12 @@ macx {
         $$PWD/mac/gesturesuppressor_mac.mm \
         $$PWD/mac/macdrivesetup_mac.mm \
         $$PWD/mac/macintegration.mm \
+        $$PWD/mac/metalfxscaler.mm \
         $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/pasteboard_mac.mm \
         $$PWD/mac/selfupdate_mac.mm \
+        $$PWD/mac/superresolution_mac.mm \
         $$PWD/mac/sfsymbolprovider.mm \
         $$PWD/mac/trackpadcapture_mac.mm \
         $$PWD/mac/windowchrome_mac.mm
@@ -144,6 +151,9 @@ macx {
 
     # The Mac drive: the account and File Sharing's shares from the local directory (mac/macdrivesetup_mac.mm)
     LIBS += -framework OpenDirectory
+
+    # Upscaling's Fast engine with the Metal renderer (mac/metalfxscaler.mm); VideoToolbox is linked already
+    LIBS += -framework MetalFX
     DEFINES += CLIPBUNDLE_WITH_ZLIB
 }
 

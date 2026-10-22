@@ -2,6 +2,7 @@
 
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
+#include "fork/forkupscaling.h" // [fork]
 
 // Implementation in plvk_c.c
 #define PL_LIBAV_IMPLEMENTATION 0
@@ -956,6 +957,17 @@ void PlVkRenderer::cleanupRenderContext()
     }
 }
 
+// [fork] Upscaling's Fast, and Quality's rest: Lanczos instead of the fastest preset's bilinear
+static const pl_render_params* forkRenderParams()
+{
+    static const pl_render_params lanczos = [] {
+        pl_render_params params = pl_render_fast_params;
+        params.upscaler = &pl_filter_lanczos;
+        return params;
+    }();
+    return ForkUpscaling::mode() != UpscaleRules::Mode::Off ? &lanczos : &pl_render_fast_params;
+}
+
 void PlVkRenderer::renderFrame(AVFrame *frame)
 {
     pl_frame mappedFrame, targetFrame;
@@ -964,6 +976,13 @@ void PlVkRenderer::renderFrame(AVFrame *frame)
     // rendering this frame. It probably means the window is occluded.
     if (!m_HasPendingSwapchainFrame) {
         return;
+    }
+
+    // [fork] Upscaling's Quality: VideoToolbox's super resolution makes a larger frame first
+    ForkUpscaling::ScopedFrame forkUpscaled(ForkUpscaling::superResolve(frame, m_SwapchainFrame.fbo->params.w,
+                                                                        m_SwapchainFrame.fbo->params.h));
+    if (forkUpscaled) {
+        frame = forkUpscaled.get();
     }
 
     if (!mapAvFrameToPlacebo(frame, &mappedFrame)) {
@@ -1063,6 +1082,7 @@ void PlVkRenderer::renderFrame(AVFrame *frame)
 
     // Scale the video to the surface size while preserving the aspect ratio
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+    ForkUpscaling::reportPlacebo(forkUpscaled != nullptr, src.w, src.h, dst.w, dst.h); // [fork]
 
     targetFrame.crop.x0 = dst.x;
     targetFrame.crop.y0 = dst.y;
@@ -1077,7 +1097,7 @@ void PlVkRenderer::renderFrame(AVFrame *frame)
     // Render the video image and overlays into the swapchain buffer
     targetFrame.num_overlays = (int)overlays.size();
     targetFrame.overlays = overlays.data();
-    if (!pl_render_image(m_Renderer, &mappedFrame, &targetFrame, &pl_render_fast_params)) {
+    if (!pl_render_image(m_Renderer, &mappedFrame, &targetFrame, forkRenderParams())) { // [fork] was &pl_render_fast_params
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                      "pl_render_image() failed");
         // NB: We must fallthrough to call pl_swapchain_submit_frame()

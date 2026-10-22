@@ -3,6 +3,7 @@
 #include "utils.h"
 #include "streaming/session.h"
 #include "fork/hostpacing.h" // [fork]
+#include "fork/forkupscaling.h" // [fork]
 #include "fork/streamstats.h" // [fork]
 
 #include <h264_stream.h>
@@ -2136,6 +2137,8 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
                                 Session::get()->getOverlayManager().getOverlayMaxTextLength());
             ForkHostPacing::appendOverlayLine(Session::get()->getOverlayManager().getOverlayText(Overlay::OverlayDebug),
                                               Session::get()->getOverlayManager().getOverlayMaxTextLength()); // [fork]
+            ForkUpscaling::appendOverlayLine(Session::get()->getOverlayManager().getOverlayText(Overlay::OverlayDebug),
+                                             Session::get()->getOverlayManager().getOverlayMaxTextLength()); // [fork]
             Session::get()->getOverlayManager().setOverlayTextUpdated(Overlay::OverlayDebug);
         }
 

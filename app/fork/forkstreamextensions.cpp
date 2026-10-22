@@ -10,6 +10,7 @@
 #include "forkpreferences.h"
 #include "forksystemshortcuts.h"
 #include "forktrackpadpassthrough.h"
+#include "forkupscaling.h"
 #include "forkvideoscaling.h"
 #include "hostpacing.h"
 #include "mac/macintegration.h"
@@ -95,6 +96,9 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     // Renderers and the mouse mapping read this through StreamUtils::scaleSourceToDestinationSurface()
     ForkVideoScaling::activate(window, prefs.fullscreenStretch);
 
+    // How the renderers upscale a stream smaller than its area on screen
+    ForkUpscaling::activate(forkPrefs->upscaling(), prefs.enableYUV444);
+
     // Which Mac shortcuts system key capture takes; SdlInputHandler asks it before grabbing
     ForkSystemShortcuts::activate(window);
 
@@ -116,6 +120,7 @@ ForkStreamExtensions::~ForkStreamExtensions()
     ForkTrackpadPassthrough::setMessageSink(nullptr);
     ForkSystemShortcuts::deactivate();
     ForkVideoScaling::deactivate();
+    ForkUpscaling::deactivate();
 
     s_Active = nullptr;
 
