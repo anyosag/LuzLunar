@@ -10,9 +10,17 @@ namespace
     // 10 seconds of tries
     const int k_MaxAttempts = 20;
 
+    // Its own code, so the event can't pass for one of Moonlight's
+    const Sint32 k_EventCode = 0x4c504d;
+
     Uint32 eventType()
     {
-        static Uint32 type = SDL_RegisterEvents(1);
+        static Uint32 type = [] {
+            // SDL hands out SDL_USEREVENT first, which Moonlight's session uses as is (its frame-ready
+            // and rumble events); take the next one if this is the first registration
+            Uint32 registered = SDL_RegisterEvents(1);
+            return registered == SDL_USEREVENT ? SDL_RegisterEvents(1) : registered;
+        }();
         return type;
     }
 }
@@ -32,6 +40,7 @@ PowerNotice::PowerNotice(int streamFps)
                            [](Uint32 interval, void*) -> Uint32 {
                                SDL_Event event = {};
                                event.type = eventType();
+                               event.user.code = k_EventCode;
                                SDL_PushEvent(&event);
                                return interval;
                            },
@@ -50,7 +59,7 @@ void PowerNotice::setMessageSink(std::function<bool(const QString&)> sink)
 
 void PowerNotice::handleEvent(const SDL_Event& event)
 {
-    if (event.type != eventType() || m_Message.isEmpty()) {
+    if (event.type != eventType() || event.user.code != k_EventCode || m_Message.isEmpty()) {
         return;
     }
     if (m_MessageSink && m_MessageSink(m_Message)) {

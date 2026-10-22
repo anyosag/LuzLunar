@@ -14,6 +14,7 @@ namespace
 {
     const int k_RefreshIntervalMs = 30 * 60 * 1000;
     const int k_RequestTimeoutMs = 10 * 1000;
+    const int k_QuitAppTimeoutMs = 60 * 1000;
 
     ApolloClient::RequestOptions requestOptions()
     {
@@ -35,7 +36,9 @@ ForkHostPower::ForkHostPower(QObject* parent)
     : QObject(parent),
       m_Pool(new QThreadPool(this))
 {
-    m_Pool->setMaxThreadCount(2);
+    // One request at a time, in order: each GET hands out a new single-use token, so a refresh
+    // running alongside Sleep could replace the token Sleep is about to post
+    m_Pool->setMaxThreadCount(1);
 
     m_RefreshTimer.setInterval(k_RefreshIntervalMs);
     connect(&m_RefreshTimer, &QTimer::timeout, this, &ForkHostPower::refreshAll);
@@ -238,7 +241,12 @@ void ForkHostPower::sleep(const QString& uuid, const QString& appToQuit)
             const bool quitApp = reason == QStringLiteral("app_running");
             request.insert(QStringLiteral("quitApp"), quitApp);
             QByteArray body = QJsonDocument(request).toJson(QJsonDocument::Compact);
-            ApolloClient::Response slept = client.request(QStringLiteral("actions/sleep"), QString(), &body, requestOptions());
+            // Apollo quits the app before it answers, which takes up to the app's exit timeout
+            ApolloClient::RequestOptions options = requestOptions();
+            if (quitApp) {
+                options.timeoutMs = k_QuitAppTimeoutMs;
+            }
+            ApolloClient::Response slept = client.request(QStringLiteral("actions/sleep"), QString(), &body, options);
             QString error = QJsonDocument::fromJson(slept.body).object().value(QStringLiteral("error")).toString();
             if (slept.httpStatus == 202) {
                 ok = true;
