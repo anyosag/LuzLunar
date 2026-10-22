@@ -7,12 +7,13 @@
 // ask the PC for a lower bitrate, or for more of the user's own bitrate back.
 //
 // - Waits 5 s after the stream starts and after each change, so a change shows before the next.
-// - Cuts to 70% when 2% of frames or more are lost, or the connection is poor; holds 10 s.
+// - Cuts to 70% when 2% of frames or more are lost (and at least 3: a quiet desktop sends a few
+//   frames a second, where one lost frame is 10%), or the connection is poor; holds 10 s.
 // - Cuts to 90% after 3 seconds in a row of a round-trip time above the stream's lowest plus
 //   max(30 ms, half of it), since the queue on the way is growing; holds 10 s. "Lowest" is over the
 //   last 15 to 30 s, so a route that got slower for good stops counting as a queue.
 // - Climbs by 5% of the user's bitrate per 5 clean seconds, every 15 clean seconds once near the
-//   bitrate it last had to leave.
+//   bitrate it last had to leave. A climb holds only 5 s, so losses it brings are cut at once.
 // - Never below max(3 Mb/s, 20% of the user's bitrate), 5 Mb/s with HDR; never above the user's.
 namespace BitrateRules
 {
@@ -24,6 +25,7 @@ namespace BitrateRules
     struct Sample {
         double seconds = 0;     // since the stream started, steady
         double dropPercent = 0; // frames lost on the network, over the last seconds
+        uint32_t lostFrames = 0; // how many that was
         uint32_t rttMs = 0;     // round-trip time; 0 when unknown
         bool poor = false;      // moonlight-common-c calls the connection poor
     };
@@ -59,6 +61,7 @@ namespace BitrateRules
         int m_LastLossKbps = 0;
         int m_RttHighSeconds = 0;
         double m_HoldUntil;     // no change before this
+        double m_NextClimbAt = 0; // no climb before this
         double m_LastBad = 0;   // the last second that lost frames or had a high round-trip time
         bool m_SeenBad = false;
 

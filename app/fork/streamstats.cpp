@@ -63,6 +63,8 @@ void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
     snapshot.mbps = averageMbps;
     snapshot.codec = codecName(videoFormat);
     snapshot.dropPercent = stats.totalFrames != 0 ? 100.0 * stats.networkDroppedFrames / stats.totalFrames : 0.0;
+    snapshot.droppedFrames = stats.networkDroppedFrames;
+    snapshot.totalFrames = stats.totalFrames;
     snapshot.bitrateCapMbps = s_BitrateCapMbps;
 
     std::lock_guard<std::mutex> lock(s_ListenerMutex);
@@ -86,6 +88,13 @@ void setConnectionListener(std::function<bool(bool poor, bool suggestLowerBitrat
 {
     std::lock_guard<std::mutex> lock(s_ConnectionListenerMutex);
     s_ConnectionListener = std::move(listener);
+    s_ConnectionPoor = false;
+    s_SuggestLowerBitrate = false;
+}
+
+void resetConnectionStatus()
+{
+    std::lock_guard<std::mutex> lock(s_ConnectionListenerMutex);
     s_ConnectionPoor = false;
     s_SuggestLowerBitrate = false;
 }

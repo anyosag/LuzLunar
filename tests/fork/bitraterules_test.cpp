@@ -19,11 +19,13 @@ static int s_Failures = 0;
         } \
     } while (0)
 
+// A 120 fps stream, whose stats cover about 2 s
 static Sample second(double t, double drop = 0, uint32_t rtt = 20, bool poor = false)
 {
     Sample s;
     s.seconds = t;
     s.dropPercent = drop;
+    s.lostFrames = (uint32_t) (drop * 240 / 100 + 0.5);
     s.rttMs = rtt;
     s.poor = poor;
     return s;
@@ -89,6 +91,19 @@ static void testLossCutsAndHolds()
     // A poor connection counts like a loss
     Controller e(20000, false);
     CHECK(e.tick(second(5, 0, 20, true)) == 14000);
+
+    // A quiet desktop sends a few frames a second: one or two lost aren't a loss, three are
+    Controller f(20000, false);
+    Sample quiet = second(5);
+    quiet.dropPercent = 10.0;
+    quiet.lostFrames = 1;
+    CHECK(f.tick(quiet) == 0);
+    quiet.seconds = 6;
+    quiet.lostFrames = 2;
+    CHECK(f.tick(quiet) == 0);
+    quiet.seconds = 7;
+    quiet.lostFrames = 3;
+    CHECK(f.tick(quiet) == 14000);
 }
 
 static void testClimb()
@@ -144,6 +159,15 @@ static void testClimbSlowsNearTheLastLoss()
     CHECK(run(c, 56, 69).empty());
     CHECK(c.tick(second(70)) == 15800);
     CHECK(c.tick(second(75)) == 16800);
+
+    // A slow climb still lets a loss cut 5 s after it, not 15
+    Controller d(20000, false);
+    CHECK(d.tick(second(5, 5.0)) == 14000);
+    run(d, 6, 29);
+    CHECK(d.currentKbps() == 17000);
+    CHECK(d.tick(second(30)) == 18000);     // near 20 Mb/s: the next climb is 15 s away
+    CHECK(run(d, 31, 34, 5.0).empty());     // the 5 s every change waits
+    CHECK(d.tick(second(35, 5.0)) == 12600);
 }
 
 static void testRoundTripTime()

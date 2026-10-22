@@ -12,6 +12,7 @@ namespace
     const double k_ClimbCleanNearLoss = 15; // clean s per climb near the bitrate that lost last
     const double k_CutHold = 10;            // s after a cut
     const double k_LossPercent = 2.0;
+    const uint32_t k_LossFrames = 3;        // lost frames that make a lossy second, with k_LossPercent
     const double k_LossCut = 0.7;
     const double k_RttCut = 0.9;
     const int k_RttHighSeconds = 3;
@@ -79,7 +80,7 @@ int Controller::tick(const Sample& sample)
     uint32_t base = baseRttMs();
     noteRtt(sample.rttMs, now);
 
-    bool lossy = sample.dropPercent >= k_LossPercent || sample.poor;
+    bool lossy = (sample.dropPercent >= k_LossPercent && sample.lostFrames >= k_LossFrames) || sample.poor;
     bool rttHigh = sample.rttMs > 0 && base > 0 &&
                    sample.rttMs > base + std::max(k_RttMarginMs, base / 2);
     m_RttHighSeconds = rttHigh ? m_RttHighSeconds + 1 : 0;
@@ -102,7 +103,7 @@ int Controller::tick(const Sample& sample)
         return changeTo(target, now, k_CutHold);
     }
 
-    if (m_CurrentKbps >= m_ChosenKbps) {
+    if (m_CurrentKbps >= m_ChosenKbps || now < m_NextClimbAt) {
         return 0;
     }
     bool nearLoss = m_LastLossKbps > 0 && m_CurrentKbps >= m_LastLossKbps * k_NearLoss;
@@ -116,6 +117,8 @@ int Controller::tick(const Sample& sample)
         // Back past it without losses
         m_LastLossKbps = 0;
     }
-    return changeTo(target, now, clean);
+    // The next climb waits as long, but a cut only the usual 5 s
+    m_NextClimbAt = now + clean;
+    return changeTo(target, now, k_ClimbClean);
 }
 }

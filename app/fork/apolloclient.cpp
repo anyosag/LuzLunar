@@ -40,6 +40,7 @@ ApolloClient::HostInfo ApolloClient::hostInfo()
     try {
         NvHTTP http(m_Target.address, m_Target.httpsPort, m_Target.serverCert, m_Target.useTrueUid);
         QString serverInfo = http.getServerInfo(NvHTTP::NVLL_ERROR, true);
+        info.answered = true;
 
         bool ok;
         qint64 bits = NvHTTP::getXmlString(serverInfo, "Permission").toLongLong(&ok);

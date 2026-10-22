@@ -33,7 +33,7 @@ struct AdaptiveBitrate::Shared
     std::mutex mutex;
     bool alive = true;
     bool stopped = false;   // the host can't change the bitrate: no more requests this stream
-    bool checked = false;   // serverinfo said whether it can
+    bool checked = false;   // serverinfo answered whether it can
     bool queued = false;    // a worker job will send wantKbps
     int wantKbps = 0;       // the newest bitrate to ask for; 0 for none
 };
@@ -70,16 +70,30 @@ namespace
         shared->wantKbps = 0;
     }
 
-    // On the worker: whether the host changes bitrates while streaming, asked once per stream
-    bool hostTakesChanges(const std::shared_ptr<AdaptiveBitrate::Shared>& shared, ApolloClient& client)
+    // On the worker: whether the host changes bitrates while streaming, from serverinfo. Asked when
+    // the stream starts, while the network is still fine, and again before a request if the host
+    // didn't answer then. Without an answer the request goes anyway: a host that can't change
+    // bitrates refuses it, which ends adaptive bitrate for the stream just the same.
+    bool hostTakesChanges(const std::shared_ptr<AdaptiveBitrate::Shared>& shared)
     {
         {
             std::lock_guard<std::mutex> lock(shared->mutex);
+            if (!shared->alive) {
+                return false;
+            }
             if (shared->checked) {
                 return !shared->stopped;
             }
         }
+        ApolloClient client(shared->target);
         ApolloClient::HostInfo info = client.hostInfo();
+        if (!info.answered) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "[fork] Adaptive bitrate: %s didn't answer serverinfo; asked again before the next change, which is sent either way",
+                        qPrintable(shared->hostName));
+            return true;
+        }
+
         bool takes = info.bitrate == QLatin1String("1");
         {
             std::lock_guard<std::mutex> lock(shared->mutex);
@@ -89,7 +103,7 @@ namespace
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                         "[fork] Adaptive bitrate: %s doesn't change a stream's bitrate (%s), so it stays at %d kbps",
                         qPrintable(shared->hostName),
-                        info.permissions < 0 ? "no answer, or not Apollo" : (info.bitrate.isEmpty() ? "an older Apollo" : "off in Apollo"),
+                        info.permissions < 0 ? "not LuzLunar's Apollo" : (info.bitrate.isEmpty() ? "an older Apollo" : "off in Apollo"),
                         shared->controller.chosenKbps());
             stop(shared);
         }
@@ -99,10 +113,13 @@ namespace
     // On the worker: sends the newest bitrate the controller wants until none waits
     void send(std::shared_ptr<AdaptiveBitrate::Shared> shared)
     {
-        ApolloClient client(shared->target);
-        if (!hostTakesChanges(shared, client)) {
+        if (!hostTakesChanges(shared)) {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->queued = false;
             return;
         }
+
+        ApolloClient client(shared->target);
 
         for (;;) {
             int kbps;
@@ -194,11 +211,18 @@ AdaptiveBitrate::AdaptiveBitrate(NvComputer* computer, int chosenKbps, bool hdr)
     }
     ForkStreamStats::setBitrateCap(0);
 
+    // The last stream may have ended on a poor connection, which moonlight-common-c doesn't take back
+    ForkStreamStats::resetConnectionStatus();
+
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "[fork] Adaptive bitrate: between %d and %d kbps",
                 m_Shared->controller.floorKbps(), chosenKbps);
 
     std::shared_ptr<Shared> shared = m_Shared;
+
+    // Whether the host takes changes, asked now while the network is fine; requests queue behind it
+    workerPool()->start([shared] { hostTakesChanges(shared); });
+
     ForkStreamStats::setBitrateListener([shared](const ForkStreamStats::Snapshot& stats) {
         // The decode thread, about once a second
         {
@@ -211,6 +235,7 @@ AdaptiveBitrate::AdaptiveBitrate(NvComputer* computer, int chosenKbps, bool hdr)
         BitrateRules::Sample sample;
         sample.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - shared->start).count();
         sample.dropPercent = stats.dropPercent;
+        sample.lostFrames = stats.droppedFrames;
         sample.rttMs = stats.rttMs;
         bool suggestLowerBitrate;
         sample.poor = ForkStreamStats::connectionPoor(&suggestLowerBitrate);
