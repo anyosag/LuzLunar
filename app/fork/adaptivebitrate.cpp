@@ -241,7 +241,14 @@ AdaptiveBitrate::AdaptiveBitrate(NvComputer* computer, int chosenKbps, bool hdr)
         sample.poor = ForkStreamStats::connectionPoor(&suggestLowerBitrate);
 
         int previous = shared->controller.currentKbps();
+        uint32_t previousBase = shared->controller.baseRttMs();
         int kbps = shared->controller.tick(sample);
+        if (previousBase > 0 && shared->controller.baseRttMs() > previousBase) {
+            // Only a route that got slower raises it
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "[fork] Adaptive bitrate: the route got slower, base %u ms (was %u ms)",
+                        shared->controller.baseRttMs(), previousBase);
+        }
         if (kbps == 0) {
             return;
         }
