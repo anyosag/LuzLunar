@@ -12,6 +12,7 @@
 #include "forkvideoscaling.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
+#include "macdrive.h"
 #include "settings/streamingpreferences.h"
 
 namespace
@@ -45,9 +46,21 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         m_NotchBar = NotchBar::create(window, app.name + QString::fromUtf8(" · ") + hostName);
     }
 
+    // This Mac as a drive on the PC, asked for once the link turns out to be the LAN
+    if (forkPrefs->macDrive()) {
+        m_MacDrive = std::make_unique<MacDrive>(computer);
+        if (m_NotchBar) {
+            // Its messages appear beside the notch too
+            NotchBar* notchBar = m_NotchBar.get();
+            m_MacDrive->setMessageSink([notchBar](const QString& text) {
+                return notchBar->showToast(text);
+            });
+        }
+    }
+
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
     // the LAN on, so it's checked even without the bar
-    ForkNetworkLink::start(m_NotchBar != nullptr);
+    ForkNetworkLink::start(m_NotchBar != nullptr, m_MacDrive ? m_MacDrive->linkListener() : std::function<void(bool)>());
 
     if (m_Clipboard && m_NotchBar) {
         // Clipboard messages appear beside the notch while the bar is on screen
@@ -90,6 +103,9 @@ ForkStreamExtensions::~ForkStreamExtensions()
     if (m_Clipboard) {
         m_Clipboard->setMessageSink(nullptr);
     }
+    if (m_MacDrive) {
+        m_MacDrive->setMessageSink(nullptr);
+    }
 
     if (m_ShortcutGuard) {
         MacIntegration::setStreamShortcutGuard(false);
@@ -105,6 +121,9 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
 {
     if (m_Clipboard) {
         m_Clipboard->handleEvent(event);
+    }
+    if (m_MacDrive) {
+        m_MacDrive->handleEvent(event);
     }
 
     ForkSystemShortcuts::handleEvent(event);

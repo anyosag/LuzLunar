@@ -46,6 +46,7 @@ public:
     struct HostInfo {
         qint64 permissions = -1;     // the <Permission> bits Apollo reports, or -1 if the host isn't Apollo or didn't answer
         bool clipboardFiles = false; // <LuzClipboardFiles>: LuzLunar's Apollo takes file copies through the clipboard
+        QString macDrive;            // <LuzMacDrive>: "1" when Apollo maps this Mac as a drive (macdrive.h), empty from an older Apollo
     };
 
     HostInfo hostInfo();

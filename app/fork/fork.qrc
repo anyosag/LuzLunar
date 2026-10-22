@@ -49,6 +49,7 @@
         <file alias="ForkSettingsKeyboard.qml">../gui/ForkSettingsKeyboard.qml</file>
         <file alias="ForkSettingsGamepads.qml">../gui/ForkSettingsGamepads.qml</file>
         <file alias="ForkSettingsHost.qml">../gui/ForkSettingsHost.qml</file>
+        <file alias="ForkMacDriveCard.qml">../gui/ForkMacDriveCard.qml</file>
         <file alias="ForkSettingsApp.qml">../gui/ForkSettingsApp.qml</file>
         <file alias="ForkSettingsMac.qml">../gui/ForkSettingsMac.qml</file>
         <file alias="ForkSettingsUpdates.qml">../gui/ForkSettingsUpdates.qml</file>

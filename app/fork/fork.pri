@@ -48,6 +48,8 @@ SOURCES += \
     $$PWD/forkupdater.cpp \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
+    $$PWD/macdrive.cpp \
+    $$PWD/macdriverules.cpp \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamprofiles.cpp \
     $$PWD/streamstats.cpp \
@@ -82,11 +84,14 @@ HEADERS += \
     $$PWD/forkupdaterules.h \
     $$PWD/forkvideoscaling.h \
     $$PWD/luztouchpad.h \
+    $$PWD/macdrive.h \
+    $$PWD/macdriverules.h \
     $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
     $$PWD/mac/gesturesuppressor_mac.h \
+    $$PWD/mac/macdrivesetup.h \
     $$PWD/mac/macintegration.h \
     $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
@@ -100,6 +105,7 @@ macx {
         $$PWD/screenshotharness.cpp \
         $$PWD/mac/clienthardware_mac.mm \
         $$PWD/mac/gesturesuppressor_mac.mm \
+        $$PWD/mac/macdrivesetup_mac.mm \
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
@@ -120,6 +126,9 @@ macx {
 
     # The notch bar's link badge: the interface's kind and network, and Wi-Fi's rate (mac/networklink_mac.mm)
     LIBS += -framework SystemConfiguration -framework CoreWLAN
+
+    # The Mac drive: the account and File Sharing's shares from the local directory (mac/macdrivesetup_mac.mm)
+    LIBS += -framework OpenDirectory
     DEFINES += CLIPBUNDLE_WITH_ZLIB
 }
 

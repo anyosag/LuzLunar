@@ -5,6 +5,7 @@
 #include "SDL_compat.h"
 
 class ClipboardSync;
+class MacDrive;
 class NotchBar;
 class NvComputer;
 class NvApp;
@@ -36,4 +37,5 @@ private:
     bool m_ShortcutGuard;
     std::unique_ptr<ClipboardSync> m_Clipboard;
     std::unique_ptr<NotchBar> m_NotchBar;
+    std::unique_ptr<MacDrive> m_MacDrive;
 };
