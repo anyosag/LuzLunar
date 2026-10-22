@@ -186,6 +186,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/forklinkrules_test.cpp app/fork/forklinkrules.cpp -o "$RUNNER_TEMP/forklinkrules_test"
           "$RUNNER_TEMP/forklinkrules_test"
+          # The fork's SDL event types are never SDL_USEREVENT, which Moonlight's session uses as is
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/forkevents_test.cpp -o "$RUNNER_TEMP/forkevents_test"
+          "$RUNNER_TEMP/forkevents_test"
           # This Mac as a drive on the PC: the shares asked for, when a stream asks, and Apollo's answers
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/macdriverules_test.cpp app/fork/macdriverules.cpp -o "$RUNNER_TEMP/macdriverules_test"

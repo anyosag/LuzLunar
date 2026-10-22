@@ -28,6 +28,7 @@ SOURCES += \
     $$PWD/clipfiles.cpp \
     $$PWD/forkaspect.cpp \
     $$PWD/forkaspectratios.cpp \
+    $$PWD/forkevents.cpp \
     $$PWD/forkhostupdates.cpp \
     $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
@@ -64,6 +65,7 @@ HEADERS += \
     $$PWD/clipfiles.h \
     $$PWD/forkaspect.h \
     $$PWD/forkaspectratios.h \
+    $$PWD/forkevents.h \
     $$PWD/forkhostupdates.h \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \

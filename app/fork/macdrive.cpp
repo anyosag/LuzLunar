@@ -18,6 +18,7 @@
 
 #include "apolloclient.h"
 #include "backend/nvcomputer.h"
+#include "forkevents.h"
 #include "mac/macdrivesetup.h"
 #include "macdriverules.h"
 
@@ -49,7 +50,7 @@ namespace
 
     Uint32 eventType()
     {
-        static Uint32 type = SDL_RegisterEvents(1);
+        static Uint32 type = ForkEvents::registerType();
         return type;
     }
 
