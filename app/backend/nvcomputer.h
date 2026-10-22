@@ -118,6 +118,7 @@ public:
     QVector<NvApp> appList;
     bool isNvidiaServerSoftware;
     bool isApolloServerSoftware = false; // [fork] reports this client's <Permission> bits, as Apollo does
+    bool apolloBitrateStart = false;     // [fork] <LuzBitrateStart>: starts a stream at luzBitrate, below its launch bitrate (BitrateRules::launchKbps())
     // Remember to update isEqualSerialized() when adding fields here!
 
     // Synchronization

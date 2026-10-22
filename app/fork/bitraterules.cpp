@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace BitrateRules
 {
@@ -38,6 +39,21 @@ int floorKbps(int chosenKbps, bool hdr)
 {
     int floor = std::max(hdr ? 5000 : 3000, chosenKbps / 5);
     return std::min(floor, chosenKbps);
+}
+
+int launchKbps(int chosenKbps)
+{
+    if (chosenKbps <= 0) {
+        return chosenKbps;
+    }
+    long long kbps = static_cast<long long>(chosenKbps) * 5 / 4;
+    // moonlight-common-c's HIGH_AUDIO_BITRATE_THRESHOLD (>=) and LOW_AUDIO_BITRATE_TRESHOLD (<)
+    for (long long line : {5000LL, 15000LL}) {
+        if (chosenKbps < line && kbps >= line) {
+            kbps = line - 1;
+        }
+    }
+    return static_cast<int>(std::min<long long>(kbps, std::numeric_limits<int>::max()));
 }
 
 Controller::Controller(int chosenKbps, bool hdr)

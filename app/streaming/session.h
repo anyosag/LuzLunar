@@ -266,6 +266,8 @@ private:
     bool m_ShouldExit;
 
     bool m_AsyncConnectionSuccess;
+    bool m_ForkBitrateHeadroom = false; // [fork] the PC starts the stream at luzBitrate, so it launches above it
+    int m_ForkOwnBitrateKbps = 0;       // [fork] the stream's own bitrate, which m_StreamConfig.bitrate launches above
     int m_PortTestResults;
 
     int m_ActiveVideoFormat;
