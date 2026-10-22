@@ -18,6 +18,7 @@
 
 #include "clipbundle.h"
 #include "clipfiles.h"
+#include "forkevents.h"
 #include "forkpreferences.h"
 #include "mac/macintegration.h"
 #include "mac/pasteboard.h"
@@ -64,7 +65,7 @@ namespace
 
     Uint32 eventType()
     {
-        static Uint32 type = SDL_RegisterEvents(1);
+        static Uint32 type = ForkEvents::registerType();
         return type;
     }
 
