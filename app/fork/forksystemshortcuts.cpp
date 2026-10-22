@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QStringList>
 
+#include "forkevents.h"
 #include "forkmacshortcuts.h"
 #include "forkpreferences.h"
 #include "mac/macintegration.h"
@@ -62,7 +63,7 @@ namespace
 
     Uint32 screenshotWatchEventType()
     {
-        static Uint32 type = SDL_RegisterEvents(1);
+        static Uint32 type = ForkEvents::registerType();
         return type;
     }
 

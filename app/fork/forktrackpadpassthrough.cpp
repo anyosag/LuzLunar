@@ -10,6 +10,7 @@
 
 #include <Limelight.h>
 
+#include "forkevents.h"
 #include "forkmultitouch.h"
 #include "forkpreferences.h"
 #include "forktrackpad.h"
@@ -60,7 +61,7 @@ namespace
 
     Uint32 keepaliveEventType()
     {
-        static Uint32 type = SDL_RegisterEvents(1);
+        static Uint32 type = ForkEvents::registerType();
         return type;
     }
 
