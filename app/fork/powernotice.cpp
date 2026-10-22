@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 
+#include "forkevents.h"
 #include "mac/macintegration.h"
 
 namespace
@@ -15,12 +16,7 @@ namespace
 
     Uint32 eventType()
     {
-        static Uint32 type = [] {
-            // SDL hands out SDL_USEREVENT first, which Moonlight's session uses as is (its frame-ready
-            // and rumble events); take the next one if this is the first registration
-            Uint32 registered = SDL_RegisterEvents(1);
-            return registered == SDL_USEREVENT ? SDL_RegisterEvents(1) : registered;
-        }();
+        static Uint32 type = ForkEvents::registerType();
         return type;
     }
 }
