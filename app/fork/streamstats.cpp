@@ -16,6 +16,8 @@ namespace
     std::atomic<bool> s_Wanted { false };
     std::mutex s_ListenerMutex;
     std::function<void(const Snapshot&)> s_Listener;
+    std::function<void(const Snapshot&)> s_BitrateListener;
+    std::atomic<double> s_BitrateCapMbps { 0 };
 
     std::mutex s_ConnectionListenerMutex;
     std::function<bool(bool, bool)> s_ConnectionListener;
@@ -38,7 +40,19 @@ void setListener(std::function<void(const Snapshot&)> listener)
 {
     std::lock_guard<std::mutex> lock(s_ListenerMutex);
     s_Listener = std::move(listener);
-    s_Wanted = static_cast<bool>(s_Listener);
+    s_Wanted = s_Listener || s_BitrateListener;
+}
+
+void setBitrateListener(std::function<void(const Snapshot&)> listener)
+{
+    std::lock_guard<std::mutex> lock(s_ListenerMutex);
+    s_BitrateListener = std::move(listener);
+    s_Wanted = s_Listener || s_BitrateListener;
+}
+
+void setBitrateCap(double mbps)
+{
+    s_BitrateCapMbps = mbps;
 }
 
 void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
@@ -49,8 +63,12 @@ void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
     snapshot.mbps = averageMbps;
     snapshot.codec = codecName(videoFormat);
     snapshot.dropPercent = stats.totalFrames != 0 ? 100.0 * stats.networkDroppedFrames / stats.totalFrames : 0.0;
+    snapshot.bitrateCapMbps = s_BitrateCapMbps;
 
     std::lock_guard<std::mutex> lock(s_ListenerMutex);
+    if (s_BitrateListener) {
+        s_BitrateListener(snapshot);
+    }
     if (s_Listener) {
         s_Listener(snapshot);
     }

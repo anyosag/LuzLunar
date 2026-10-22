@@ -48,6 +48,8 @@ SOURCES += \
     $$PWD/forkupdater.cpp \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
+    $$PWD/adaptivebitrate.cpp \
+    $$PWD/bitraterules.cpp \
     $$PWD/macdrive.cpp \
     $$PWD/macdriverules.cpp \
     $$PWD/sfsymbols.cpp \
@@ -84,6 +86,8 @@ HEADERS += \
     $$PWD/forkupdaterules.h \
     $$PWD/forkvideoscaling.h \
     $$PWD/luztouchpad.h \
+    $$PWD/adaptivebitrate.h \
+    $$PWD/bitraterules.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
     $$PWD/sfsymbols.h \

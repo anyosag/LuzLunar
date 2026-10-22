@@ -18,6 +18,7 @@ namespace ForkStreamStats
         double mbps;          // video bitrate
         QString codec;        // e.g. "AV1 HDR"
         double dropPercent;   // frames lost on the network
+        double bitrateCapMbps = 0;  // what adaptive bitrate lowered the stream to; 0 while it isn't lowered
     };
 
     // True while a listener is set; checked by the decoder before it computes anything
@@ -26,6 +27,13 @@ namespace ForkStreamStats
     // The listener runs on the decode thread, so it must be quick and thread-safe.
     // Once setListener() returns, a previous listener is no longer running or called.
     void setListener(std::function<void(const Snapshot&)> listener);
+
+    // A second listener, for adaptive bitrate (adaptivebitrate.*); the same rules
+    void setBitrateListener(std::function<void(const Snapshot&)> listener);
+
+    // What adaptive bitrate lowered the stream to, for the snapshots; 0 while it isn't lowered.
+    // Any thread.
+    void setBitrateCap(double mbps);
 
     void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps);
 

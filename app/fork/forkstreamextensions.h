@@ -4,6 +4,7 @@
 
 #include "SDL_compat.h"
 
+class AdaptiveBitrate;
 class ClipboardSync;
 class MacDrive;
 class NotchBar;
@@ -16,9 +17,10 @@ class StreamingPreferences;
 class ForkStreamExtensions
 {
 public:
-    // prefs is the session's own copy, with the app's stream profile applied
+    // prefs is the session's own copy, with the app's stream profile applied; bitrateKbps is the
+    // bitrate the stream was started with
     ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
-                         const StreamingPreferences& prefs);
+                         const StreamingPreferences& prefs, int bitrateKbps);
     ~ForkStreamExtensions();
 
     ForkStreamExtensions(const ForkStreamExtensions&) = delete;
@@ -38,4 +40,5 @@ private:
     std::unique_ptr<ClipboardSync> m_Clipboard;
     std::unique_ptr<NotchBar> m_NotchBar;
     std::unique_ptr<MacDrive> m_MacDrive;
+    std::unique_ptr<AdaptiveBitrate> m_AdaptiveBitrate;
 };

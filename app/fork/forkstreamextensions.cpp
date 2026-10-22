@@ -2,6 +2,7 @@
 
 #include <QReadLocker>
 
+#include "adaptivebitrate.h"
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
@@ -21,7 +22,7 @@ namespace
 }
 
 ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
-                                           const StreamingPreferences& prefs)
+                                           const StreamingPreferences& prefs, int bitrateKbps)
     : m_ShortcutGuard(false)
 {
     ForkPreferences* forkPrefs = ForkPreferences::get();
@@ -56,6 +57,11 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 return notchBar->showToast(text);
             });
         }
+    }
+
+    // A lower bitrate while the network struggles, and the stream's own back when it recovers
+    if (forkPrefs->adaptiveBitrate()) {
+        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(computer, bitrateKbps, prefs.enableHdr);
     }
 
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
