@@ -109,7 +109,8 @@ namespace
     }
 
     void probeUntilStopped(std::shared_ptr<Monitor> monitor, QString hostUuid, std::string host,
-                           ForkLinkRules::Reachability reachability, bool refresh)
+                           ForkLinkRules::Reachability reachability, bool refresh,
+                           std::function<void(bool)> onFirstProbe)
     {
         // Once: a name the PC is known by could take a DNS lookup
         std::string address = MacNetworkLink::numericAddress(host);
@@ -152,6 +153,9 @@ namespace
                             lan ? "over the LAN" : "not over the LAN",
                             about,
                             !refresh ? "no notch bar" : (text.isEmpty() ? "not shown in the notch bar" : "shown in the notch bar"));
+                if (onFirstProbe) {
+                    onFirstProbe(lan);
+                }
             }
 
             {
@@ -189,7 +193,7 @@ void noteStreamStart(NvComputer* computer, int reachability)
     state().reachability = fromMoonlight(reachability);
 }
 
-void start(bool refresh)
+void start(bool refresh, std::function<void(bool viaLan)> onFirstProbe)
 {
     auto monitor = std::make_shared<Monitor>();
     std::shared_ptr<Monitor> previous;
@@ -209,7 +213,7 @@ void start(bool refresh)
     }
     stopMonitor(previous);
     if (!hostUuid.isEmpty()) {
-        std::thread(probeUntilStopped, monitor, hostUuid, address, reachability, refresh).detach();
+        std::thread(probeUntilStopped, monitor, hostUuid, address, reachability, refresh, std::move(onFirstProbe)).detach();
     }
 }
 

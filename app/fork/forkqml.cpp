@@ -7,6 +7,7 @@
 
 #include "clienthardware.h"
 #include "forkaspectratios.h"
+#include "forkhostpower.h"
 #include "forkhostupdates.h"
 #include "forkpreferences.h"
 #include "forkupdater.h"
@@ -72,6 +73,13 @@ namespace
             ForkHostUpdates* updates = ForkHostUpdates::get();
             QQmlEngine::setObjectOwnership(updates, QQmlEngine::CppOwnership);
             return updates;
+        });
+        // Sleep PC, the pair to Wake PC, for Apollo PCs (FORK.md, "Sleep PC")
+        qmlRegisterSingletonType<ForkHostPower>("ForkHostPower", 1, 0, "ForkHostPower",
+                                                [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkHostPower* power = ForkHostPower::get();
+            QQmlEngine::setObjectOwnership(power, QQmlEngine::CppOwnership);
+            return power;
         });
     }
 }

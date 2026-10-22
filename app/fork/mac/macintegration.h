@@ -47,6 +47,9 @@ namespace MacIntegration
 
     // The text on the app's Dock icon, like a transfer's progress; empty removes it. Main thread.
     void setDockBadge(const QString& text);
+
+    // True while Low Power Mode is on (macOS 12+), which holds the screen to about 60 fps
+    bool lowPowerModeEnabled();
 #else
     inline void setStreamShortcutGuard(bool) {}
     inline bool clipboardHasConcealedContent() { return false; }
@@ -58,5 +61,6 @@ namespace MacIntegration
     inline bool screenshotOverlayVisible() { return false; }
     inline bool isRunningCopy(long) { return false; }
     inline void setDockBadge(const QString&) {}
+    inline bool lowPowerModeEnabled() { return false; }
 #endif
 }

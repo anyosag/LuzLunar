@@ -2,6 +2,7 @@
 
 #include <QReadLocker>
 
+#include "adaptivebitrate.h"
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
@@ -10,8 +11,11 @@
 #include "forksystemshortcuts.h"
 #include "forktrackpadpassthrough.h"
 #include "forkvideoscaling.h"
+#include "hostpacing.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
+#include "macdrive.h"
+#include "powernotice.h"
 #include "settings/streamingpreferences.h"
 
 namespace
@@ -20,7 +24,7 @@ namespace
 }
 
 ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
-                                           const StreamingPreferences& prefs)
+                                           const StreamingPreferences& prefs, int bitrateKbps)
     : m_ShortcutGuard(false)
 {
     ForkPreferences* forkPrefs = ForkPreferences::get();
@@ -45,9 +49,38 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         m_NotchBar = NotchBar::create(window, app.name + QString::fromUtf8(" · ") + hostName);
     }
 
+    // This Mac as a drive on the PC, asked for once the link turns out to be the LAN
+    if (forkPrefs->macDrive()) {
+        m_MacDrive = std::make_unique<MacDrive>(computer);
+        if (m_NotchBar) {
+            // Its messages appear beside the notch too
+            NotchBar* notchBar = m_NotchBar.get();
+            m_MacDrive->setMessageSink([notchBar](const QString& text) {
+                return notchBar->showToast(text);
+            });
+        }
+    }
+
+    // A stream above 60 fps while Low Power Mode holds the screen to 60: said beside the notch
+    m_PowerNotice = std::make_unique<PowerNotice>(prefs.fps);
+    if (m_NotchBar) {
+        NotchBar* notchBar = m_NotchBar.get();
+        m_PowerNotice->setMessageSink([notchBar](const QString& text) {
+            return notchBar->showToast(text);
+        });
+    }
+
+    // How evenly the PC sends this stream's frames, for the stats overlay and the log
+    ForkHostPacing::reset();
+
+    // A lower bitrate while the network struggles, and the stream's own back when it recovers
+    if (forkPrefs->adaptiveBitrate()) {
+        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(computer, bitrateKbps, prefs.enableHdr);
+    }
+
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
     // the LAN on, so it's checked even without the bar
-    ForkNetworkLink::start(m_NotchBar != nullptr);
+    ForkNetworkLink::start(m_NotchBar != nullptr, m_MacDrive ? m_MacDrive->linkListener() : std::function<void(bool)>());
 
     if (m_Clipboard && m_NotchBar) {
         // Clipboard messages appear beside the notch while the bar is on screen
@@ -90,6 +123,12 @@ ForkStreamExtensions::~ForkStreamExtensions()
     if (m_Clipboard) {
         m_Clipboard->setMessageSink(nullptr);
     }
+    if (m_MacDrive) {
+        m_MacDrive->setMessageSink(nullptr);
+    }
+    m_PowerNotice->setMessageSink(nullptr);
+
+    ForkHostPacing::logSummary();
 
     if (m_ShortcutGuard) {
         MacIntegration::setStreamShortcutGuard(false);
@@ -106,6 +145,10 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (m_Clipboard) {
         m_Clipboard->handleEvent(event);
     }
+    if (m_MacDrive) {
+        m_MacDrive->handleEvent(event);
+    }
+    m_PowerNotice->handleEvent(event);
 
     ForkSystemShortcuts::handleEvent(event);
     ForkTrackpadPassthrough::handleEvent(event);

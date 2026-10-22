@@ -12,6 +12,7 @@ import SdlGamepadKeyNavigation 1.0
 import ForkTheme 1.0 // [fork]
 import ForkUpdater 1.0 // [fork]
 import ForkHostUpdates 1.0 // [fork]
+import ForkHostPower 1.0 // [fork]
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -522,6 +523,10 @@ ApplicationWindow {
                     }
                     ForkHostUpdates.setComputerManager(ComputerManager)
                     ForkHostUpdates.finished.connect(function(uuid, text) {
+                        window.forkToast(text)
+                    })
+                    ForkHostPower.setComputerManager(ComputerManager)
+                    ForkHostPower.finished.connect(function(uuid, ok, text) {
                         window.forkToast(text)
                     })
                 }

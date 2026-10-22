@@ -1,11 +1,15 @@
 #include "forkpreferences.h"
 
+#include <algorithm>
+#include <string>
+
 #include <QCoreApplication>
 #include <QSettings>
 #include <QVariantMap>
 
 #include "forkmacshortcuts.h"
 #include "mac/gesturesuppressor_mac.h"
+#include "mac/macdrivesetup.h"
 #include "mac/macintegration.h"
 
 #define SER_KEYTARGETS "fork/keyTargets"
@@ -18,6 +22,9 @@
 #define SER_TRACKPADPAUSEMACSETTINGS "fork/trackpadPauseMacSettings"
 #define SER_CLIPBOARDFILES "fork/clipboardFiles"
 #define SER_TRACKPADSCROLLSPEED "fork/trackpadScrollSpeed"
+#define SER_MACDRIVE "fork/macDrive"
+#define SER_MACDRIVELAST "fork/macDriveLast"
+#define SER_ADAPTIVEBITRATE "fork/adaptiveBitrate"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
@@ -73,7 +80,9 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_HdrPeakOverride(0),
       m_MacShortcutsAll(false),
       m_TrackpadPauseMacSettings(true),
-      m_TrackpadScrollSpeed(1.0)
+      m_TrackpadScrollSpeed(1.0),
+      m_MacDrive(false),
+      m_AdaptiveBitrate(true)
 {
     QSettings settings;
 
@@ -112,6 +121,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
     if (scrollSpeed >= MIN_TRACKPAD_SCROLL_SPEED && scrollSpeed <= MAX_TRACKPAD_SCROLL_SPEED) {
         m_TrackpadScrollSpeed = scrollSpeed;
     }
+    m_MacDrive = settings.value(SER_MACDRIVE, m_MacDrive).toBool();
+    m_AdaptiveBitrate = settings.value(SER_ADAPTIVEBITRATE, m_AdaptiveBitrate).toBool();
     settings.beginGroup(SER_MACSHORTCUTS);
     for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
         QString key = QString::fromUtf8(group.key);
@@ -238,6 +249,63 @@ void ForkPreferences::setHdrPeakOverride(int nits)
     m_HdrPeakOverride = nits;
     QSettings().setValue(SER_HDRPEAKOVERRIDE, nits);
     emit hdrPeakOverrideChanged();
+}
+
+void ForkPreferences::setMacDrive(bool enabled)
+{
+    if (enabled == m_MacDrive) {
+        return;
+    }
+
+    m_MacDrive = enabled;
+    QSettings().setValue(SER_MACDRIVE, enabled);
+    emit macDriveChanged();
+}
+
+void ForkPreferences::setAdaptiveBitrate(bool enabled)
+{
+    if (enabled == m_AdaptiveBitrate) {
+        return;
+    }
+
+    m_AdaptiveBitrate = enabled;
+    QSettings().setValue(SER_ADAPTIVEBITRATE, enabled);
+    emit adaptiveBitrateChanged();
+}
+
+QVariantMap ForkPreferences::macDriveSetup() const
+{
+    QVariantMap setup;
+    MacDriveSetup::WindowsSharing sharing = MacDriveSetup::windowsSharing();
+    setup.insert(QStringLiteral("fileSharing"), MacDriveSetup::fileSharingOn());
+    setup.insert(QStringLiteral("windowsSharing"), sharing == MacDriveSetup::WindowsSharing::On    ? QStringLiteral("on")
+                                                   : sharing == MacDriveSetup::WindowsSharing::Off ? QStringLiteral("off")
+                                                                                                   : QStringLiteral("unknown"));
+    setup.insert(QStringLiteral("diskShare"), QString::fromStdString(MacDriveSetup::diskShareName()));
+    setup.insert(QStringLiteral("admin"), MacDriveSetup::isAdmin());
+    setup.insert(QStringLiteral("volumeName"), QString::fromStdString(MacDriveSetup::startupVolumeName()));
+    setup.insert(QStringLiteral("userName"), QString::fromStdString(MacDriveSetup::userName()));
+    setup.insert(QStringLiteral("passwordSaved"), MacDriveSetup::hasPassword());
+    setup.insert(QStringLiteral("last"), QSettings().value(SER_MACDRIVELAST).toString());
+    return setup;
+}
+
+bool ForkPreferences::saveMacDrivePassword(const QString& password)
+{
+    std::string secret = password.toStdString();
+    bool saved = MacDriveSetup::verifyPassword(secret) && MacDriveSetup::savePassword(secret);
+    std::fill(secret.begin(), secret.end(), '\0');
+    return saved;
+}
+
+void ForkPreferences::forgetMacDrivePassword()
+{
+    MacDriveSetup::forgetPassword();
+}
+
+void ForkPreferences::openSharingSettings()
+{
+    MacDriveSetup::openSharingSettings();
 }
 
 void ForkPreferences::setNotchBar(bool enabled)

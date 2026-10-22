@@ -149,6 +149,14 @@ long MacIntegration::windowNumber(QWindow* window)
     return view.window != nil ? view.window.windowNumber : 0;
 }
 
+bool MacIntegration::lowPowerModeEnabled()
+{
+    if (@available(macOS 12.0, *)) {
+        return [[NSProcessInfo processInfo] isLowPowerModeEnabled];
+    }
+    return false;
+}
+
 bool MacIntegration::isRunningCopy(long pid)
 {
     if (pid <= 0 || kill(static_cast<pid_t>(pid), 0) != 0) {

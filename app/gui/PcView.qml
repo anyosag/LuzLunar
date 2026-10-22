@@ -4,6 +4,7 @@ import QtQuick.Controls.impl 2.15 // [fork] IconImage for tinted, theme-aware ic
 import SfSymbols 1.0 // [fork]
 import ForkTheme 1.0 // [fork]
 import ForkHostUpdates 1.0 // [fork]
+import ForkHostPower 1.0 // [fork]
 import QtQuick.Layouts 1.3
 
 import ComputerModel 1.0
@@ -179,6 +180,8 @@ CenteredGridView {
             var info = ForkHostUpdates.revision >= 0 ? ForkHostUpdates.status(model.uuid) : {}
             return !!info.update && !!info.permitted && !!info.supported && !info.updating
         }
+        // [fork] Whether this Mac may put the PC to sleep, and what's running on it (ForkHostPower)
+        readonly property var forkSleepInfo: ForkHostPower.revision >= 0 ? ForkHostPower.status(model.uuid) : ({})
         function forkWake() {
             forkWaking = true
             forkWakeTimeout.restart()
@@ -227,6 +230,7 @@ CenteredGridView {
             sourceComponent: NavigableMenu {
                 id: pcContextMenu
                 initiator: pcContextMenuLoader.parent
+                onAboutToShow: ForkHostPower.refresh(model.uuid) // [fork] whether Sleep PC fits now
                 MenuItem {
                     text: qsTr("PC Status: %1").arg(model.online ? qsTr("Online") : qsTr("Offline"))
                     font.bold: true
@@ -259,6 +263,17 @@ CenteredGridView {
                         window.forkToast(qsTr("Updating Apollo on %1").arg(model.name))
                     }
                     visible: model.online && pcDelegate.forkHostUpdate
+                }
+                // [fork] Sleep PC, the pair to Wake PC (ForkHostPower)
+                NavigableMenuItem {
+                    symbol: "moon.zzz"
+                    text: qsTr("Sleep PC")
+                    onTriggered: {
+                        sleepPcDialog.pcUuid = model.uuid
+                        sleepPcDialog.pcName = model.name
+                        sleepPcDialog.open()
+                    }
+                    visible: model.online && model.paired && !!pcDelegate.forkSleepInfo.supported && !!pcDelegate.forkSleepInfo.permitted
                 }
                 NavigableMenuItem {
                     symbol: "network" // [fork]
@@ -490,6 +505,34 @@ CenteredGridView {
             computerModel.deleteComputer(pcIndex)
             window.forkToast(qsTr("Removed %1").arg(pcName)) // [fork]
         }
+    }
+
+    // [fork] Sleep PC's confirmation; it warns when an app is still running on the PC, which sleeping
+    // quits first (ForkHostPower)
+    NavigableMessageDialog {
+        id: sleepPcDialog
+        property string pcUuid : ""
+        property string pcName : ""
+        readonly property var info: ForkHostPower.revision >= 0 && pcUuid !== "" ? ForkHostPower.status(pcUuid) : ({})
+        readonly property string runningApp: info.reason === "app_running" ? info.app : ""
+        title: qsTr("Put %1 to sleep?").arg(pcName)
+        text: runningApp !== "" ? qsTr("%1 is still running on %2. Sleep quits it first; anything unsaved in it is lost.").arg(runningApp).arg(pcName)
+                                : qsTr("Wake PC wakes it again.")
+        destructive: runningApp !== ""
+        forkShowIcon: false
+        standardButtons: Dialog.Yes | Dialog.No
+
+        onAboutToShow: {
+            ForkHostPower.refresh(pcUuid)
+            if (standardButton(Dialog.Yes)) {
+                standardButton(Dialog.Yes).text = qsTr("Sleep")
+            }
+            if (standardButton(Dialog.No)) {
+                standardButton(Dialog.No).text = qsTr("Cancel")
+            }
+        }
+
+        onAccepted: ForkHostPower.sleep(pcUuid, runningApp)
     }
 
     NavigableMessageDialog {

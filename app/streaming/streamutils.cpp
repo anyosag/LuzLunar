@@ -1,6 +1,7 @@
 #include "streamutils.h"
 
 #include "fork/forkvideoscaling.h" // [fork]
+#include "fork/mac/displaytiming.h" // [fork]
 
 #include <Qt>
 #include <QDir>
@@ -197,6 +198,10 @@ int StreamUtils::getDisplayRefreshRate(SDL_Window* window)
     }
 
     // May be zero if undefined
+    if (mode.refresh_rate == 0) {
+        // [fork] A ProMotion screen has no fixed rate; macOS knows its highest (fork/mac/displaytiming.h)
+        mode.refresh_rate = DisplayTiming::maximumRefreshRate(window);
+    }
     if (mode.refresh_rate == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "Refresh rate unknown; assuming 60 Hz");
