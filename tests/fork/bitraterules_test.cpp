@@ -4,6 +4,7 @@
 
 #include "fork/bitraterules.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <vector>
 
@@ -194,13 +195,16 @@ static void testRoundTripTime()
     auto changes = run(f, 11, 13, 0, 160);
     CHECK(changes.size() == 1 && changes[0] == 18000);
 
-    // A route that got slower for good becomes the base within 30 s, and cuts stop: two, at 13 s
-    // and 23 s
+    // A route that got slower for good: the cuts at 13 s and 23 s leave it at 80 ms, so at 33 s
+    // 80 ms becomes the base instead of a third cut
     Controller g(20000, false);
     run(g, 1, 10, 0, 20);
-    changes = run(g, 11, 40, 0, 80);
+    changes = run(g, 11, 32, 0, 80);
     CHECK(changes.size() == 2);
+    CHECK(g.baseRttMs() == 20);
+    CHECK(g.tick(second(33, 0, 80)) == 0);
     CHECK(g.baseRttMs() == 80);
+    CHECK(run(g, 34, 40, 0, 80).empty());
     CHECK(g.currentKbps() == 16200);
     // ...and it climbs back
     changes = run(g, 41, 200, 0, 80);
@@ -210,6 +214,74 @@ static void testRoundTripTime()
     Controller h(20000, false);
     CHECK(run(h, 1, 60, 0, 0).empty());
     CHECK(h.baseRttMs() == 0);
+}
+
+static void testRoundTripBase()
+{
+    // A queue that keeps growing, a little more at each cut: no two cuts find it where the first did,
+    // so the cuts go on, then the checks at the floor, and the base stays 20 ms
+    Controller a(20000, false);
+    run(a, 1, 10, 0, 20);
+    std::vector<int> changes;
+    for (int t = 11; t <= 120; t++) {
+        int kbps = a.tick(second(t, 0, 60 + 5 * (t - 11)));
+        if (kbps) {
+            changes.push_back(kbps);
+        }
+    }
+    CHECK(changes.size() >= 10);
+    CHECK(a.baseRttMs() == 20);
+
+    // A link that carries 15 Mb/s from 11 s on: the round-trip time follows the bitrate, each cut
+    // brings it back under the line, and climbs find the limit again. Cuts keep coming at levels
+    // close to each other, but the time back under the line in between shows the queue is the
+    // stream's own: the base stays 20 ms.
+    Controller b(20000, false);
+    run(b, 1, 10, 0, 20);
+    int cuts = 0;
+    for (int t = 11; t <= 300; t++) {
+        int before = b.currentKbps();
+        uint32_t rtt = 20 + (uint32_t) std::max(0, before - 15000) / 50;
+        int kbps = b.tick(second(t, 0, rtt));
+        if (kbps && kbps < before) {
+            cuts++;
+        }
+    }
+    CHECK(cuts >= 5);
+    CHECK(b.baseRttMs() == 20);
+    CHECK(b.currentKbps() < 18000);
+
+    // The lowest of the whole stream, not of the last seconds: after a minute at 45 ms (within
+    // 20 + 30 ms), 70 ms is still a queue against 20 ms
+    Controller c(20000, false);
+    run(c, 1, 10, 0, 20);
+    CHECK(run(c, 11, 70, 0, 45).empty());
+    CHECK(c.baseRttMs() == 20);
+    CHECK(run(c, 71, 72, 0, 70).empty());
+    CHECK(c.tick(second(73, 0, 70)) == 18000);
+
+    // At the floor nothing can be cut, but the route's check still runs every 10 s: it cuts to
+    // the floor at 13 s, can't at 23 s, takes 80 ms as the base at 33 s, and climbs back
+    Controller d(3300, false);
+    CHECK(d.floorKbps() == 3000);
+    run(d, 1, 10, 0, 20);
+    changes = run(d, 11, 33, 0, 80);
+    CHECK(changes.size() == 1 && changes[0] == 3000);
+    CHECK(d.baseRttMs() == 80);
+    changes = run(d, 34, 120, 0, 80);
+    CHECK(!changes.empty() && changes.back() == 3300);
+
+    // A loss starts the route's count over: a slower route plus a loss takes two more cuts to learn
+    Controller e(20000, false);
+    run(e, 1, 10, 0, 20);
+    CHECK(run(e, 11, 23, 0, 80).size() == 2);   // 18000 at 13 s, 16200 at 23 s
+    run(e, 24, 32, 0, 80);
+    CHECK(e.tick(second(33, 5.0, 80)) == 11340); // a loss cut instead of learning the route
+    CHECK(e.baseRttMs() == 20);
+    CHECK(run(e, 34, 62, 0, 80).size() == 2);   // two more round-trip cuts, at 43 s and 53 s
+    CHECK(e.baseRttMs() == 20);
+    CHECK(e.tick(second(63, 0, 80)) == 0);
+    CHECK(e.baseRttMs() == 80);
 }
 
 static void testSmallBitrates()
@@ -233,6 +305,7 @@ int main()
     testClimb();
     testClimbSlowsNearTheLastLoss();
     testRoundTripTime();
+    testRoundTripBase();
     testSmallBitrates();
 
     if (s_Failures == 0) {

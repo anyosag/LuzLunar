@@ -10,8 +10,13 @@
 // - Cuts to 70% when 2% of frames or more are lost (and at least 3: a quiet desktop sends a few
 //   frames a second, where one lost frame is 10%), or the connection is poor; holds 10 s.
 // - Cuts to 90% after 3 seconds in a row of a round-trip time above the stream's lowest plus
-//   max(30 ms, half of it), since the queue on the way is growing; holds 10 s. "Lowest" is over the
-//   last 15 to 30 s, so a route that got slower for good stops counting as a queue.
+//   max(30 ms, half of it), since a queue is building on the way; holds 10 s. "Lowest" is the
+//   lowest of the whole stream, so a queue the stream builds itself keeps counting, however long it
+//   lasts. But a queue the stream builds moves when it sends less: when two such cuts in a row
+//   leave the round-trip time where the first found it (within max(10 ms, 15%)), above the line
+//   all along, the route itself got slower, and its time becomes the lowest from then on. At the
+//   floor, where it can't cut, the same check runs every 10 s. A second back under the line or a
+//   loss (a queue overflowing) shows the queue was the stream's own, and starts the count over.
 // - Climbs by 5% of the user's bitrate per 5 clean seconds, every 15 clean seconds once near the
 //   bitrate it last had to leave. A climb holds only 5 s, so losses it brings are cut at once.
 // - Never below max(3 Mb/s, 20% of the user's bitrate), 5 Mb/s with HDR; never above the user's.
@@ -49,11 +54,10 @@ namespace BitrateRules
         int lastLossKbps() const { return m_LastLossKbps; }
 
         // The round-trip time the stream counts as its own, without a queue; 0 while unknown
-        uint32_t baseRttMs() const;
+        uint32_t baseRttMs() const { return m_BaseRttMs; }
 
     private:
         int changeTo(int kbps, double now, double hold);
-        void noteRtt(uint32_t rttMs, double now);
 
         int m_ChosenKbps;
         int m_FloorKbps;
@@ -65,9 +69,13 @@ namespace BitrateRules
         double m_LastBad = 0;   // the last second that lost frames or had a high round-trip time
         bool m_SeenBad = false;
 
-        // The lowest round-trip time in this 15 s bucket and the one before
-        uint32_t m_RttMinNow = 0;
-        uint32_t m_RttMinBefore = 0;
-        double m_RttBucketStart = 0;
+        // The lowest round-trip time of the stream, or since the route last got slower
+        uint32_t m_BaseRttMs = 0;
+        // The lowest of the seconds in a row with a high round-trip time: the queue's level
+        uint32_t m_HighRunMinMs = 0;
+        // The queue's level at the first of the cuts for the round-trip time in a row; 0 for none
+        uint32_t m_FlatRttLevelMs = 0;
+        // The cuts since then that left it there
+        int m_FlatRttCuts = 0;
     };
 }

@@ -17,7 +17,8 @@ namespace
     const double k_RttCut = 0.9;
     const int k_RttHighSeconds = 3;
     const uint32_t k_RttMarginMs = 30;
-    const double k_RttBucket = 15;          // s per bucket of the lowest round-trip time
+    const uint32_t k_RttFlatMs = 10;        // within this (or 15%) of the first cut's level: unmoved
+    const int k_FlatRttCuts = 2;            // cuts that didn't move it before the route counts as slower
     const double k_ClimbStep = 0.05;        // of the user's bitrate
     const double k_NearLoss = 0.85;         // of the bitrate that lost last
 
@@ -47,28 +48,12 @@ Controller::Controller(int chosenKbps, bool hdr)
 {
 }
 
-uint32_t Controller::baseRttMs() const
-{
-    return lowestOf(m_RttMinNow, m_RttMinBefore);
-}
-
-void Controller::noteRtt(uint32_t rttMs, double now)
-{
-    if (now - m_RttBucketStart >= k_RttBucket) {
-        m_RttMinBefore = m_RttMinNow;
-        m_RttMinNow = 0;
-        m_RttBucketStart = now;
-    }
-    if (rttMs > 0) {
-        m_RttMinNow = lowestOf(m_RttMinNow, rttMs);
-    }
-}
-
 int Controller::changeTo(int kbps, double now, double hold)
 {
     m_CurrentKbps = kbps;
     m_HoldUntil = now + hold;
     m_RttHighSeconds = 0;
+    m_HighRunMinMs = 0;
     return kbps;
 }
 
@@ -77,13 +62,27 @@ int Controller::tick(const Sample& sample)
     const double now = sample.seconds;
 
     // The base round-trip time is the lowest before this second: a queue building now shows against it
-    uint32_t base = baseRttMs();
-    noteRtt(sample.rttMs, now);
+    uint32_t base = m_BaseRttMs;
+    if (sample.rttMs > 0) {
+        m_BaseRttMs = lowestOf(m_BaseRttMs, sample.rttMs);
+    }
 
     bool lossy = (sample.dropPercent >= k_LossPercent && sample.lostFrames >= k_LossFrames) || sample.poor;
     bool rttHigh = sample.rttMs > 0 && base > 0 &&
                    sample.rttMs > base + std::max(k_RttMarginMs, base / 2);
-    m_RttHighSeconds = rttHigh ? m_RttHighSeconds + 1 : 0;
+    if (rttHigh) {
+        m_RttHighSeconds++;
+        m_HighRunMinMs = lowestOf(m_HighRunMinMs, sample.rttMs);
+    }
+    else {
+        m_RttHighSeconds = 0;
+        m_HighRunMinMs = 0;
+        if (sample.rttMs > 0 && base > 0) {
+            // The queue drained: it was the stream's own, so the route's count starts over
+            m_FlatRttLevelMs = 0;
+            m_FlatRttCuts = 0;
+        }
+    }
     if (lossy || rttHigh) {
         m_LastBad = now;
         m_SeenBad = true;
@@ -94,9 +93,40 @@ int Controller::tick(const Sample& sample)
     }
 
     if (lossy || m_RttHighSeconds >= k_RttHighSeconds) {
+        if (lossy) {
+            // A queue overflowing is the stream's own: the round-trip time's cuts start over
+            m_FlatRttLevelMs = 0;
+            m_FlatRttCuts = 0;
+        }
+        else {
+            // A queue the stream builds shrinks when it sends less. If the last cuts didn't move the
+            // round-trip time, the route got slower: its time is the base from now on, no cut.
+            // Against the first of the cuts, so a queue that rises a little at each one still counts.
+            uint32_t level = m_HighRunMinMs;
+            if (m_FlatRttLevelMs > 0) {
+                uint32_t tolerance = std::max(k_RttFlatMs, m_FlatRttLevelMs * 15 / 100);
+                bool flat = level + tolerance >= m_FlatRttLevelMs && level <= m_FlatRttLevelMs + tolerance;
+                m_FlatRttCuts = flat ? m_FlatRttCuts + 1 : 0;
+            }
+            if (m_FlatRttCuts >= k_FlatRttCuts) {
+                m_BaseRttMs = level;
+                m_FlatRttLevelMs = 0;
+                m_FlatRttCuts = 0;
+                m_RttHighSeconds = 0;
+                m_HighRunMinMs = 0;
+                return 0;
+            }
+            if (m_FlatRttCuts == 0) {
+                m_FlatRttLevelMs = level;
+            }
+        }
+
         int target = std::max(m_FloorKbps, (int) std::lround(m_CurrentKbps * (lossy ? k_LossCut : k_RttCut)));
         if (target >= m_CurrentKbps) {
-            // At the floor already
+            // At the floor already: no change, but the next look waits as after a cut
+            m_HoldUntil = now + k_CutHold;
+            m_RttHighSeconds = 0;
+            m_HighRunMinMs = 0;
             return 0;
         }
         m_LastLossKbps = m_CurrentKbps;
