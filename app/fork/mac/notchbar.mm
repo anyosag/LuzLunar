@@ -1211,9 +1211,11 @@ namespace
                 @autoreleasepool {
                     // First the connection the stream uses, like "Ethernet 1 Gb/s", where it's shown
                     QString link = ForkNetworkLink::badge();
-                    NSString* text = [[NSString alloc] initWithFormat:@"%@%.0f fps · %u ms · %.1f Mb/s · %@ · %.1f%% loss",
+                    // While adaptive bitrate holds the stream lower, its cap follows the bitrate: "18.3 Mb/s ↓20"
+                    NSString* cap = stats.bitrateCapMbps > 0 ? [NSString stringWithFormat:@" ↓%.0f", stats.bitrateCapMbps] : @"";
+                    NSString* text = [[NSString alloc] initWithFormat:@"%@%.0f fps · %u ms · %.1f Mb/s%@ · %@ · %.1f%% loss",
                                                                       link.isEmpty() ? @"" : [link.toNSString() stringByAppendingString:@" · "],
-                                                                      stats.fps, stats.rttMs, stats.mbps,
+                                                                      stats.fps, stats.rttMs, stats.mbps, cap,
                                                                       stats.codec.toNSString(), stats.dropPercent];
                     [controller retain];
                     dispatch_async(dispatch_get_main_queue(), ^{

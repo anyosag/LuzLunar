@@ -595,6 +595,13 @@ Column {
         }
 
         ForkSwitchRow {
+            label: qsTr("Adapt bitrate to the network")
+            help: qsTr("When frames get lost or delayed, as over a VPN or mobile data, the PC streams at a lower bitrate until the network recovers, never above the one set here. Needs LuzLunar's Apollo.")
+            checked: ForkPreferences.adaptiveBitrate
+            onToggled: (on) => ForkPreferences.adaptiveBitrate = on
+        }
+
+        ForkSwitchRow {
             label: qsTr("HDR")
             help: SystemProperties.supportsHdr ? qsTr("Brighter highlights on an HDR display. Some games need an HDR monitor on the host PC to turn it on.")
                                                : qsTr("HDR streaming isn't supported on this Mac.")

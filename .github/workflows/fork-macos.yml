@@ -198,6 +198,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/hostcadence_test.cpp -o "$RUNNER_TEMP/hostcadence_test"
           "$RUNNER_TEMP/hostcadence_test"
+          # Adaptive bitrate's controller: cuts on losses and queues, holds, the climb back, the floor
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/bitraterules_test.cpp app/fork/bitraterules.cpp -o "$RUNNER_TEMP/bitraterules_test"
+          "$RUNNER_TEMP/bitraterules_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"

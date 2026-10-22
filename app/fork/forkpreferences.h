@@ -70,6 +70,9 @@ public:
     // On LAN streams, have Apollo show this Mac's disk on the PC as a network drive (macdrive.*)
     Q_PROPERTY(bool macDrive READ macDrive WRITE setMacDrive NOTIFY macDriveChanged)
 
+    // Lower the stream's bitrate while the network struggles, and raise it back (adaptivebitrate.*)
+    Q_PROPERTY(bool adaptiveBitrate READ adaptiveBitrate WRITE setAdaptiveBitrate NOTIFY adaptiveBitrateChanged)
+
     static ForkPreferences* get();
 
     bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
@@ -80,6 +83,9 @@ public:
 
     bool macDrive() const { return m_MacDrive; }
     void setMacDrive(bool enabled);
+
+    bool adaptiveBitrate() const { return m_AdaptiveBitrate; }
+    void setAdaptiveBitrate(bool enabled);
 
     // What the Mac drive needs from macOS, for Settings › This Mac: { "fileSharing": bool,
     // "windowsSharing": "on" | "off" | "unknown", "diskShare": the startup disk's share or "",
@@ -150,6 +156,7 @@ signals:
     void trackpadPauseMacSettingsChanged();
     void trackpadScrollSpeedChanged();
     void macDriveChanged();
+    void adaptiveBitrateChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -166,6 +173,7 @@ private:
     bool m_TrackpadPauseMacSettings;
     double m_TrackpadScrollSpeed;
     bool m_MacDrive;
+    bool m_AdaptiveBitrate;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };

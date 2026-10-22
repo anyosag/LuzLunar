@@ -50,6 +50,8 @@ SOURCES += \
     $$PWD/forkupdater.cpp \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
+    $$PWD/adaptivebitrate.cpp \
+    $$PWD/bitraterules.cpp \
     $$PWD/hostpacing.cpp \
     $$PWD/macdrive.cpp \
     $$PWD/macdriverules.cpp \
@@ -92,6 +94,8 @@ HEADERS += \
     $$PWD/hostcadence.h \
     $$PWD/hostpacing.h \
     $$PWD/luztouchpad.h \
+    $$PWD/adaptivebitrate.h \
+    $$PWD/bitraterules.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
     $$PWD/powernotice.h \

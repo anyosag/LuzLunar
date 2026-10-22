@@ -24,6 +24,7 @@
 #define SER_TRACKPADSCROLLSPEED "fork/trackpadScrollSpeed"
 #define SER_MACDRIVE "fork/macDrive"
 #define SER_MACDRIVELAST "fork/macDriveLast"
+#define SER_ADAPTIVEBITRATE "fork/adaptiveBitrate"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
@@ -80,7 +81,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_MacShortcutsAll(false),
       m_TrackpadPauseMacSettings(true),
       m_TrackpadScrollSpeed(1.0),
-      m_MacDrive(false)
+      m_MacDrive(false),
+      m_AdaptiveBitrate(true)
 {
     QSettings settings;
 
@@ -120,6 +122,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
         m_TrackpadScrollSpeed = scrollSpeed;
     }
     m_MacDrive = settings.value(SER_MACDRIVE, m_MacDrive).toBool();
+    m_AdaptiveBitrate = settings.value(SER_ADAPTIVEBITRATE, m_AdaptiveBitrate).toBool();
     settings.beginGroup(SER_MACSHORTCUTS);
     for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
         QString key = QString::fromUtf8(group.key);
@@ -257,6 +260,17 @@ void ForkPreferences::setMacDrive(bool enabled)
     m_MacDrive = enabled;
     QSettings().setValue(SER_MACDRIVE, enabled);
     emit macDriveChanged();
+}
+
+void ForkPreferences::setAdaptiveBitrate(bool enabled)
+{
+    if (enabled == m_AdaptiveBitrate) {
+        return;
+    }
+
+    m_AdaptiveBitrate = enabled;
+    QSettings().setValue(SER_ADAPTIVEBITRATE, enabled);
+    emit adaptiveBitrateChanged();
 }
 
 QVariantMap ForkPreferences::macDriveSetup() const
