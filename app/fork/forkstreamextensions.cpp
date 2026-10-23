@@ -412,12 +412,13 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
         if (m_AdaptiveBitrate) {
             // The bitrate stays where it got to
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate off, holding %d kbps",
-                        m_BitrateClient->targetKbps());
+                        m_BitrateClient->latestKbps());
             m_AdaptiveBitrate.reset();
         }
         else if (m_BitrateClient && m_BitrateClient->state().live) {
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate on");
-            m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, m_OwnBitrateKbps, m_Hdr, m_BitrateClient->targetKbps());
+            // From where the stream is going, a slider's request still on its way included
+            m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, m_OwnBitrateKbps, m_Hdr, m_BitrateClient->latestKbps());
         }
         break;
     case NotchMenus::Action::SetBitrate:
@@ -513,7 +514,7 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (BitrateClient::isStateEvent(event)) {
         // What the PC can do with the bitrate, or what it runs at, changed
         if (m_NotchBar) {
-            m_NotchBar->refreshMenus();
+            m_NotchBar->bitrateChanged();
         }
         return;
     }

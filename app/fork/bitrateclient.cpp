@@ -25,6 +25,7 @@ struct BitrateClient::Shared
     bool alive = true;
     bool queued = false;    // a worker job will send wantKbps
     int wantKbps = 0;       // the newest bitrate to ask for; 0 for none
+    int askedKbps = 0;      // the newest asked for that the PC hasn't answered yet; 0 for none
     BitrateState::State state;
 };
 
@@ -34,9 +35,12 @@ namespace
     const int k_Tries = 3;
     const int k_TimeoutMs = 3000;
     const int k_RetryDelayMs = 500;
-    // How often a change the PC took is asked about again, until it's applied
-    const int k_ConfirmTries = 3;
+    // How often a change the PC took is asked about again, until it's applied: an encode thread
+    // applies it with its next frame, which a still desktop may not send for a while
+    const int k_ConfirmTries = 20;
     const int k_ConfirmDelayMs = 500;
+    // How long a request the PC didn't answer waits before it's sent again
+    const int k_ResendDelayMs = 1000;
     // How long an Apollo that says when its encoder exists is waited for
     const int k_KnownWaitMs = 10000;
     const int k_KnownPollMs = 1000;
@@ -134,6 +138,7 @@ namespace
                 SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Bitrate: %s can't change the bitrate during the stream (%s, HTTP %d)",
                             qPrintable(shared->hostName), whyText(shared->state.why), reply.httpStatus);
                 shared->wantKbps = 0;
+                shared->askedKbps = 0;
             }
         }
         publish(shared, before);
@@ -156,9 +161,10 @@ namespace
                 break;
             }
             {
-                // A newer request replaces this one; the stream ending ends it
+                // A newer request replaces this one, and its answer says what a GET would; the stream
+                // ending ends it
                 std::lock_guard<std::mutex> lock(shared->mutex);
-                if (!shared->alive || (body != nullptr && shared->wantKbps != 0)) {
+                if (!shared->alive || shared->wantKbps != 0) {
                     break;
                 }
             }
@@ -232,8 +238,17 @@ namespace
             QByteArray body = QJsonDocument(request).toJson(QJsonDocument::Compact);
             ApolloClient::Response response = ask(client, shared, &body);
             if (response.httpStatus == 0) {
+                // Sent again unless a newer one replaced it: adaptive bitrate counts on the PC getting
+                // its cuts, on a network that drops requests just when it cuts
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[fork] Bitrate: %s didn't answer the request for %d kbps: %s",
                             qPrintable(shared->hostName), kbps, qPrintable(response.networkError));
+                {
+                    std::lock_guard<std::mutex> lock(shared->mutex);
+                    if (shared->wantKbps == 0) {
+                        shared->wantKbps = kbps;
+                    }
+                }
+                QThread::msleep(k_ResendDelayMs);
                 continue;
             }
             BitrateState::Reply reply = parse(response);
@@ -255,6 +270,12 @@ namespace
                     break;
                 }
                 next = update(shared, parse(status));
+            }
+            {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                if (shared->askedKbps == kbps) {
+                    shared->askedKbps = 0;
+                }
             }
         }
     }
@@ -299,6 +320,7 @@ void BitrateClient::request(int kbps)
             return;
         }
         m_Shared->wantKbps = kbps;
+        m_Shared->askedKbps = kbps;
         if (!m_Shared->queued) {
             m_Shared->queued = true;
             startWorker = true;
@@ -324,6 +346,15 @@ int BitrateClient::ownKbps() const
 int BitrateClient::targetKbps() const
 {
     std::lock_guard<std::mutex> lock(m_Shared->mutex);
+    return m_Shared->state.targetKbps > 0 ? m_Shared->state.targetKbps : m_Shared->ownKbps;
+}
+
+int BitrateClient::latestKbps() const
+{
+    std::lock_guard<std::mutex> lock(m_Shared->mutex);
+    if (m_Shared->askedKbps > 0) {
+        return m_Shared->askedKbps;
+    }
     return m_Shared->state.targetKbps > 0 ? m_Shared->state.targetKbps : m_Shared->ownKbps;
 }
 

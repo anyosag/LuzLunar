@@ -142,6 +142,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (BOOL)menuOpen;
 - (BOOL)barOnScreen;
 - (void)refreshMenus;
+- (void)bitrateChanged;
 - (void)updateQualityItem;
 - (void)statsArrived;
 - (void)setWarning:(NSString*)text;
@@ -748,6 +749,12 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     [self updateQualityItem];
     [m_Menus refresh];
+}
+
+- (void)bitrateChanged
+{
+    [self updateQualityItem];
+    [m_Menus bitrateChanged];
 }
 
 - (void)menusPerform:(NotchMenus::Action)action
@@ -1665,6 +1672,13 @@ namespace
         {
             @autoreleasepool {
                 [m_Controller refreshMenus];
+            }
+        }
+
+        void bitrateChanged() override
+        {
+            @autoreleasepool {
+                [m_Controller bitrateChanged];
             }
         }
 

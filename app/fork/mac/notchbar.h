@@ -80,8 +80,12 @@ public:
     // The bar is beside the notch now, where the pointer must be able to reach it
     virtual bool onScreen() const = 0;
 
-    // An open menu and the Quality item show MenuState again, after an action or the bitrate changed it
+    // An open menu and the Quality item show MenuState again, after an action changed it
     virtual void refreshMenus() = 0;
+
+    // The bitrate, or what the PC can do with it, changed: the Quality item, and Quality or Control
+    // Center if open, show it in place
+    virtual void bitrateChanged() = 0;
 
 protected:
     NotchBar() = default;

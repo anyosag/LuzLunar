@@ -65,6 +65,9 @@
 - (void)statusChanged;
 // Quality shows what's new, if it's open
 - (void)qualityChanged;
+// The bitrate changed: Quality and Control Center's bitrate show it in place, if one is open, so a
+// click in Control Center isn't lost to a rebuild
+- (void)bitrateChanged;
 - (void)invalidate;
 @end
 

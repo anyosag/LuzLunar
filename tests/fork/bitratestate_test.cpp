@@ -71,7 +71,7 @@ static void testApolloThatTellsAtOnce()
     // An encoder that can't, said at once
     State fixed;
     CHECK(apply(fixed, status(200, 20000, false, false, 1)) == Next::Done);
-    CHECK(!fixed.live && fixed.known && fixed.why == Why::Encoder);
+    CHECK(!fixed.live && fixed.known && fixed.why == Why::Encoder && fixed.targetKbps == 0);
 }
 
 static void testOlderApollo()
@@ -85,7 +85,8 @@ static void testOlderApollo()
     CHECK(apply(state, status(202, 15000, true, true)) == Next::AskAgain);
     CHECK(apply(state, status(200, 15000, false, false)) == Next::Done);
     CHECK(!state.live && state.known && state.why == Why::Encoder);
-    CHECK(state.targetKbps == 15000);
+    // Its target is the 15 asked for, which the encoder never ran at: the stream stays at the user's own
+    CHECK(state.targetKbps == 0 && !state.pending);
 
     // From then on, 409 with the status
     CHECK(apply(state, status(409, 15000, false, false)) == Next::Done);
@@ -94,11 +95,16 @@ static void testOlderApollo()
 
 static void testRefusals()
 {
+    // After a cut to 14, the bitrate the PC was last known to run at stays
     State state;
+    state.targetKbps = 14000;
+    state.minKbps = 1000;
+    state.maxKbps = 25000;
     Reply reply;
     reply.httpStatus = 401;
     apply(state, reply);
     CHECK(!state.live && state.why == Why::NoPermission);
+    CHECK(state.targetKbps == 14000 && state.maxKbps == 25000);
     reply.httpStatus = 403;
     apply(state, reply);
     CHECK(state.why == Why::NotStreaming);

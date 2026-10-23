@@ -436,6 +436,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     int m_StepKbps;
     int m_ValueKbps;
     BOOL m_Dragging;
+    CGFloat m_GrabOffset;       // where on the knob the drag took it, so taking it doesn't move it
     BOOL m_ReadOnly;            // only shows the value, as Control Center's Bitrate does
 }
 - (instancetype)initWithKind:(ForkMenuControlKind)kind owner:(ForkNotchMenus*)owner;
@@ -665,7 +666,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 
 - (void)setSliderFromEvent:(NSEvent*)event
 {
-    CGFloat x = [self convertPoint:event.locationInWindow fromView:nil].x;
+    CGFloat x = [self convertPoint:event.locationInWindow fromView:nil].x - m_GrabOffset;
     CGFloat span = MAX([self sliderRight] - [self sliderLeft], 1);
     double fraction = MAX(0.0, MIN((x - [self sliderLeft]) / span, 1.0));
     NotchQuality::Range range;
@@ -729,17 +730,15 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(left, mid - 2, right - left, 4) xRadius:2 yRadius:2] fill];
         [accent setFill];
         [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(left, mid - 2, MAX(knob - left, 0), 4) xRadius:2 yRadius:2] fill];
-        if (!m_ReadOnly) {
-            [NSGraphicsContext saveGraphicsState];
-            NSShadow* shadow = [[[NSShadow alloc] init] autorelease];
-            shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.35];
-            shadow.shadowOffset = NSMakeSize(0, -1);
-            shadow.shadowBlurRadius = 2;
-            [shadow set];
-            [NSColor.whiteColor setFill];
-            [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(knob - k_Knob / 2, mid - k_Knob / 2, k_Knob, k_Knob)] fill];
-            [NSGraphicsContext restoreGraphicsState];
-        }
+        [NSGraphicsContext saveGraphicsState];
+        NSShadow* shadow = [[[NSShadow alloc] init] autorelease];
+        shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.35];
+        shadow.shadowOffset = NSMakeSize(0, -1);
+        shadow.shadowBlurRadius = 2;
+        [shadow set];
+        [NSColor.whiteColor setFill];
+        [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(knob - k_Knob / 2, mid - k_Knob / 2, k_Knob, k_Knob)] fill];
+        [NSGraphicsContext restoreGraphicsState];
     }
 }
 
@@ -783,7 +782,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         break;
     }
     case ForkMenuControlSwitch:
-        self.layer.backgroundColor = white(m_Pressed ? 0.12 : (m_Hovered && m_Enabled ? 0.06 : 0));
+        // No highlight, as on the canvas: the switch shows its state
         self.needsDisplay = YES;
         break;
     case ForkMenuControlSlider:
@@ -841,10 +840,18 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (void)mouseDown:(NSEvent*)event
 {
     if (m_Kind == ForkMenuControlSlider) {
-        // AppKit sends this view the drags that follow, outside it too, with no tracking loop of its own
+        // AppKit sends this view the drags that follow, outside it too, with no tracking loop of its own.
+        // Taken by the knob, it stays where it is until dragged; elsewhere on the track it jumps there.
         if (m_Enabled && !m_ReadOnly) {
             m_Dragging = YES;
-            [self setSliderFromEvent:event];
+            CGFloat offset = [self convertPoint:event.locationInWindow fromView:nil].x - [self knobX];
+            if (fabs(offset) <= k_Knob / 2) {
+                m_GrabOffset = offset;
+            }
+            else {
+                m_GrabOffset = 0;
+                [self setSliderFromEvent:event];
+            }
             [m_Owner sliderMoved:self final:NO];
         }
         return;
@@ -864,9 +871,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (void)mouseUp:(NSEvent*)event
 {
     if (m_Kind == ForkMenuControlSlider) {
+        // Where the last drag left it
         if (m_Dragging) {
             m_Dragging = NO;
-            [self setSliderFromEvent:event];
             [m_Owner sliderMoved:self final:YES];
         }
         return;
@@ -934,6 +941,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     NSTextField* m_SliderHigh;
     NSTextField* m_Caption;
     NotchQuality::State m_Bitrate;  // what it shows
+    // Control Center's bitrate, while it's open; not retained either
+    NSTextField* m_BitrateTileDetail;
+    ForkMenuControl* m_BitrateTileBar;
     // The bitrate the slider was let go at, shown until the PC runs at it, or for k_HeldSeconds
     int m_HeldKbps;
     CFTimeInterval m_HeldUntil;
@@ -1279,6 +1289,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_SliderLow = nil;
     m_SliderHigh = nil;
     m_Caption = nil;
+    m_BitrateTileDetail = nil;
+    m_BitrateTileBar = nil;
     m_HeldKbps = 0;
     [self dropControls];
     m_Selected = -1;
@@ -1491,6 +1503,12 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         break;
     }
 
+    // A control selected from the keyboard that can't be used now gives up the selection
+    if (m_Selected >= 0 && ![self selectable:m_Selected]) {
+        int next = m_KeyboardSelection ? NotchMenus::nextSelectable((int)m_Controls.count, m_Selected, 1, [self](int i) { return [self selectable:i]; }) : -1;
+        [self select:next keyboard:m_KeyboardSelection];
+    }
+
     [self showBitrateValue];
 }
 
@@ -1525,30 +1543,33 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     y += k_QualityHeaderHeight;
 
     m_AdaptSwitch.frame = NSMakeRect(k_QualityPadding, y, width, k_SwitchRowHeight);
-    y += k_SwitchRowHeight + 2;
+    y += k_SwitchRowHeight;
 
-    // After the dot when there is one; a line's height even when empty, so it rarely moves the slider
+    // After the dot when there is one; at least 18 pt even when empty, as on the canvas, so it rarely
+    // moves the slider
     CGFloat textLeft = m_ReasonDot.hidden ? left : left + 7 + 6;
     CGFloat textWidth = left + inner - textLeft;
-    CGFloat lineHeight = ceil(m_Reason.font.ascender - m_Reason.font.descender + m_Reason.font.leading);
-    CGFloat reasonHeight = MAX(m_Reason.stringValue.length > 0 ? textHeight(m_Reason, textWidth) : 0, lineHeight);
-    m_Reason.frame = NSMakeRect(textLeft, y, textWidth, reasonHeight);
-    [m_ReasonDot setFrameOrigin:NSMakePoint(left, y + round((lineHeight - 7) / 2))];
-    y += reasonHeight + 8;
+    CGFloat fit = m_Reason.stringValue.length > 0 ? textHeight(m_Reason, textWidth) : 0;
+    CGFloat lines = fit > 18 ? 2 : 1;
+    CGFloat reasonHeight = MAX(fit, 18);
+    // One line sits in the middle of its 18 pt; the dot beside the first line
+    m_Reason.frame = NSMakeRect(textLeft, y + round((reasonHeight - fit) / 2), textWidth, fit);
+    [m_ReasonDot setFrameOrigin:NSMakePoint(left, y + round((reasonHeight / lines - 7) / 2))];
+    y += reasonHeight + 2 + 8;
 
     // The track runs from the text inset to the right one; the knob's half hangs over each end
     m_Slider.frame = NSMakeRect(left - k_Knob / 2, y, inner + k_Knob, k_SliderHeight);
-    y += k_SliderHeight;
+    y += k_SliderHeight + 3;
     [m_SliderLow sizeToFit];
     [m_SliderHigh sizeToFit];
     m_SliderLow.frame = NSMakeRect(left, y, NSWidth(m_SliderLow.frame), NSHeight(m_SliderLow.frame));
     m_SliderHigh.frame = NSMakeRect(left + inner - NSWidth(m_SliderHigh.frame), y, NSWidth(m_SliderHigh.frame), NSHeight(m_SliderHigh.frame));
-    y += NSHeight(m_SliderLow.frame) + 6;
+    y += NSHeight(m_SliderLow.frame) + 4;
 
     CGFloat captionHeight = textHeight(m_Caption, inner);
     m_Caption.frame = NSMakeRect(left, y, inner, captionHeight);
     y += captionHeight;
-    return y + k_QualityPadding + 4;
+    return y + 6 + k_QualityPadding;
 }
 
 // Lays Quality out again, its panel's top edge where it was if its height changed
@@ -1606,47 +1627,69 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [self sliderMoved:m_Slider final:YES];
 }
 
-// Control Center's bitrate, to look at: "Adaptive · 18 Mb/s" over a bar from the slider's bottom to
-// its top. Quality changes it.
+// Control Center's bitrate, to look at: "Adaptive · 18 Mb/s" over the slider, disabled. Quality
+// changes it. showBitrateTile updates it in place.
 - (NSView*)bitrateTile:(const NotchQuality::State&)state width:(CGFloat)width
 {
-    NSView* tile = [[[ForkFlippedView alloc] initWithFrame:NSMakeRect(0, 0, width, 60)] autorelease];
+    NSView* tile = [[[ForkFlippedView alloc] initWithFrame:NSMakeRect(0, 0, width, 62)] autorelease];
     tile.wantsLayer = YES;
     tile.layer.cornerRadius = 16;
     tile.layer.backgroundColor = white(0.08);
 
-    int shown = NotchQuality::shownKbps(state);
-    NSString* title = tr("Bitrate");
-    NSString* detail = (state.adapting ? QCoreApplication::translate("NotchBar", "Adaptive · %1")
-                                       : QCoreApplication::translate("NotchBar", "Fixed · %1")).arg(mbpsText(shown)).toNSString();
-    NSTextField* titleLabel = makeText(title, [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold], NSColor.labelColor);
-    NSTextField* detailLabel = makeText(detail, [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular], NSColor.secondaryLabelColor);
-    [titleLabel sizeToFit];
-    [detailLabel sizeToFit];
-    CGFloat detailWidth = MIN(NSWidth(detailLabel.frame), width - 24);
-    detailLabel.frame = NSMakeRect(width - 12 - detailWidth, 10 + round((NSHeight(titleLabel.frame) - NSHeight(detailLabel.frame)) / 2),
-                                   detailWidth, NSHeight(detailLabel.frame));
-    titleLabel.frame = NSMakeRect(12, 10, MAX(width - 24 - detailWidth - 12, 0), NSHeight(titleLabel.frame));
-    [tile addSubview:titleLabel];
-    [tile addSubview:detailLabel];
+    NSTextField* title = makeText(tr("Bitrate"), [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold], NSColor.labelColor);
+    [title sizeToFit];
+    title.frame = NSMakeRect(12, 10, NSWidth(title.frame), NSHeight(title.frame));
+    [tile addSubview:title];
+    m_BitrateTileDetail = makeText(@"", [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular], NSColor.secondaryLabelColor);
+    m_BitrateTileDetail.alignment = NSTextAlignmentRight;
+    [tile addSubview:m_BitrateTileDetail];
 
-    // The slider's track and fill, without its knob
-    NotchQuality::Range range = NotchQuality::range(state);
-    ForkMenuControl* bar = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlSlider owner:nil] autorelease];
-    bar->m_ReadOnly = YES;
-    bar->m_Enabled = NO;
-    bar->m_MinKbps = range.minKbps;
-    bar->m_MaxKbps = range.maxKbps;
-    bar->m_ValueKbps = MAX(range.minKbps, MIN(shown, range.maxKbps));
-    bar.frame = NSMakeRect(12 - k_Knob / 2, 34, width - 24 + k_Knob, 16);
-    [bar setAccessibilityElement:NO];
-    [bar refreshAppearance];
-    [tile addSubview:bar];
+    m_BitrateTileBar = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlSlider owner:nil] autorelease];
+    m_BitrateTileBar->m_ReadOnly = YES;
+    m_BitrateTileBar->m_Enabled = NO;
+    m_BitrateTileBar.frame = NSMakeRect(12 - k_Knob / 2, 34, width - 24 + k_Knob, 16);
+    [m_BitrateTileBar setAccessibilityElement:NO];
+    [tile addSubview:m_BitrateTileBar];
 
     [tile setAccessibilityElement:YES];
     [tile setAccessibilityRole:NSAccessibilityStaticTextRole];
-    [tile setAccessibilityLabel:[NSString stringWithFormat:@"%@, %@", title, detail]];
+    [self showBitrateTile:state];
     return tile;
+}
+
+- (void)showBitrateTile:(const NotchQuality::State&)state
+{
+    NSView* tile = m_BitrateTileDetail.superview;
+    CGFloat width = NSWidth(tile.frame);
+    int shown = NotchQuality::shownKbps(state);
+    NSString* detail = (state.adapting ? QCoreApplication::translate("NotchBar", "Adaptive · %1")
+                                       : QCoreApplication::translate("NotchBar", "Fixed · %1")).arg(mbpsText(shown)).toNSString();
+    m_BitrateTileDetail.stringValue = detail;
+    [m_BitrateTileDetail sizeToFit];
+    CGFloat detailWidth = MIN(NSWidth(m_BitrateTileDetail.frame), width - 24);
+    // On the title's line, at the right
+    m_BitrateTileDetail.frame = NSMakeRect(width - 12 - detailWidth, 11, detailWidth, NSHeight(m_BitrateTileDetail.frame));
+
+    NotchQuality::Range range = NotchQuality::range(state);
+    m_BitrateTileBar->m_MinKbps = range.minKbps;
+    m_BitrateTileBar->m_MaxKbps = range.maxKbps;
+    m_BitrateTileBar->m_ValueKbps = MAX(range.minKbps, MIN(shown, range.maxKbps));
+    [m_BitrateTileBar refreshAppearance];
+
+    [tile setAccessibilityLabel:[NSString stringWithFormat:@"%@, %@", tr("Bitrate"), detail]];
+}
+
+- (void)bitrateChanged
+{
+    if (m_Host == nil) {
+        return;
+    }
+    if (m_Slider != nil) {
+        [self qualityChanged];
+    }
+    else if (m_BitrateTileDetail != nil) {
+        [self showBitrateTile:[m_Host menusState].bitrate];
+    }
 }
 
 // "This Mac is drive M:", "On GAMING-PC, over the LAN": shows only
