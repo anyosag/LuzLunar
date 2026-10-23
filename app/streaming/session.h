@@ -125,6 +125,13 @@ public:
 
     void setShouldExit(bool quitHostApp = false);
 
+    // [fork] For the notch bar's menus (fork/forkstreamextensions.cpp)
+    SdlInputHandler* forkInputHandler() { return m_InputHandler; }
+    // The stream ends by quitting its app on the PC, without quitting LuzLunar
+    void forkQuitHostAppOnEnd();
+    // Once the stream has ended, the PC quits the app and sleeps (ForkHostPower)
+    void forkSleepHostOnEnd() { m_ForkSleepHostAfter = true; }
+
 signals:
     void stageStarting(QString stage);
 
@@ -267,6 +274,7 @@ private:
 
     bool m_AsyncConnectionSuccess;
     bool m_ForkBitrateHeadroom = false; // [fork] the PC starts the stream at luzBitrate, so it launches above it
+    bool m_ForkSleepHostAfter = false;  // [fork] forkSleepHostOnEnd()
     int m_ForkOwnBitrateKbps = 0;       // [fork] the stream's own bitrate, which m_StreamConfig.bitrate launches above
     int m_PortTestResults;
 

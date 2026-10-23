@@ -98,6 +98,7 @@ HEADERS += \
     $$PWD/bitraterules.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
+    $$PWD/notchmenus.h \
     $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \
     $$PWD/streamprofiles.h \
@@ -109,6 +110,7 @@ HEADERS += \
     $$PWD/mac/macintegration.h \
     $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
+    $$PWD/mac/notchmenus_mac.h \
     $$PWD/mac/pasteboard.h \
     $$PWD/mac/selfupdate_mac.h \
     $$PWD/mac/trackpadcapture_mac.h \
@@ -124,6 +126,7 @@ macx {
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
+        $$PWD/mac/notchmenus_mac.mm \
         $$PWD/mac/pasteboard_mac.mm \
         $$PWD/mac/selfupdate_mac.mm \
         $$PWD/mac/sfsymbolprovider.mm \

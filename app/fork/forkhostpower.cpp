@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QReadLocker>
+#include <QThread>
 #include <QThreadPool>
 
 #include "apolloclient.h"
@@ -15,6 +16,9 @@ namespace
     const int k_RefreshIntervalMs = 30 * 60 * 1000;
     const int k_RequestTimeoutMs = 10 * 1000;
     const int k_QuitAppTimeoutMs = 60 * 1000;
+    // Right after a stream: Apollo drops the stream's session a moment after it ends
+    const int k_AfterStreamTries = 4;
+    const unsigned long k_AfterStreamRetryMs = 750;
 
     ApolloClient::RequestOptions requestOptions()
     {
@@ -168,7 +172,7 @@ void ForkHostPower::onStatus(const QString& uuid, const Answer& answer)
     }
 }
 
-void ForkHostPower::sleep(const QString& uuid, const QString& appToQuit)
+void ForkHostPower::sleep(const QString& uuid, const QString& appToQuit, bool afterStream)
 {
     if (m_Manager.isNull()) {
         return;
@@ -193,15 +197,23 @@ void ForkHostPower::sleep(const QString& uuid, const QString& appToQuit)
     emit changed();
 
     QPointer<ForkHostPower> self(this);
-    m_Pool->start([self, uuid, pcName, target, appToQuit]() {
+    m_Pool->start([self, uuid, pcName, target, appToQuit, afterStream]() {
         ApolloClient client(target);
 
-        // A fresh token, and what the PC is doing now
-        ApolloClient::Response response = client.request(QStringLiteral("actions/sleep"), QString(), nullptr, requestOptions());
+        // A fresh token, and what the PC is doing now. Right after a stream it may still count it.
         Answer status;
-        status.httpStatus = response.httpStatus;
-        status.json = QJsonDocument::fromJson(response.body).object().toVariantMap();
-        status.networkError = response.networkError;
+        for (int attempt = 1; ; attempt++) {
+            ApolloClient::Response response = client.request(QStringLiteral("actions/sleep"), QString(), nullptr, requestOptions());
+            status.httpStatus = response.httpStatus;
+            status.json = QJsonDocument::fromJson(response.body).object().toVariantMap();
+            status.networkError = response.networkError;
+            bool streaming = status.httpStatus == 200 && !status.json.value(QStringLiteral("available")).toBool() &&
+                             status.json.value(QStringLiteral("reason")).toString() == QStringLiteral("streaming");
+            if (!afterStream || !streaming || attempt >= k_AfterStreamTries) {
+                break;
+            }
+            QThread::msleep(k_AfterStreamRetryMs);
+        }
 
         bool ok = false;
         QString text;

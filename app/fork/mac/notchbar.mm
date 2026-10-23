@@ -1,4 +1,5 @@
 #include "notchbar.h"
+#include "notchmenus_mac.h"
 
 #include "fork/forknetworklink.h"
 #include "fork/forkpolicy.h"
@@ -6,6 +7,7 @@
 #include "SDL_compat.h"
 
 #include <atomic>
+#include <functional>
 
 #include <QCoreApplication>
 
@@ -21,6 +23,7 @@ namespace
     const CGFloat k_IconGap = 6;      // between the message icon and its text
     const CGFloat k_TitleGap = 8;     // between the title and a message beside it
     const CGFloat k_DotSize = 8;
+    const CGFloat k_ItemGap = 2;      // between the items right of the notch
     const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
 
     // The message pill in the bottom-left corner of a windowed stream
@@ -78,14 +81,24 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     ForkMessageCollapsing,  // the pill shrinks away
 };
 
-@interface ForkNotchBarController : NSObject
+@interface ForkNotchBarController : NSObject <ForkNotchMenusHost>
 {
     NSWindow* m_StreamWindow;   // retained: SDL destroys the window before the stream's fork extensions go away
     ForkNotchPanel* m_Panel;
-    NSView* m_LeftPill;
-    NSView* m_RightPill;
-    NSTextField* m_LeftLabel;
-    NSTextField* m_RightLabel;
+    ForkBarItem* m_SessionItem;     // the app and the PC, left of the notch: the Session menu
+    ForkBarItem* m_StatsItem;       // the stream's stats, right of the notch
+    ForkBarItem* m_ControlItem;     // Stream Control Center, at the right edge
+    NSString* m_AppName;
+    NSString* m_HostName;
+
+    // The menus under the items, and what they do (MacNotchBar::setActions())
+    ForkNotchMenus* m_Menus;
+    std::function<void(NotchMenus::Action)> m_Actions;
+    std::function<NotchBar::MenuState()> m_State;
+    NSRect m_StripFrame;            // the strip beside the notch on screen, from the last layout
+    // Pushing the pointer up against the top of the picture lets it up into the bar
+    id m_MoveMonitor;
+    NotchMenus::RevealGesture m_Reveal;
 
     // Messages beside the notch, in a pill that grows out of a blinking red dot
     NSView* m_MessagePill;
@@ -113,7 +126,12 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     CGFloat m_PillHeight;
     CGFloat m_PillY;
 }
-- (instancetype)initWithStreamWindow:(NSWindow*)window title:(NSString*)title;
+- (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName;
+- (void)setActions:(std::function<void(NotchMenus::Action)>)actions state:(std::function<NotchBar::MenuState()>)state;
+- (BOOL)toggleMenusByKeyboard;
+- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed;
+- (BOOL)menuOpen;
+- (void)refreshMenus;
 - (void)setStatsText:(NSString*)text;
 - (void)setWarning:(NSString*)text;
 - (void)showToast:(NSString*)text;
@@ -221,13 +239,39 @@ static ForkNotchPanel* makePanel(NSWindowLevel level, NSWindowCollectionBehavior
 }
 
 // The panel over the strip beside the notch: above the stream window's level, and allowed into its
-// fullscreen Space. Returns a +1 reference.
+// fullscreen Space. Its items take clicks; the strip is outside the stream window, so nothing meant
+// for the PC lands there. Returns a +1 reference.
 static ForkNotchPanel* makeNotchPanel()
 {
-    return makePanel(NSMainMenuWindowLevel + 2,
-                     NSWindowCollectionBehaviorFullScreenAuxiliary |
-                     NSWindowCollectionBehaviorStationary |
-                     NSWindowCollectionBehaviorIgnoresCycle);
+    ForkNotchPanel* panel = makePanel(NSMainMenuWindowLevel + 2,
+                                      NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                      NSWindowCollectionBehaviorStationary |
+                                      NSWindowCollectionBehaviorIgnoresCycle);
+    panel.ignoresMouseEvents = NO;
+    panel.acceptsMouseMovedEvents = YES;
+    return panel;
+}
+
+// The Session item's title: the app, then the PC in the secondary color
+static NSAttributedString* sessionTitle(NSString* appName, NSString* hostName)
+{
+    NSMutableAttributedString* title = [[[NSMutableAttributedString alloc] init] autorelease];
+    [title appendAttributedString:[[[NSAttributedString alloc] initWithString:appName
+                                                                    attributes:@{ NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold],
+                                                                                  NSForegroundColorAttributeName: NSColor.labelColor }] autorelease]];
+    if (hostName.length > 0) {
+        [title appendAttributedString:[[[NSAttributedString alloc] initWithString:[@"  " stringByAppendingString:hostName]
+                                                                        attributes:@{ NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightMedium],
+                                                                                      NSForegroundColorAttributeName: NSColor.secondaryLabelColor }] autorelease]];
+    }
+    return title;
+}
+
+static NSAttributedString* statsTitle(NSString* text)
+{
+    return [[[NSAttributedString alloc] initWithString:text
+                                            attributes:@{ NSFontAttributeName: [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
+                                                          NSForegroundColorAttributeName: NSColor.labelColor }] autorelease];
 }
 
 // Puts a message in a pill's icon and label: a yellow warning sign for the connection warning, a
@@ -272,7 +316,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return message.toNSString();
 }
 
-- (instancetype)initWithStreamWindow:(NSWindow*)window title:(NSString*)title
+- (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName
 {
     self = [super init];
     if (self == nil) {
@@ -282,11 +326,28 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_StreamWindow = [window retain];
     m_Panel = makeNotchPanel();
     m_Corner = [[ForkCornerMessage alloc] initWithStreamWindow:window];
+    m_AppName = [appName copy];
+    m_HostName = [hostName copy];
 
-    m_LeftLabel = makeLabel(title);
-    m_RightLabel = makeLabel(@"—");
-    m_LeftPill = makePill(@[ m_LeftLabel ]);
-    m_RightPill = makePill(@[ m_RightLabel ]);
+    m_SessionItem = [[ForkBarItem alloc] initWithSymbol:@"moon"];
+    [m_SessionItem setTitle:sessionTitle(appName, hostName)];
+    [m_SessionItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Session menu: %1 on %2")
+                                             .arg(QString::fromNSString(appName), QString::fromNSString(hostName)).toNSString()];
+    m_StatsItem = [[ForkBarItem alloc] initWithSymbol:nil];
+    m_StatsItem.interactive = NO;
+    [m_StatsItem setTitle:statsTitle(@"—")];
+    m_ControlItem = [[ForkBarItem alloc] initWithSymbol:@"switch.2"];
+    [m_ControlItem setTitle:[[[NSAttributedString alloc] initWithString:@""] autorelease]];
+    [m_ControlItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Control Center").toNSString()];
+    m_Menus = [[ForkNotchMenus alloc] initWithHost:self appName:appName hostName:hostName];
+    // Not retained by the blocks' captures beyond the items' life: the items go in dealloc
+    __block ForkNotchBarController* controller = self;
+    m_SessionItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Session];
+    };
+    m_ControlItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::ControlCenter];
+    };
 
     m_MessageLabel = makeLabel(@"");
     m_MessageIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
@@ -306,8 +367,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_MessageState = ForkMessageHidden;
     m_ShowsMessages = false;
 
-    [m_Panel.contentView addSubview:m_LeftPill];
-    [m_Panel.contentView addSubview:m_RightPill];
+    [m_Panel.contentView addSubview:m_SessionItem];
+    [m_Panel.contentView addSubview:m_StatsItem];
+    [m_Panel.contentView addSubview:m_ControlItem];
     // The dot sits under the pill that grows out of it
     [m_Panel.contentView addSubview:m_Dot];
     [m_Panel.contentView addSubview:m_MessagePill];
@@ -336,6 +398,12 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
                                                            name:NSWorkspaceActiveSpaceDidChangeNotification
                                                          object:nil];
 
+    // Released in invalidate, which ends the cycle through the block
+    m_MoveMonitor = [[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskMouseMoved handler:^NSEvent*(NSEvent* event) {
+        [controller pointerMoved:event];
+        return event;
+    }] retain];
+
     [self refresh];
     return self;
 }
@@ -344,10 +412,12 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     [m_StreamWindow release];
     [m_Panel release];
-    [m_LeftPill release];
-    [m_RightPill release];
-    [m_LeftLabel release];
-    [m_RightLabel release];
+    [m_SessionItem release];
+    [m_StatsItem release];
+    [m_ControlItem release];
+    [m_AppName release];
+    [m_HostName release];
+    [m_Menus release];
     [m_MessagePill release];
     [m_MessageIcon release];
     [m_MessageLabel release];
@@ -362,6 +432,16 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
+    if (m_MoveMonitor != nil) {
+        [NSEvent removeMonitor:m_MoveMonitor];
+        [m_MoveMonitor release];
+        m_MoveMonitor = nil;
+    }
+    // Quietly: the stream is ending, and its event loop with it
+    m_Actions = nullptr;
+    [m_Menus invalidate];
+    m_SessionItem.onPress = nil;
+    m_ControlItem.onPress = nil;
     // Animations and timers still queued find the controller invalidated and do nothing
     m_AnimationGeneration++;
     m_ShowsMessages = false;
@@ -376,6 +456,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 - (void)stateChanged:(NSNotification*)notification
 {
     (void)notification;
+    // A menu would hang from where the bar was
+    [m_Menus close];
     // The geometry may change under a running animation, so jump to where it was heading
     [self finishMessageAnimation];
     [self refresh];
@@ -415,7 +497,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNotchPanel* panel = makeNotchPanel();
     [panel setFrame:m_Panel.frame display:NO];
     // In their order in the old panel, so the dot stays under the message pill
-    for (NSView* view in @[ m_LeftPill, m_RightPill, m_Dot, m_MessagePill ]) {
+    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_ControlItem, m_Dot, m_MessagePill ]) {
         [panel.contentView addSubview:view];
     }
 
@@ -469,7 +551,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         return;
     }
 
-    m_RightLabel.stringValue = text;
+    [m_StatsItem setTitle:statsTitle(text)];
+    [m_StatsItem setAccessibilityLabel:text];
     [self refresh];
 }
 
@@ -501,20 +584,132 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_ShowsMessages.load();
 }
 
-- (void)layoutPill:(NSView*)pill label:(NSTextField*)label area:(NSRect)area alignRight:(BOOL)alignRight height:(CGFloat)height y:(CGFloat)y
+// Menus
+
+- (void)setActions:(std::function<void(NotchMenus::Action)>)actions state:(std::function<NotchBar::MenuState()>)state
 {
-    [label sizeToFit];
-    CGFloat maxWidth = MAX(NSWidth(area) - 2 * k_Margin, 0);
-    CGFloat width = MIN(NSWidth(label.frame) + 2 * k_Padding, maxWidth);
-    CGFloat x = alignRight ? NSMaxX(area) - k_Margin - width : NSMinX(area) + k_Margin;
+    m_Actions = std::move(actions);
+    m_State = std::move(state);
+}
 
-    pill.frame = NSMakeRect(x, y, width, height);
-    setCapsuleShape(pill, height);
+- (void)pressedItemForMenu:(NotchMenus::Menu)menu
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+    if ([m_Menus openMenu] == menu) {
+        [m_Menus close];
+    }
+    else {
+        [m_Menus open:menu keyboard:NO];
+    }
+}
 
-    NSView* container = label.superview;
-    container.frame = pill.bounds;
-    CGFloat labelHeight = NSHeight(label.frame);
-    label.frame = NSMakeRect(k_Padding, (height - labelHeight) / 2, MAX(width - 2 * k_Padding, 0), labelHeight);
+- (BOOL)toggleMenusByKeyboard
+{
+    if (m_StreamWindow == nil || !m_BarOnScreen) {
+        return NO;
+    }
+    if ([m_Menus openMenu] != NotchMenus::Menu::None) {
+        [m_Menus close];
+    }
+    else {
+        [m_Menus open:NotchMenus::Menu::Session keyboard:YES];
+    }
+    return YES;
+}
+
+- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed
+{
+    return [m_Menus handleKey:scancode pressed:pressed];
+}
+
+- (BOOL)menuOpen
+{
+    return [m_Menus openMenu] != NotchMenus::Menu::None;
+}
+
+- (void)refreshMenus
+{
+    [m_Menus refresh];
+}
+
+- (void)menusPerform:(NotchMenus::Action)action
+{
+    if (m_Actions) {
+        m_Actions(action);
+    }
+}
+
+- (NotchBar::MenuState)menusState
+{
+    return m_State ? m_State() : NotchBar::MenuState();
+}
+
+- (NSRect)menusAnchorFor:(NotchMenus::Menu)menu alignRight:(BOOL*)alignRight
+{
+    ForkBarItem* item = menu == NotchMenus::Menu::Session ? m_SessionItem :
+                        menu == NotchMenus::Menu::ControlCenter ? m_ControlItem : nil;
+    if (item == nil || item.hidden || !m_BarOnScreen) {
+        return NSZeroRect;
+    }
+    *alignRight = item == m_ControlItem;
+    // The item's left and right edges, and the bottom of the strip, so the menu hangs below the bar
+    NSRect frame = [m_Panel convertRectToScreen:[item convertRect:item.bounds toView:nil]];
+    return NSMakeRect(NSMinX(frame), NSMinY(m_StripFrame), NSWidth(frame), NSHeight(m_StripFrame));
+}
+
+- (void)menusChanged:(NotchMenus::Menu)menu
+{
+    BOOL wasOpen = m_SessionItem.open || m_ControlItem.open;
+    m_SessionItem.open = menu == NotchMenus::Menu::Session;
+    m_ControlItem.open = menu == NotchMenus::Menu::ControlCenter;
+    BOOL isOpen = menu != NotchMenus::Menu::None;
+    if (isOpen != wasOpen && m_Actions) {
+        m_Actions(isOpen ? NotchMenus::Action::MenusOpened : NotchMenus::Action::MenusClosed);
+    }
+}
+
+- (NSWindow*)menusBarWindow
+{
+    return m_Panel;
+}
+
+// Pushing the pointer against the top of the picture while it's held to the picture: macOS reports
+// the push even though the pointer can't move, and enough of it lets the pointer up into the bar
+- (void)pointerMoved:(NSEvent*)event
+{
+    if (m_StreamWindow == nil || !m_BarOnScreen || event.window != m_StreamWindow || !m_State || !m_Actions) {
+        return;
+    }
+    NotchBar::MenuState state = m_State();
+    if (!state.revealArmed) {
+        m_Reveal.reset();
+        return;
+    }
+    CGFloat fromTop = NSHeight(m_StreamWindow.contentView.bounds) - event.locationInWindow.y;
+    // deltaY grows downwards
+    if (m_Reveal.push(-event.deltaY, fromTop <= state.revealTop + 2, event.timestamp)) {
+        m_Actions(NotchMenus::Action::RevealPointer);
+    }
+}
+
+// The Session item at the left edge of the area left of the notch; the stats and Control Center
+// from the right edge of the area right of it, the stats giving way when they don't fit
+- (void)layoutItemsLeft:(NSRect)leftArea right:(NSRect)rightArea height:(CGFloat)height y:(CGFloat)y
+{
+    CGFloat sessionWidth = MIN([m_SessionItem naturalWidth], MAX(NSWidth(leftArea) - 2 * k_Margin, 0));
+    m_SessionItem.frame = NSMakeRect(NSMinX(leftArea) + k_Margin, y, sessionWidth, height);
+    m_SessionItem.hidden = sessionWidth <= 0;
+
+    std::vector<NotchMenus::Placed> placed = NotchMenus::layoutRight(NSWidth(rightArea), k_Margin, k_ItemGap,
+                                                                     { [m_StatsItem naturalWidth], [m_ControlItem naturalWidth] }, 0);
+    NSArray<ForkBarItem*>* items = @[ m_StatsItem, m_ControlItem ];
+    for (NSUInteger i = 0; i < items.count; i++) {
+        ForkBarItem* item = items[i];
+        item.hidden = placed[i].width <= 0;
+        item.frame = NSMakeRect(NSMinX(rightArea) + placed[i].x, y, placed[i].width, height);
+    }
 }
 
 // Shows the bar while the stream window is fullscreen on the active Space of a display with a notch,
@@ -564,6 +759,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     }
 
     if (!show) {
+        // Nothing for a menu to hang from
+        [m_Menus close];
         // A clipboard message that hasn't appeared yet would be stale by the time it could
         if (!showsMessages && m_MessageState == ForkMessageHidden && m_Toast != nil) {
             [m_Toast release];
@@ -589,15 +786,13 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     NSRect strip = NSMakeRect(NSMinX(screenFrame), NSMaxY(screenFrame) - inset, NSWidth(screenFrame), inset);
     [m_Panel setFrame:strip display:NO];
 
-    // Left pill at the left screen edge, right pill at the right edge, each kept to its side of the notch
+    // Items at the left and right screen edges, each kept to its side of the notch
     m_PillHeight = MAX(inset - 8, 16);
     m_PillY = (inset - m_PillHeight) / 2;
     m_LeftArea = NSOffsetRect(leftArea, -NSMinX(strip), 0);
     m_HasGeometry = YES;
-    [self layoutPill:m_LeftPill label:m_LeftLabel area:m_LeftArea
-          alignRight:NO height:m_PillHeight y:m_PillY];
-    [self layoutPill:m_RightPill label:m_RightLabel area:NSOffsetRect(rightArea, -NSMinX(strip), 0)
-          alignRight:YES height:m_PillHeight y:m_PillY];
+    m_StripFrame = strip;
+    [self layoutItemsLeft:m_LeftArea right:NSOffsetRect(rightArea, -NSMinX(strip), 0) height:m_PillHeight y:m_PillY];
     [self layoutMessage];
 
     [m_Panel orderFrontRegardless];
@@ -647,7 +842,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (BOOL)titleFitsBesideMessageWidth:(CGFloat)width
 {
-    return NSWidth(m_LeftPill.frame) + k_TitleGap + width <= NSWidth(m_LeftArea) - 2 * k_Margin;
+    return NSWidth(m_SessionItem.frame) + k_TitleGap + width <= NSWidth(m_LeftArea) - 2 * k_Margin;
 }
 
 // Lays out the icon and text for the pill's final size. They're hidden whenever the size animates.
@@ -664,10 +859,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         m_MessagePill.frame = frame;
         setCapsuleShape(m_MessagePill, m_PillHeight);
         [self layoutMessageContentForFrame:frame];
-        m_LeftPill.alphaValue = [self titleFitsBesideMessageWidth:NSWidth(frame)] ? 1 : 0;
+        m_SessionItem.alphaValue = [self titleFitsBesideMessageWidth:NSWidth(frame)] ? 1 : 0;
     }
     else if (m_MessageState == ForkMessageHidden) {
-        m_LeftPill.alphaValue = 1;
+        m_SessionItem.alphaValue = 1;
     }
 }
 
@@ -808,7 +1003,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         }
         m_MessagePill.animator.alphaValue = 1;
         if (hideTitle) {
-            m_LeftPill.animator.alphaValue = 0;
+            m_SessionItem.animator.alphaValue = 0;
         }
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
@@ -854,7 +1049,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.2;
         context.allowsImplicitAnimation = YES;
         m_MessagePill.animator.frame = target;
-        m_LeftPill.animator.alphaValue = hideTitle ? 0 : 1;
+        m_SessionItem.animator.alphaValue = hideTitle ? 0 : 1;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self enterShown];
@@ -904,7 +1099,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
             m_MessagePill.animator.frame = circle;
         }
         m_MessagePill.animator.alphaValue = 0;
-        m_LeftPill.animator.alphaValue = 1;
+        m_SessionItem.animator.alphaValue = 1;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self enterHidden];
@@ -932,7 +1127,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_MessageState = ForkMessageHidden;
     m_Dot.hidden = YES;
     m_MessagePill.alphaValue = 0;
-    m_LeftPill.alphaValue = 1;
+    m_SessionItem.alphaValue = 1;
 
     // Another message may have arrived during the animation
     [self updateMessage];
@@ -951,7 +1146,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         if ([self currentMessage] == nil) {
             m_MessageState = ForkMessageHidden;
             m_MessagePill.alphaValue = 0;
-            m_LeftPill.alphaValue = 1;
+            m_SessionItem.alphaValue = 1;
         }
         else {
             [self applyMessageContent];
@@ -965,7 +1160,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         m_AnimationGeneration++;
         m_MessageState = ForkMessageHidden;
         m_MessagePill.alphaValue = 0;
-        m_LeftPill.alphaValue = 1;
+        m_SessionItem.alphaValue = 1;
         break;
     default:
         break;
@@ -1269,12 +1464,43 @@ namespace
             return true;
         }
 
+        void setActions(std::function<void(NotchMenus::Action)> actions, std::function<MenuState()> state) override
+        {
+            [m_Controller setActions:std::move(actions) state:std::move(state)];
+        }
+
+        bool toggleMenus() override
+        {
+            @autoreleasepool {
+                return [m_Controller toggleMenusByKeyboard];
+            }
+        }
+
+        bool handleMenuKey(int scancode, bool pressed) override
+        {
+            @autoreleasepool {
+                return [m_Controller handleMenuKey:scancode pressed:pressed];
+            }
+        }
+
+        bool menuOpen() const override
+        {
+            return [m_Controller menuOpen];
+        }
+
+        void refreshMenus() override
+        {
+            @autoreleasepool {
+                [m_Controller refreshMenus];
+            }
+        }
+
     private:
         ForkNotchBarController* m_Controller;
     };
 }
 
-std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& title)
+std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& appName, const QString& hostName)
 {
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);
@@ -1285,7 +1511,8 @@ std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& ti
 
     @autoreleasepool {
         ForkNotchBarController* controller = [[ForkNotchBarController alloc] initWithStreamWindow:info.info.cocoa.window
-                                                                                             title:title.toNSString()];
+                                                                                           appName:appName.toNSString()
+                                                                                          hostName:hostName.toNSString()];
         return std::unique_ptr<NotchBar>(new MacNotchBar(controller));
     }
 }

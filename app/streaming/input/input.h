@@ -152,6 +152,18 @@ public:
 
     void updatePointerRegionLock();
 
+    // [fork] For the notch bar's menus (fork/forkstreamextensions.cpp): Ctrl+Option+Shift+Z and K
+    void forkToggleCapture() { performSpecialKeyCombo(KeyComboUngrabInput); }
+    void forkToggleSystemKeys() { performSpecialKeyCombo(KeyComboToggleKeyboardGrab); }
+
+    // [fork] Lets the pointer out of the picture until it moves back into it, so it can reach the notch
+    // bar above the picture (a push against the top edge, or an open menu)
+    void forkSuspendRegionLock();
+
+    // [fork] Whether a push against the top of the picture should let the pointer out: remote desktop
+    // mouse, input held, and the pointer held to the picture. videoRegion: the picture, in window points.
+    bool forkRevealArmed(SDL_Rect* videoRegion);
+
     static
     QString getUnmappedGamepads();
 
@@ -215,6 +227,7 @@ private:
     bool m_PendingMouseButtonsAllUpOnVideoRegionLeave;
     bool m_PointerRegionLockActive;
     bool m_PointerRegionLockToggledByUser;
+    bool m_ForkRegionLockSuspended = false; // [fork] forkSuspendRegionLock()
 
     int m_GamepadMask;
     GamepadState m_GamepadState[MAX_GAMEPADS];

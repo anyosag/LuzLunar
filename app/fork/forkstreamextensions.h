@@ -2,7 +2,10 @@
 
 #include <memory>
 
+#include <QString>
+
 #include "SDL_compat.h"
+#include "notchmenus.h"
 
 class AdaptiveBitrate;
 class ClipboardSync;
@@ -36,7 +39,21 @@ public:
     // Null when clipboard sync is off
     ClipboardSync* clipboard() { return m_Clipboard.get(); }
 
+    // The notch bar's menus: Control-Option-Shift-N opens or closes them; while one is open, the keys
+    // that move through it are its own. Main thread.
+    void toggleBarMenus();
+    bool handleBarMenuKey(const SDL_KeyboardEvent* event);
+    bool barMenuOpen() const;
+
 private:
+    // Does what a notch bar menu asked for, in the event loop
+    void performBarAction(NotchMenus::Action action);
+
+    QString m_HostUuid;
+    // Whether the stream holds input once the open menus close: the menus free the pointer while
+    // they're open, and Control Center's Mouse tile chooses what happens after
+    bool m_CaptureAfterMenus = true;
+
     bool m_ShortcutGuard;
     std::unique_ptr<ClipboardSync> m_Clipboard;
     std::unique_ptr<NotchBar> m_NotchBar;

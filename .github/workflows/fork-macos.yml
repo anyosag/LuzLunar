@@ -198,6 +198,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/hostcadence_test.cpp -o "$RUNNER_TEMP/hostcadence_test"
           "$RUNNER_TEMP/hostcadence_test"
+          # The notch bar's menus: keyboard movement, the items right of the notch, the push up into the bar
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/notchmenus_test.cpp -o "$RUNNER_TEMP/notchmenus_test"
+          "$RUNNER_TEMP/notchmenus_test"
           # Adaptive bitrate's controller: cuts on losses and queues, holds, the climb back, the floor
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/bitraterules_test.cpp app/fork/bitraterules.cpp -o "$RUNNER_TEMP/bitraterules_test"

@@ -3,6 +3,7 @@
 #include <Limelight.h>
 #include "SDL_compat.h"
 #include "streaming/streamutils.h"
+#include "fork/forkstreamextensions.h" // [fork]
 #include "fork/forktrackpadpassthrough.h" // [fork]
 
 void SdlInputHandler::notifyMouseLeave()
@@ -147,6 +148,13 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
         StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
         mouseInVideoRegion = isMouseInVideoRegion(x, y, windowWidth, windowHeight);
+
+        // [fork] Held to the picture again once the pointer is back in it, unless a notch bar menu is open
+        if (m_ForkRegionLockSuspended && mouseInVideoRegion && y > dst.y + 8 &&
+                (ForkStreamExtensions::active() == nullptr || !ForkStreamExtensions::active()->barMenuOpen())) {
+            m_ForkRegionLockSuspended = false;
+            updatePointerRegionLock();
+        }
 
         // Clamp motion to the video region
         x = qMin(qMax(x - dst.x, 0), dst.w);
@@ -295,6 +303,35 @@ bool SdlInputHandler::isMouseInVideoRegion(int mouseX, int mouseY, int windowWid
            (mouseY >= dst.y && mouseY <= dst.y + dst.h);
 }
 
+// [fork] The notch bar's top-edge push and open menus (input.h)
+void SdlInputHandler::forkSuspendRegionLock()
+{
+    if (!m_ForkRegionLockSuspended) {
+        m_ForkRegionLockSuspended = true;
+        updatePointerRegionLock();
+    }
+}
+
+bool SdlInputHandler::forkRevealArmed(SDL_Rect* videoRegion)
+{
+    if (!m_AbsoluteMouseMode || SDL_GetRelativeMouseMode() || !isCaptureActive() ||
+            !m_PointerRegionLockActive || m_ForkRegionLockSuspended) {
+        return false;
+    }
+
+    SDL_Rect src, dst;
+    src.x = src.y = 0;
+    src.w = m_StreamWidth;
+    src.h = m_StreamHeight;
+    dst.x = dst.y = 0;
+    SDL_GetWindowSize(m_Window, &dst.w, &dst.h);
+    StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+    if (videoRegion != nullptr) {
+        *videoRegion = dst;
+    }
+    return true;
+}
+
 void SdlInputHandler::updatePointerRegionLock()
 {
     // Pointer region lock is irrelevant in relative mouse mode
@@ -313,7 +350,7 @@ void SdlInputHandler::updatePointerRegionLock()
     }
 
     // If region lock is enabled, grab the cursor so it can't accidentally leave our window.
-    if (isCaptureActive() && m_PointerRegionLockActive) {
+    if (isCaptureActive() && m_PointerRegionLockActive && !m_ForkRegionLockSuspended) { // [fork] unless the notch bar let it out
 #if SDL_VERSION_ATLEAST(2, 0, 18)
         SDL_Rect src, dst;
 
