@@ -2,6 +2,7 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
+#include "fork/bitraterules.h" // [fork]
 #include "fork/forklaunchargs.h" // [fork]
 #include "fork/forknetworklink.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
@@ -44,6 +45,7 @@
 #include <QImage>
 #include <QGuiApplication>
 #include <QCursor>
+#include <QReadLocker> // [fork]
 #include <QScreen>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -186,7 +188,7 @@ void Session::clConnectionStatusUpdate(int connectionStatus)
 
     // [fork] LuzLunar's notch bar shows the warning beside the notch while it's on screen
     if (ForkStreamStats::reportConnectionStatus(connectionStatus == CONN_STATUS_POOR,
-                                                s_ActiveSession->m_StreamConfig.bitrate > 5000)) {
+                                                s_ActiveSession->m_ForkOwnBitrateKbps > 5000)) {
         return;
     }
 
@@ -199,7 +201,7 @@ void Session::clConnectionStatusUpdate(int connectionStatus)
     {
     case CONN_STATUS_POOR:
         s_ActiveSession->m_OverlayManager.updateOverlayText(Overlay::OverlayStatusUpdate,
-                                                            s_ActiveSession->m_StreamConfig.bitrate > 5000 ?
+                                                            s_ActiveSession->m_ForkOwnBitrateKbps > 5000 ? // [fork] not the launch bitrate
                                                                 "Slow connection to PC\nReduce your bitrate" : "Poor connection to PC");
         s_ActiveSession->m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, true);
         break;
@@ -655,6 +657,11 @@ bool Session::initialize(QQuickWindow* qtWindow)
 #endif
 
     ForkLaunchArgs::capture(m_QtWindow, m_Preferences->trackpadMode == StreamingPreferences::TM_MAC_TRACKPAD); // [fork]
+    {
+        // [fork] Read here, on the main thread; the stream launches on another (startConnectionAsync())
+        QReadLocker lock(&m_Computer->lock);
+        m_ForkBitrateHeadroom = m_Computer->apolloBitrateStart;
+    }
 
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -1623,6 +1630,39 @@ bool Session::startConnectionAsync()
 
     QString rtspSessionUrl;
 
+    // [fork] Moved up from just before LiStartConnection(): the launch request below says the
+    // stream's own bitrate (luzBitrate)
+    // If the user has chosen YUV444 without adjusting the bitrate but the host doesn't
+    // support YUV444 streaming, use the default non-444 bitrate for the stream instead.
+    // This should provide equivalent image quality for YUV420 as the stream would have
+    // had if the host supported YUV444 (though obviously with 4:2:0 subsampling).
+    // If the user has adjusted the bitrate from default, we'll assume they really wanted
+    // that value and not second guess them.
+    if (m_Preferences->enableYUV444 &&
+        !(m_StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_YUV444) &&
+        m_StreamConfig.bitrate == StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
+                                                                          m_StreamConfig.height,
+                                                                          m_StreamConfig.fps,
+                                                                          true)) {
+        m_StreamConfig.bitrate = StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
+                                                                         m_StreamConfig.height,
+                                                                         m_StreamConfig.fps,
+                                                                         false);
+    }
+
+    // [fork] Room to raise the bitrate while streaming: Apollo never raises a stream above the bitrate
+    // it launched with, so with an Apollo that starts it at luzBitrate, the stream launches a quarter
+    // above its own and the encoder starts at its own, from the first frame
+    QString forkLaunchArgs = ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware);
+    m_ForkOwnBitrateKbps = m_StreamConfig.bitrate;
+    if (m_ForkBitrateHeadroom) {
+        m_StreamConfig.bitrate = BitrateRules::launchKbps(m_ForkOwnBitrateKbps);
+        forkLaunchArgs += QStringLiteral("&luzBitrate=") + QString::number(m_ForkOwnBitrateKbps);
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] Bitrate: the PC starts the stream at %d kbps; it launches at %d kbps, so it can be raised that far",
+                    m_ForkOwnBitrateKbps, m_StreamConfig.bitrate);
+    }
+
     try {
         NvHTTP http(m_Computer);
         http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
@@ -1633,7 +1673,7 @@ bool Session::startConnectionAsync()
                       m_InputHandler->getAttachedGamepadMask(),
                       !m_Preferences->multiController,
                       rtspSessionUrl,
-                      ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware)); // [fork]
+                      forkLaunchArgs); // [fork]
     } catch (const GfeHttpResponseException& e) {
         emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
         return false;
@@ -1701,24 +1741,6 @@ bool Session::startConnectionAsync()
             m_StreamConfig.streamingRemotely = STREAM_CFG_AUTO;
             break;
         }
-    }
-
-    // If the user has chosen YUV444 without adjusting the bitrate but the host doesn't
-    // support YUV444 streaming, use the default non-444 bitrate for the stream instead.
-    // This should provide equivalent image quality for YUV420 as the stream would have
-    // had if the host supported YUV444 (though obviously with 4:2:0 subsampling).
-    // If the user has adjusted the bitrate from default, we'll assume they really wanted
-    // that value and not second guess them.
-    if (m_Preferences->enableYUV444 &&
-        !(m_StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_YUV444) &&
-        m_StreamConfig.bitrate == StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
-                                                                          m_StreamConfig.height,
-                                                                          m_StreamConfig.fps,
-                                                                          true)) {
-        m_StreamConfig.bitrate = StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
-                                                                         m_StreamConfig.height,
-                                                                         m_StreamConfig.fps,
-                                                                         false);
     }
 
     int err = LiStartConnection(&hostInfo, &m_StreamConfig, &k_ConnCallbacks,
@@ -1973,7 +1995,7 @@ void Session::exec()
     RichPresenceManager presence(*m_Preferences, m_App.name);
 
     // [fork] Per-stream fork features (shortcut guard, clipboard sync, notch bar, fullscreen stretch, ...)
-    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences, m_StreamConfig.bitrate);
+    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences, m_ForkOwnBitrateKbps);
 
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);

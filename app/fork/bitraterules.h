@@ -26,6 +26,13 @@ namespace BitrateRules
     // the user's bitrate
     int floorKbps(int chosenKbps, bool hdr);
 
+    // The bitrate a stream launches with when the PC starts it at the user's own (Apollo's
+    // LuzBitrateStart, luzBitrate=N): a quarter above, since the PC never raises a stream above its
+    // launch bitrate, so there's room to raise it later. moonlight-common-c chooses the audio by the
+    // launch bitrate (Limelight-internal.h: high quality from 15 Mb/s, 10 ms packets below 5 Mb/s),
+    // so the launch stays on the user's side of both lines and the audio is what it would have been.
+    int launchKbps(int chosenKbps);
+
     // One second of the stream
     struct Sample {
         double seconds = 0;     // since the stream started, steady

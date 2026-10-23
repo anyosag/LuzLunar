@@ -225,6 +225,10 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     // and Nvidia's software don't, so the redesign can say which host software a PC runs
     this->isApolloServerSoftware = !NvHTTP::getXmlString(serverInfo, "Permission").isEmpty();
 
+    // [fork] LuzLunar's Apollo starts a stream at the bitrate in luzBitrate, so the stream can launch
+    // above it and be raised later (Session::startConnectionAsync()). Not saved: serverinfo says it.
+    this->apolloBitrateStart = NvHTTP::getXmlString(serverInfo, "LuzBitrateStart") == "1";
+
     this->pairState = NvHTTP::getXmlString(serverInfo, "PairStatus") == "1" ?
                 PS_PAIRED : PS_NOT_PAIRED;
     this->currentGameId = NvHTTP::getCurrentGame(serverInfo);
@@ -608,6 +612,7 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(isSupportedServerVersion);
     ASSIGN_IF_CHANGED(isNvidiaServerSoftware);
     ASSIGN_IF_CHANGED(isApolloServerSoftware); // [fork]
+    ASSIGN_IF_CHANGED(apolloBitrateStart); // [fork]
     ASSIGN_IF_CHANGED(maxLumaPixelsHEVC);
     ASSIGN_IF_CHANGED(gpuModel);
     ASSIGN_IF_CHANGED_AND_NONNULL(serverCert);

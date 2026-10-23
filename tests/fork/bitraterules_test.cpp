@@ -297,6 +297,41 @@ static void testSmallBitrates()
     CHECK(!changes.empty() && changes.back() == 5000);
 }
 
+static void testLaunchKbps()
+{
+    // A quarter above the user's bitrate
+    CHECK(launchKbps(20000) == 25000);
+    CHECK(launchKbps(40000) == 50000);
+    CHECK(launchKbps(80001) == 100001);
+    CHECK(launchKbps(500000) == 625000);
+
+    // Below 15 Mb/s the launch stays below it, so the audio isn't switched to high quality
+    CHECK(launchKbps(14000) == 14999);
+    CHECK(launchKbps(12000) == 14999);
+    CHECK(launchKbps(11000) == 13750);
+    CHECK(launchKbps(14999) == 14999);
+    CHECK(launchKbps(15000) == 18750);
+
+    // Below 5 Mb/s it stays below that too, so the audio keeps its 10 ms packets
+    CHECK(launchKbps(4500) == 4999);
+    CHECK(launchKbps(4000) == 4999);
+    CHECK(launchKbps(3000) == 3750);
+    CHECK(launchKbps(5000) == 6250);
+    CHECK(launchKbps(500) == 625);
+
+    // Never below the user's bitrate, on either side of a line
+    for (int kbps = 1; kbps <= 600000; kbps += 37) {
+        int launch = launchKbps(kbps);
+        if (launch < kbps || (kbps < 15000) != (launch < 15000) || (kbps < 5000) != (launch < 5000)) {
+            std::printf("FAIL: launchKbps(%d) == %d\n", kbps, launch);
+            s_Failures++;
+            break;
+        }
+    }
+
+    CHECK(launchKbps(0) == 0);
+}
+
 int main()
 {
     testFloor();
@@ -307,6 +342,7 @@ int main()
     testRoundTripTime();
     testRoundTripBase();
     testSmallBitrates();
+    testLaunchKbps();
 
     if (s_Failures == 0) {
         std::printf("bitraterules: all tests passed\n");
