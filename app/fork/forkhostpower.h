@@ -39,8 +39,10 @@ public:
 
     // Asks the PC for a fresh token, then to sleep. appToQuit: the app the warning named, which the
     // user agreed to quit, or empty; if another app runs by then, it asks again instead. finished()
-    // tells how it went.
-    Q_INVOKABLE void sleep(const QString& uuid, const QString& appToQuit);
+    // tells how it went. afterStream: a stream with the PC just ended (the notch bar's "Quit <app>
+    // and Sleep PC"), and Apollo drops a stream a moment after it ends, so a PC still streaming is
+    // asked again a few times.
+    Q_INVOKABLE void sleep(const QString& uuid, const QString& appToQuit, bool afterStream = false);
 
     int revision() const { return m_Revision; }
 

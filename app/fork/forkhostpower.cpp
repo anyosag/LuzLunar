@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QReadLocker>
+#include <QThread>
 #include <QThreadPool>
 
 #include "apolloclient.h"
@@ -15,6 +16,9 @@ namespace
     const int k_RefreshIntervalMs = 30 * 60 * 1000;
     const int k_RequestTimeoutMs = 10 * 1000;
     const int k_QuitAppTimeoutMs = 60 * 1000;
+    // Right after a stream: Apollo drops the stream's session a moment after it ends
+    const int k_AfterStreamTries = 4;
+    const unsigned long k_AfterStreamRetryMs = 750;
 
     ApolloClient::RequestOptions requestOptions()
     {
@@ -168,7 +172,7 @@ void ForkHostPower::onStatus(const QString& uuid, const Answer& answer)
     }
 }
 
-void ForkHostPower::sleep(const QString& uuid, const QString& appToQuit)
+void ForkHostPower::sleep(const QString& uuid, const QString& appToQuit, bool afterStream)
 {
     if (m_Manager.isNull()) {
         return;
@@ -193,75 +197,91 @@ void ForkHostPower::sleep(const QString& uuid, const QString& appToQuit)
     emit changed();
 
     QPointer<ForkHostPower> self(this);
-    m_Pool->start([self, uuid, pcName, target, appToQuit]() {
+    m_Pool->start([self, uuid, pcName, target, appToQuit, afterStream]() {
         ApolloClient client(target);
 
-        // A fresh token, and what the PC is doing now
-        ApolloClient::Response response = client.request(QStringLiteral("actions/sleep"), QString(), nullptr, requestOptions());
+        // A fresh token, and what the PC is doing now, then the request. Right after a stream the PC
+        // may still count it for a moment, in the answer or in the request's: ask again then.
         Answer status;
-        status.httpStatus = response.httpStatus;
-        status.json = QJsonDocument::fromJson(response.body).object().toVariantMap();
-        status.networkError = response.networkError;
-
         bool ok = false;
         QString text;
-        QString reason = status.json.value(QStringLiteral("reason")).toString();
-        QString app = status.json.value(QStringLiteral("app")).toString();
-        if (status.httpStatus == 401) {
-            text = tr("This Mac doesn't have the Sleep PC permission on %1").arg(pcName);
-        }
-        else if (status.httpStatus == 404) {
-            text = tr("%1's Apollo can't sleep from LuzLunar").arg(pcName);
-        }
-        else if (status.httpStatus != 200) {
-            text = tr("%1 didn't answer").arg(pcName);
-        }
-        else if (!status.json.value(QStringLiteral("available")).toBool()) {
-            if (reason == QStringLiteral("streaming")) {
-                text = tr("%1 is streaming, so it stays awake").arg(pcName);
+        for (int attempt = 1; ; attempt++) {
+            const bool canRetry = afterStream && attempt < k_AfterStreamTries;
+            ApolloClient::Response response = client.request(QStringLiteral("actions/sleep"), QString(), nullptr, requestOptions());
+            status.httpStatus = response.httpStatus;
+            status.json = QJsonDocument::fromJson(response.body).object().toVariantMap();
+            status.networkError = response.networkError;
+
+            QString reason = status.json.value(QStringLiteral("reason")).toString();
+            QString app = status.json.value(QStringLiteral("app")).toString();
+            if (status.httpStatus == 200 && !status.json.value(QStringLiteral("available")).toBool() &&
+                    reason == QStringLiteral("streaming") && canRetry) {
+                QThread::msleep(k_AfterStreamRetryMs);
+                continue;
             }
-            else if (reason == QStringLiteral("updating")) {
-                text = tr("%1 is installing an Apollo update").arg(pcName);
+
+            if (status.httpStatus == 401) {
+                text = tr("This Mac doesn't have the Sleep PC permission on %1").arg(pcName);
             }
-            else if (reason == QStringLiteral("sleeping")) {
-                text = tr("%1 is already going to sleep").arg(pcName);
+            else if (status.httpStatus == 404) {
+                text = tr("%1's Apollo can't sleep from LuzLunar").arg(pcName);
             }
-            else {
-                text = tr("%1 can't sleep right now").arg(pcName);
+            else if (status.httpStatus != 200) {
+                text = tr("%1 didn't answer").arg(pcName);
             }
-        }
-        else if (reason == QStringLiteral("app_running") && (appToQuit.isEmpty() || app != appToQuit)) {
-            // It started after the dialog asked, or it isn't the one the warning named: ask again
-            text = tr("%1 is running on %2 now. Choose Sleep PC again to quit it and sleep.").arg(app, pcName);
-        }
-        else {
-            QJsonObject request;
-            request.insert(QStringLiteral("token"), status.json.value(QStringLiteral("token")).toString());
-            // Only the app the user agreed to quit
-            const bool quitApp = reason == QStringLiteral("app_running");
-            request.insert(QStringLiteral("quitApp"), quitApp);
-            QByteArray body = QJsonDocument(request).toJson(QJsonDocument::Compact);
-            // Apollo quits the app before it answers, which takes up to the app's exit timeout
-            ApolloClient::RequestOptions options = requestOptions();
-            if (quitApp) {
-                options.timeoutMs = k_QuitAppTimeoutMs;
+            else if (!status.json.value(QStringLiteral("available")).toBool()) {
+                if (reason == QStringLiteral("streaming")) {
+                    text = tr("%1 is streaming, so it stays awake").arg(pcName);
+                }
+                else if (reason == QStringLiteral("updating")) {
+                    text = tr("%1 is installing an Apollo update").arg(pcName);
+                }
+                else if (reason == QStringLiteral("sleeping")) {
+                    text = tr("%1 is already going to sleep").arg(pcName);
+                }
+                else {
+                    text = tr("%1 can't sleep right now").arg(pcName);
+                }
             }
-            ApolloClient::Response slept = client.request(QStringLiteral("actions/sleep"), QString(), &body, options);
-            QString error = QJsonDocument::fromJson(slept.body).object().value(QStringLiteral("error")).toString();
-            if (slept.httpStatus == 202) {
-                ok = true;
-                text = quitApp ? tr("Quitting %1 and putting %2 to sleep").arg(app, pcName)
-                               : tr("Putting %1 to sleep").arg(pcName);
-            }
-            else if (error == QStringLiteral("streaming")) {
-                text = tr("%1 is streaming, so it stays awake").arg(pcName);
-            }
-            else if (error == QStringLiteral("app_running")) {
-                text = tr("An app started on %1. Choose Sleep PC again to quit it and sleep.").arg(pcName);
+            else if (reason == QStringLiteral("app_running") && (appToQuit.isEmpty() || app != appToQuit)) {
+                // It started after the dialog asked, or it isn't the one the warning named: ask again
+                text = tr("%1 is running on %2 now. Choose Sleep PC again to quit it and sleep.").arg(app, pcName);
             }
             else {
-                text = tr("%1 didn't go to sleep. Try again.").arg(pcName);
+                QJsonObject request;
+                request.insert(QStringLiteral("token"), status.json.value(QStringLiteral("token")).toString());
+                // Only the app the user agreed to quit
+                const bool quitApp = reason == QStringLiteral("app_running");
+                request.insert(QStringLiteral("quitApp"), quitApp);
+                QByteArray body = QJsonDocument(request).toJson(QJsonDocument::Compact);
+                // Apollo quits the app before it answers, which takes up to the app's exit timeout
+                ApolloClient::RequestOptions options = requestOptions();
+                if (quitApp) {
+                    options.timeoutMs = k_QuitAppTimeoutMs;
+                }
+                ApolloClient::Response slept = client.request(QStringLiteral("actions/sleep"), QString(), &body, options);
+                QString error = QJsonDocument::fromJson(slept.body).object().value(QStringLiteral("error")).toString();
+                if (slept.httpStatus == 202) {
+                    ok = true;
+                    text = quitApp ? tr("Quitting %1 and putting %2 to sleep").arg(app, pcName)
+                                   : tr("Putting %1 to sleep").arg(pcName);
+                }
+                else if (error == QStringLiteral("streaming")) {
+                    if (canRetry) {
+                        // A new token comes with the next answer
+                        QThread::msleep(k_AfterStreamRetryMs);
+                        continue;
+                    }
+                    text = tr("%1 is streaming, so it stays awake").arg(pcName);
+                }
+                else if (error == QStringLiteral("app_running")) {
+                    text = tr("An app started on %1. Choose Sleep PC again to quit it and sleep.").arg(pcName);
+                }
+                else {
+                    text = tr("%1 didn't go to sleep. Try again.").arg(pcName);
+                }
             }
+            break;
         }
 
         if (self.isNull()) {

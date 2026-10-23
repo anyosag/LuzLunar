@@ -152,6 +152,15 @@ public:
 
     void updatePointerRegionLock();
 
+    // [fork] For the notch bar's menus (fork/forkstreamextensions.cpp): Ctrl+Option+Shift+Z and K
+    void forkToggleCapture() { performSpecialKeyCombo(KeyComboUngrabInput); }
+    void forkToggleSystemKeys() { performSpecialKeyCombo(KeyComboToggleKeyboardGrab); }
+
+    // [fork] Lets the pointer out of the picture until it moves back into it with no notch bar menu
+    // open, so it can reach a menu opened with Control-Option-Shift-N while the user holds it to the
+    // picture (Control-Option-Shift-L)
+    void forkSuspendRegionLock();
+
     static
     QString getUnmappedGamepads();
 
@@ -215,6 +224,7 @@ private:
     bool m_PendingMouseButtonsAllUpOnVideoRegionLeave;
     bool m_PointerRegionLockActive;
     bool m_PointerRegionLockToggledByUser;
+    bool m_ForkRegionLockSuspended = false; // [fork] forkSuspendRegionLock()
 
     int m_GamepadMask;
     GamepadState m_GamepadState[MAX_GAMEPADS];

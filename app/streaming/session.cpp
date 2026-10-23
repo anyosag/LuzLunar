@@ -3,6 +3,7 @@
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
 #include "fork/bitraterules.h" // [fork]
+#include "fork/forkhostpower.h" // [fork]
 #include "fork/forklaunchargs.h" // [fork]
 #include "fork/forknetworklink.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
@@ -1327,6 +1328,19 @@ private:
             emit m_Session->sessionFinished(m_Session->m_PortTestResults);
         }
 
+        // [fork] "Quit <app> and Sleep PC": now that the stream is gone, the PC quits the app and sleeps
+        if (m_Session->m_ForkSleepHostAfter && !m_Session->m_UnexpectedTermination) {
+            QString uuid;
+            {
+                QReadLocker lock(&m_Session->m_Computer->lock);
+                uuid = m_Session->m_Computer->uuid;
+            }
+            QString app = m_Session->m_App.name;
+            QMetaObject::invokeMethod(ForkHostPower::get(), [uuid, app]() {
+                ForkHostPower::get()->sleep(uuid, app, true);
+            }, Qt::QueuedConnection);
+        }
+
         // Exit the entire program if requested
         if (m_Session->m_ShouldExit) {
             QCoreApplication::instance()->quit();
@@ -1771,6 +1785,12 @@ void Session::flushWindowEvents()
     flushEvent.type = SDL_USEREVENT;
     flushEvent.user.code = SDL_CODE_FLUSH_WINDOW_EVENT_BARRIER;
     SDL_PushEvent(&flushEvent);
+}
+
+// [fork] The notch bar's "Quit <app> on PC": like setShouldExit(true), but LuzLunar stays open
+void Session::forkQuitHostAppOnEnd()
+{
+    m_Preferences->quitAppAfter = true;
 }
 
 void Session::setShouldExit(bool quitHostApp)
