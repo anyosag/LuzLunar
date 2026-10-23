@@ -29,11 +29,13 @@ namespace
     const CGFloat k_DotSize = 8;
     const CGFloat k_ItemGap = 2;      // between the items right of the notch
     const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
-    const int64_t k_NoticeDurationNs = 6 * NSEC_PER_SEC;   // a power notice is longer to read
+    const int64_t k_NoticeDurationNs = 6 * NSEC_PER_SEC;   // a power notice or a hint is longer to read
     const int64_t k_ActionNoticeDurationNs = 10 * NSEC_PER_SEC; // and longer still with a button to press
     const CGFloat k_ButtonGap = 9;    // between a message and its button
     const CGFloat k_ButtonInset = 11; // between a message's button and the pill's end
     const CGFloat k_ButtonHeight = 19;
+    const int k_ReachHintStreams = 3; // the streams that say how to reach the bar while the PC has the mouse
+    const int k_ReachHintTries = 5;   // a second apart, for the stream to take the mouse
 
     // The message pill in the bottom-left corner of a windowed stream
     const CGFloat k_CornerMargin = 16;      // from the window's left and bottom edges
@@ -64,6 +66,7 @@ typedef NS_ENUM(NSInteger, ForkMessageKind) {
     ForkMessageKindClipboard,   // a clipboard message: a clipboard
     ForkMessageKindWarning,     // the connection warning: a yellow warning sign
     ForkMessageKindPower,       // Low Power Mode: a yellow dot, as on the canvas
+    ForkMessageKindHint,        // how to reach the bar: a keyboard
 };
 
 // A message's button, in the canvas's blue capsule: "Reconnect at 60 fps". It answers the first click
@@ -77,6 +80,7 @@ typedef NS_ENUM(NSInteger, ForkMessageKind) {
 @implementation ForkPillButton
 {
     NSTextField* m_Label;
+    NSSize m_LabelSize;     // the title's own size: layout widens the label to the whole button
     BOOL m_Pressed;
 }
 
@@ -111,20 +115,21 @@ typedef NS_ENUM(NSInteger, ForkMessageKind) {
 {
     m_Label.stringValue = title != nil ? title : @"";
     [m_Label sizeToFit];
+    m_LabelSize = m_Label.frame.size;
     [self setAccessibilityLabel:title];
     self.needsLayout = YES;
 }
 
 - (CGFloat)naturalWidth
 {
-    return ceil(NSWidth(m_Label.frame) + 16);
+    return ceil(m_LabelSize.width + 16);
 }
 
 - (void)layout
 {
     [super layout];
     NSSize size = self.bounds.size;
-    m_Label.frame = NSMakeRect(0, round((size.height - NSHeight(m_Label.frame)) / 2), size.width, NSHeight(m_Label.frame));
+    m_Label.frame = NSMakeRect(0, round((size.height - m_LabelSize.height) / 2), size.width, m_LabelSize.height);
     // A capsule at whatever height it's given
     self.needsDisplay = YES;
 }
@@ -261,6 +266,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     std::atomic<bool> m_ShowsMessages; // the bar or the corner pill is on screen
     BOOL m_FullScreenTransition;    // the stream window is entering or leaving its fullscreen Space
     unsigned m_TransitionGeneration;
+    BOOL m_ReachHintOffered;        // this stream had its chance to say how to reach the bar
 
     // The area left of the notch and the pill size, in panel coordinates, from the last refresh
     BOOL m_HasGeometry;
@@ -491,12 +497,13 @@ static NSImage* yellowDot()
 }
 
 // Puts a message in a pill's icon and label: a yellow warning sign for the connection warning, a
-// clipboard for clipboard messages, a yellow dot for Low Power Mode
+// clipboard for clipboard messages, a yellow dot for Low Power Mode, a keyboard for a hint
 static void setMessageContent(NSImageView* icon, NSTextField* label, NSString* text, ForkMessageKind kind)
 {
     label.stringValue = text != nil ? text : @"";
     icon.image = kind == ForkMessageKindPower   ? yellowDot() :
-                 kind == ForkMessageKindWarning ? symbolImage(@"wifi.exclamationmark") : symbolImage(@"doc.on.clipboard");
+                 kind == ForkMessageKindWarning ? symbolImage(@"wifi.exclamationmark") :
+                 kind == ForkMessageKindHint    ? symbolImage(@"keyboard") : symbolImage(@"doc.on.clipboard");
     icon.contentTintColor = kind == ForkMessageKindWarning ? NSColor.systemYellowColor : NSColor.labelColor;
     [icon setFrameSize:icon.image != nil ? icon.image.size : NSZeroSize];
 }
@@ -988,6 +995,49 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         // Already up: the pointer mustn't be held to the picture
         m_Actions(NotchMenus::Action::BarShownOrHidden, 0);
     }
+    [self offerReachHint];
+}
+
+// While the PC has the mouse (a game's, or the trackpad as a touchpad), the pointer on screen is the
+// PC's, drawn in the picture, and it can't leave it for the bar: say how to reach the bar instead.
+// Once a stream, when the bar first comes up with the mouse held, in the first few streams, and not
+// once Control-Option-Shift-N has been used. The remote desktop's mouse is the Mac's own pointer,
+// which moves up into the bar.
+- (void)offerReachHint
+{
+    [self offerReachHint:0];
+}
+
+- (void)offerReachHint:(int)tries
+{
+    ForkPreferences* prefs = ForkPreferences::get();
+    if (m_ReachHintOffered || !m_BarOnScreen || !m_State || m_StreamWindow == nil || prefs->notchBarHints() >= k_ReachHintStreams) {
+        return;
+    }
+    NotchBar::MenuState state = m_State();
+    if (state.mouseAbsolute) {
+        return;
+    }
+    if (!state.mouseCaptured) {
+        // The stream takes the mouse once its picture is up, which can be just after the bar is
+        if (tries + 1 < k_ReachHintTries) {
+            [self retain];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                [self offerReachHint:tries + 1];
+                [self release];
+            });
+        }
+        return;
+    }
+    m_ReachHintOffered = YES;
+
+    // Not over a message already up, as a clipboard or Low Power Mode one is the stream's own news
+    if (m_Toast != nil) {
+        return;
+    }
+    prefs->setNotchBarHints(prefs->notchBarHints() + 1);
+    [self showToast:QCoreApplication::translate("NotchBar", "Press ⌃⌥⇧N to use this bar while the PC has the mouse").toNSString()
+               kind:ForkMessageKindHint];
 }
 
 - (BOOL)barOnScreen
@@ -1013,6 +1063,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     if (m_StreamWindow == nil || !m_BarOnScreen) {
         return NO;
     }
+    // Known now: no more hints
+    ForkPreferences::get()->setNotchBarHints(MAX(ForkPreferences::get()->notchBarHints(), k_ReachHintStreams));
     if ([m_Menus openMenu] != NotchMenus::Menu::None) {
         [m_Menus close];
     }
@@ -1304,6 +1356,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     if (barChanged && m_Actions) {
         m_Actions(NotchMenus::Action::BarShownOrHidden, 0);
     }
+    if (barChanged && show) {
+        [self offerReachHint];
+    }
 
     // Shows a message that arrived while neither was on screen, or moves one between them
     [self updateMessage];
@@ -1472,7 +1527,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
     [self retain];
     int64_t duration = m_ToastActionTitle != nil ? k_ActionNoticeDurationNs :
-                       m_ToastKind == ForkMessageKindPower ? k_NoticeDurationNs : k_ToastDurationNs;
+                       (m_ToastKind == ForkMessageKindPower || m_ToastKind == ForkMessageKindHint) ? k_NoticeDurationNs : k_ToastDurationNs;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, duration),
                    dispatch_get_main_queue(), ^{
         if (generation == m_ToastGeneration && m_StreamWindow != nil) {

@@ -50,6 +50,7 @@ public:
     // What the menus show, asked whenever one opens or refreshes
     struct MenuState {
         bool mouseCaptured = true;      // input held by the stream; while a menu is open, whether it will be once it closes
+        bool mouseAbsolute = false;     // the remote desktop's mouse: the Mac's own pointer, which reaches the bar
         bool systemKeysToPc = false;    // Mac shortcuts (Command-Tab, ...) go to the PC
         bool canSleepPc = true;         // the PC's Apollo can sleep, and this Mac may ask it to
 

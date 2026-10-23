@@ -223,6 +223,7 @@ namespace
 {
     NSImageView* m_Icon;
     NSTextField* m_Label;
+    NSSize m_LabelSize;         // the title's own size, as measured when it was set: layout narrows the label's frame
     NSImageView* m_Trailing;    // an image after the title, as the battery's
     NSTrackingArea* m_Tracking;
     BOOL m_Hovered;
@@ -302,6 +303,7 @@ namespace
     m_Label.attributedStringValue = title;
     m_Label.hidden = title.length == 0;
     [m_Label sizeToFit];
+    m_LabelSize = m_Label.frame.size;
     self.needsLayout = YES;
 }
 
@@ -328,7 +330,9 @@ namespace
 {
     CGFloat width = 2 * k_ItemPadding;
     CGFloat iconWidth = m_Icon != nil ? NSWidth(m_Icon.frame) : 0;
-    CGFloat labelWidth = m_Label.hidden ? 0 : NSWidth(m_Label.frame);
+    // Not the label's frame: a layout at a narrower width (the stats giving way, or a pass before the
+    // bar placed its items) would keep a title that isn't set again at that width for good
+    CGFloat labelWidth = m_Label.hidden ? 0 : m_LabelSize.width;
     CGFloat trailingWidth = m_Trailing != nil ? NSWidth(m_Trailing.frame) : 0;
     width += iconWidth + labelWidth + trailingWidth;
     if (iconWidth > 0 && labelWidth > 0) {
@@ -361,7 +365,7 @@ namespace
                                                round((size.height - NSHeight(m_Trailing.frame)) / 2))];
     }
     if (!m_Label.hidden) {
-        CGFloat labelHeight = NSHeight(m_Label.frame);
+        CGFloat labelHeight = m_LabelSize.height;
         CGFloat right = size.width - k_ItemPadding - (trailingWidth > 0 ? trailingWidth + k_TrailingGap : 0);
         m_Label.frame = NSMakeRect(x, round((size.height - labelHeight) / 2), MAX(right - x, 0), labelHeight);
     }

@@ -150,6 +150,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 SdlInputHandler* input = inputHandler();
                 if (input != nullptr) {
                     state.mouseCaptured = captureAfterMenus(input);
+                    state.mouseAbsolute = input->forkAbsoluteMouseMode();
                     state.systemKeysToPc = input->isSystemKeyCaptureActive();
                 }
                 // Known once the PC's menu or the app's start asked; until then it's tried, and the
