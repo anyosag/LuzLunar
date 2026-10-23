@@ -107,6 +107,7 @@ HEADERS += \
     $$PWD/notchquality.h \
     $$PWD/forkpower.h \
     $$PWD/powerrules.h \
+    $$PWD/reconnectrules.h \
     $$PWD/notchstatus.h \
     $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \
