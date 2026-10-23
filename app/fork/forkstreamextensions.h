@@ -87,12 +87,22 @@ private:
     // Stream status's Copy Diagnostics
     void copyDiagnostics();
 
+    // Ends the stream to start it again with these changes, keeping what the bar chose for it
+    void reconnect(const ReconnectRules::Overrides& overrides, const char* why);
+
+    // Control Center's Trackpad: switches the mode in place when Apollo's side allows, or reconnects
+    void setTrackpadMode(int mode);
+
     QString m_AppName;
     int m_Width;
     int m_Height;
     int m_OwnBitrateKbps;
     bool m_Hdr;
     int m_Fps;
+    SDL_Window* m_Window;
+    int m_TrackpadMode;             // as StreamingPreferences::TrackpadMode
+    int m_TrackpadStartedMode;      // Apollo set its side up for this one (ReconnectRules::trackpadNeedsReconnect())
+    bool m_AbsoluteBeforeTouchpad = false;  // the remote desktop's mouse a touchpad mode took away, for Mac mouse to give back
     int m_ManualKbps = 0;           // the bitrate set by hand last, which the saver gives back; 0 for the user's own
     int m_AppliedCeiling = 0;       // the ceiling applySaver() put into effect last
     bool m_SaverPending = false;    // applySaver() waits for the PC's answers

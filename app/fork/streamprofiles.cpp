@@ -210,6 +210,11 @@ Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, Streami
     return session;
 }
 
+static_assert(StreamingPreferences::TM_MAC_MOUSE == ReconnectRules::k_TrackpadMacMouse &&
+                  StreamingPreferences::TM_WINDOWS_TOUCHPAD == ReconnectRules::k_TrackpadWindowsTouchpad &&
+                  StreamingPreferences::TM_MAC_TRACKPAD == ReconnectRules::k_TrackpadMacTrackpad,
+              "ReconnectRules numbers the trackpad modes as StreamingPreferences does");
+
 Session* StreamProfiles::createReconnectSession(NvComputer* computer, NvApp& app, const StreamingPreferences* from,
                                                 const ReconnectRules::Overrides& overrides)
 {
@@ -223,6 +228,8 @@ Session* StreamProfiles::createReconnectSession(NvComputer* computer, NvApp& app
     settings.bitrateKbps = prefs->bitrateKbps;
     settings.hdr = prefs->enableHdr;
     settings.yuv444 = prefs->enableYUV444;
+    settings.trackpadMode = prefs->trackpadMode;
+    settings.absoluteMouse = prefs->absoluteMouseMode;
     settings = ReconnectRules::apply(settings, overrides);
     prefs->width = settings.width;
     prefs->height = settings.height;
@@ -230,10 +237,12 @@ Session* StreamProfiles::createReconnectSession(NvComputer* computer, NvApp& app
     prefs->bitrateKbps = settings.bitrateKbps;
     prefs->enableHdr = settings.hdr;
     prefs->enableYUV444 = settings.yuv444;
+    prefs->trackpadMode = static_cast<StreamingPreferences::TrackpadMode>(settings.trackpadMode);
+    prefs->absoluteMouseMode = settings.absoluteMouse;
 
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Reconnecting \"%s\" at %dx%d, %d fps, %d kbps%s%s",
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Reconnecting \"%s\" at %dx%d, %d fps, %d kbps%s%s, trackpad mode %d",
                 qPrintable(app.name), prefs->width, prefs->height, prefs->fps, prefs->bitrateKbps,
-                prefs->enableHdr ? ", HDR" : "", prefs->enableYUV444 ? ", 4:4:4" : "");
+                prefs->enableHdr ? ", HDR" : "", prefs->enableYUV444 ? ", 4:4:4" : "", prefs->trackpadMode);
 
     Session* session = new Session(computer, app, prefs);
     prefs->setParent(session);

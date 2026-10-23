@@ -161,6 +161,11 @@ public:
     // picture (Control-Option-Shift-L)
     void forkSuspendRegionLock();
 
+    // [fork] The mouse as a remote desktop's (absolute) or a game's (relative), as Ctrl+Option+Shift+M
+    // switches it; for the notch bar's Trackpad, whose touchpad modes need the game's
+    bool forkAbsoluteMouseMode() const { return m_AbsoluteMouseMode; }
+    void forkSetAbsoluteMouseMode(bool absolute);
+
     static
     QString getUnmappedGamepads();
 

@@ -83,6 +83,9 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
       m_OwnBitrateKbps(bitrateKbps),
       m_Hdr(prefs.enableHdr),
       m_Fps(prefs.fps),
+      m_Window(window),
+      m_TrackpadMode(prefs.trackpadMode),
+      m_TrackpadStartedMode(prefs.trackpadMode),
       m_ShortcutGuard(false)
 {
     ForkPreferences* forkPrefs = ForkPreferences::get();
@@ -156,6 +159,8 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 state.streamFps = m_Fps;
                 state.streamWidth = m_Width;
                 state.streamHeight = m_Height;
+                state.trackpadMode = m_TrackpadMode;
+                state.trackpadStartedMode = m_TrackpadStartedMode;
                 if (m_Power) {
                     state.powerKnown = true;
                     state.power = m_Power->reading();
@@ -590,22 +595,12 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
         else if (action == NotchMenus::Action::ReconnectAtBitrate) {
             overrides.bitrateKbps = value;
         }
-        // What the bar chose for this stream holds for the next: adaptive bitrate on or off, the
-        // bitrate set by hand, Stream Battery Saver switched by hand
-        ReconnectRules::Choices choices;
-        if (m_BitrateClient) {
-            choices.adaptive = m_AdaptiveBitrate != nullptr;
-            choices.manualKbps = m_AdaptiveBitrate ? 0 : m_ManualKbps;
-        }
-        if (m_Saver) {
-            choices.saver = m_Saver->manual();
-            choices.lowPowerMode = m_Saver->lowPowerMode();
-        }
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: reconnect%s", action == NotchMenus::Action::Reconnect ? "" : " with a change");
-        session->forkReconnect(overrides, choices);
-        pushQuit();
+        reconnect(overrides, action == NotchMenus::Action::Reconnect ? "" : " with a change");
         break;
     }
+    case NotchMenus::Action::SetTrackpadMode:
+        setTrackpadMode(value);
+        break;
     case NotchMenus::Action::OpenBatterySettings:
         // The bar's own
     case NotchMenus::Action::ToggleNotchStats:
@@ -617,6 +612,73 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
     if (m_NotchBar) {
         m_NotchBar->refreshMenus();
     }
+}
+
+void ForkStreamExtensions::reconnect(const ReconnectRules::Overrides& overrides, const char* why)
+{
+    Session* session = Session::get();
+    if (session == nullptr) {
+        return;
+    }
+    // What the bar chose for this stream holds for the next: adaptive bitrate on or off, the bitrate
+    // set by hand, Stream Battery Saver switched by hand
+    ReconnectRules::Choices choices;
+    if (m_BitrateClient) {
+        choices.adaptive = m_AdaptiveBitrate != nullptr;
+        choices.manualKbps = m_AdaptiveBitrate ? 0 : m_ManualKbps;
+    }
+    if (m_Saver) {
+        choices.saver = m_Saver->manual();
+        choices.lowPowerMode = m_Saver->lowPowerMode();
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: reconnect%s", why);
+    session->forkReconnect(overrides, choices);
+    pushQuit();
+}
+
+void ForkStreamExtensions::setTrackpadMode(int mode)
+{
+    Session* session = Session::get();
+    SdlInputHandler* input = inputHandler();
+    if (session == nullptr || input == nullptr || mode == m_TrackpadMode || mode < ReconnectRules::k_TrackpadMacMouse ||
+        mode > ReconnectRules::k_TrackpadMacTrackpad) {
+        return;
+    }
+    if (ReconnectRules::trackpadNeedsReconnect(m_TrackpadStartedMode, mode)) {
+        ReconnectRules::Overrides overrides;
+        overrides.trackpadMode = mode;
+        reconnect(overrides, " for another trackpad mode");
+        return;
+    }
+
+    // In place: the stream's own settings, which a later reconnect copies, then the passthrough again
+    StreamingPreferences* prefs = session->forkPreferences();
+    prefs->trackpadMode = static_cast<StreamingPreferences::TrackpadMode>(mode);
+    // A touchpad mode takes the game's mouse, as StreamProfiles::createSession() has it; Mac mouse
+    // gives back a remote desktop's it took
+    if (mode != ReconnectRules::k_TrackpadMacMouse && input->forkAbsoluteMouseMode()) {
+        m_AbsoluteBeforeTouchpad = true;
+        input->forkSetAbsoluteMouseMode(false);
+    }
+    else if (mode == ReconnectRules::k_TrackpadMacMouse && m_AbsoluteBeforeTouchpad) {
+        m_AbsoluteBeforeTouchpad = false;
+        input->forkSetAbsoluteMouseMode(true);
+    }
+    prefs->absoluteMouseMode = input->forkAbsoluteMouseMode();
+    if (m_BarMenusOpen) {
+        if (input->isCaptureActive()) {
+            // Taking input again put the pointer back in the picture: the menu is still open
+            input->forkSuspendRegionLock();
+        }
+        // What the bar leaves it as, so MenusClosed doesn't take this for the user's change
+        m_CaptureLeftByBar = input->isCaptureActive();
+    }
+
+    ForkTrackpadPassthrough::deactivate();
+    ForkTrackpadPassthrough::activate(m_Window, *prefs);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: trackpad mode %d, in place (the stream started in %d)", mode,
+                m_TrackpadStartedMode);
+    m_TrackpadMode = mode;
 }
 
 void ForkStreamExtensions::copyDiagnostics()

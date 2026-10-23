@@ -137,6 +137,9 @@ public:
     void forkQuitHostAppOnEnd();
     // Once the stream has ended, the PC quits the app and sleeps (ForkHostPower)
     void forkSleepHostOnEnd() { m_ForkSleepHostAfter = true; }
+    // The stream's own settings, for the notch bar's changes during it (main thread): a reconnect
+    // copies them for the stream that follows
+    StreamingPreferences* forkPreferences() { return m_Preferences; }
     // The stream ends to start again with these changes, keeping what was chosen in the notch bar: its
     // app keeps running on the PC, and forkReconnectStarting() comes instead of sessionFinished()
     void forkReconnect(const ReconnectRules::Overrides& overrides, const ReconnectRules::Choices& choices);
