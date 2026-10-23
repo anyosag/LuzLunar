@@ -16,7 +16,8 @@ class BitrateClient;
 class AdaptiveBitrate
 {
 public:
-    // chosenKbps: the stream's own bitrate, the most it ever asks for. hdr raises the floor.
+    // chosenKbps: the most it ever asks for, the stream's own bitrate or Stream Battery Saver's cap.
+    // hdr raises the floor.
     // startKbps: the bitrate the stream runs at now, where it starts from (below chosenKbps after a
     // change by hand).
     AdaptiveBitrate(std::shared_ptr<BitrateClient> client, int chosenKbps, bool hdr, int startKbps);

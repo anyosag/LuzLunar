@@ -131,12 +131,56 @@ static void testSlider()
     CHECK(range(noMax).maxKbps == 20000 && range(noMax).minKbps == 3000);
 }
 
+static void testSaver()
+{
+    // The canvas's: the saver holds the stream at 10 of the user's 20
+    State state = canvas();
+    state.saver = true;
+    state.targetKbps = 10000;
+    CHECK(saverCaps(state) && saverNote(state) == SaverNote::Caps);
+    CHECK(lowered(state));
+    CHECK(line(state) == Line::None);           // the note says why
+    state.targetKbps = 7000;                    // lowered further by adaptive bitrate
+    CHECK(line(state) == Line::LoweredRoundTrip);
+
+    // The slider's top is the cap
+    state.adapting = false;
+    CHECK(range(state).maxKbps == 10000);
+    CHECK(caption(state) == Caption::ByHand);
+
+    // A PC that can't change it live: nothing capped, and the note says a reconnect would
+    state.live = false;
+    state.why = Why::Encoder;
+    CHECK(!saverCaps(state) && saverNote(state) == SaverNote::NeedsReconnect);
+    CHECK(range(state).maxKbps == 25000);
+
+    State off = canvas();
+    CHECK(saverNote(off) == SaverNote::None && range(off).maxKbps == 25000);
+
+    // Climbing back under the cap goes to the cap
+    State climbing = canvas();
+    climbing.saver = true;
+    climbing.targetKbps = 8000;
+    climbing.changeReason = BitrateRules::Reason::Climb;
+    CHECK(line(climbing) == Line::Climbing && climbKbps(climbing) == 10000);
+    CHECK(climbKbps(canvas()) == 20000);
+
+    // A user's bitrate at the cap or below: nothing to cap, nothing to say
+    State small = canvas();
+    small.saver = true;
+    small.ownKbps = 8000;
+    small.targetKbps = 8000;
+    small.maxKbps = 10000;
+    CHECK(!saverCaps(small) && saverNote(small) == SaverNote::None && range(small).maxKbps == 10000);
+}
+
 int main()
 {
     testShown();
     testLines();
     testAgo();
     testSlider();
+    testSaver();
 
     if (s_Failures == 0) {
         std::printf("notchquality: all tests passed\n");

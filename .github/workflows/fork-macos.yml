@@ -223,6 +223,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/notchquality_test.cpp -o "$RUNNER_TEMP/notchquality_test"
           "$RUNNER_TEMP/notchquality_test"
+          # The notch bar's battery: its glyph, Battery's texts, Stream Battery Saver and the Low Power Mode message
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/powerrules_test.cpp -o "$RUNNER_TEMP/powerrules_test"
+          "$RUNNER_TEMP/powerrules_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"

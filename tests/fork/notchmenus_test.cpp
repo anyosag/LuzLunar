@@ -21,16 +21,17 @@ static int s_Failures = 0;
 
 static void testNeighbour()
 {
-    // Left to right as on the bar: Session left of the notch; the stats, the bitrate and Control
-    // Center right of it
-    CHECK(order().size() == 4);
+    // Left to right as on the bar: Session left of the notch; the stats, the bitrate, the battery and
+    // Control Center right of it
+    CHECK(order().size() == 5);
     CHECK(neighbour(Menu::Session, 1) == Menu::Status);
     CHECK(neighbour(Menu::Status, 1) == Menu::Quality);
-    CHECK(neighbour(Menu::Quality, 1) == Menu::ControlCenter);
+    CHECK(neighbour(Menu::Quality, 1) == Menu::Battery);
+    CHECK(neighbour(Menu::Battery, 1) == Menu::ControlCenter);
     CHECK(neighbour(Menu::ControlCenter, 1) == Menu::Session);
     CHECK(neighbour(Menu::Session, -1) == Menu::ControlCenter);
-    CHECK(neighbour(Menu::Status, 3) == Menu::Session);
-    CHECK(neighbour(Menu::ControlCenter, -4) == Menu::ControlCenter);
+    CHECK(neighbour(Menu::Status, 4) == Menu::Session);
+    CHECK(neighbour(Menu::ControlCenter, -5) == Menu::ControlCenter);
     CHECK(neighbour(Menu::None, 1) == Menu::None);
 }
 
@@ -84,6 +85,13 @@ static void testLayoutRight()
     // Nothing shrinkable: items are cut from the notch side
     placed = layoutRight(100, 10, 4, { 40, 40 }, -1);
     CHECK(placed[0].width == 0 && placed[1].width == 40);
+
+    // An item that isn't there (the battery on a Mac without one) takes no room and no gap
+    placed = layoutRight(400, 10, 4, { 100, 60, 0, 34 }, 0);
+    CHECK(placed[2].width == 0);
+    CHECK(placed[3].x == 400 - 10 - 34);
+    CHECK(placed[1].x == 400 - 10 - 34 - 4 - 60);
+    CHECK(placed[0].x == 400 - 10 - 34 - 4 - 60 - 4 - 100);
 }
 
 int main()

@@ -119,7 +119,8 @@ namespace
             ForkStreamStats::setBitrate(target / 1000.0, shared->ownKbps / 1000.0);
         }
         if (now.known != before.known || now.live != before.live || now.why != before.why || now.targetKbps != before.targetKbps ||
-                now.pending != before.pending || now.minKbps != before.minKbps || now.maxKbps != before.maxKbps) {
+                now.pending != before.pending || now.minKbps != before.minKbps || now.maxKbps != before.maxKbps ||
+                now.settled != before.settled) {
             SDL_Event event = {};
             event.type = eventType();
             SDL_PushEvent(&event);
@@ -173,6 +174,18 @@ namespace
         return response;
     }
 
+    // The start's questions are done, however they came out
+    void settle(const std::shared_ptr<BitrateClient::Shared>& shared)
+    {
+        BitrateState::State before;
+        {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            before = shared->state;
+            shared->state.settled = true;
+        }
+        publish(shared, before);
+    }
+
     // On the worker, first: whether the PC changes bitrates live, and what it can do now
     void startUp(const std::shared_ptr<BitrateClient::Shared>& shared)
     {
@@ -190,6 +203,7 @@ namespace
         }
         publish(shared, before);
         if (info.answered && info.bitrate != QLatin1String("1")) {
+            settle(shared);
             return;
         }
 
@@ -199,18 +213,24 @@ namespace
             ApolloClient::Response response = ask(client, shared, nullptr);
             if (response.httpStatus == 0) {
                 // The first change finds out
+                settle(shared);
                 return;
             }
             BitrateState::Next next = update(shared, parse(response));
+            bool done;
             {
                 std::lock_guard<std::mutex> lock(shared->mutex);
-                if (next != BitrateState::Next::AskAgain || !shared->alive || shared->wantKbps != 0 || waited.elapsed() >= k_KnownWaitMs) {
+                done = next != BitrateState::Next::AskAgain || !shared->alive || shared->wantKbps != 0 || waited.elapsed() >= k_KnownWaitMs;
+                if (done) {
                     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Bitrate: %s runs the stream at %d kbps, between %d and %d kbps; %s",
                                 qPrintable(shared->hostName), shared->state.targetKbps, shared->state.minKbps, shared->state.maxKbps,
                                 !shared->state.live ? "its encoder can't change it" :
                                 shared->state.known ? "its encoder can change it" : "not known yet whether its encoder can change it");
-                    return;
                 }
+            }
+            if (done) {
+                settle(shared);
+                return;
             }
             QThread::msleep(k_KnownPollMs);
         }

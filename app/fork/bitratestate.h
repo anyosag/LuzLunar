@@ -32,6 +32,7 @@ namespace BitrateState
         int maxKbps = 0;
         int targetKbps = 0;     // the bitrate the PC runs at or is changing to; 0 while unknown
         bool pending = false;   // a change waits for the PC's encode thread
+        bool settled = false;   // the questions at the stream's start are done, however they came out
     };
 
     // serverinfo's answer: whether there was one, Apollo's permissions (-1 for a PC that isn't

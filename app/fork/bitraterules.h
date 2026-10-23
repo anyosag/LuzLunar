@@ -20,6 +20,8 @@
 // - Climbs by 5% of the user's bitrate per 5 clean seconds, every 15 clean seconds once near the
 //   bitrate it last had to leave. A climb holds only 5 s, so losses it brings are cut at once.
 // - Never below max(3 Mb/s, 20% of the user's bitrate), 5 Mb/s with HDR; never above the user's.
+//   "The user's bitrate" is the controller's chosenKbps: Stream Battery Saver's cap while it holds
+//   the stream down (ForkStreamExtensions::adaptiveCeiling()).
 namespace BitrateRules
 {
     // The lowest it goes: max(3 Mb/s, 20% of the user's bitrate), 5 Mb/s with HDR, but never above

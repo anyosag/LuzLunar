@@ -17,6 +17,7 @@ namespace
 {
     const CGFloat k_ItemPadding = 8;    // inside an item, around its icon and title
     const CGFloat k_ItemGap = 6;        // between an item's icon and title
+    const CGFloat k_TrailingGap = 5;    // between an item's title and an image after it
     const CGFloat k_MenuGap = 4;        // between the bar and a menu
     const CGFloat k_ScreenMargin = 6;   // between a menu and the screen's edge
 
@@ -41,6 +42,10 @@ namespace
     const CGFloat k_SliderHeight = 22;
     const CGFloat k_Knob = 16;
     const CFTimeInterval k_HeldSeconds = 5;     // the slider's bitrate shows this long at most, waiting for the PC
+
+    // Battery
+    const CGFloat k_BatteryWidth = 320;
+    const CGFloat k_BatteryPadding = 6;
 
     // Stream Control Center
     const CGFloat k_CenterWidth = 340;
@@ -132,6 +137,21 @@ namespace
         return [NSColor colorWithSRGBRed:1 green:0x9f / 255.0 blue:0x0a / 255.0 alpha:1];
     }
 
+    // Low Power Mode's and Stream Battery Saver's yellow
+    NSColor* saverColor()
+    {
+        return [NSColor colorWithSRGBRed:1 green:0xd6 / 255.0 blue:0x0a / 255.0 alpha:1];
+    }
+
+    // A menu's separator line, as the Session menu's
+    NSView* makeSeparatorLine()
+    {
+        NSView* line = [[[NSView alloc] initWithFrame:NSZeroRect] autorelease];
+        line.wantsLayer = YES;
+        line.layer.backgroundColor = [NSColor colorWithWhite:1 alpha:0.12].CGColor;
+        return line;
+    }
+
     CGColorRef white(CGFloat alpha)
     {
         return [NSColor colorWithWhite:1 alpha:alpha].CGColor;
@@ -189,6 +209,7 @@ namespace
 {
     NSImageView* m_Icon;
     NSTextField* m_Label;
+    NSImageView* m_Trailing;    // an image after the title, as the battery's
     NSTrackingArea* m_Tracking;
     BOOL m_Hovered;
 }
@@ -257,6 +278,7 @@ namespace
     [_onPress release];
     [m_Icon release];
     [m_Label release];
+    [m_Trailing release];
     [m_Tracking release];
     [super dealloc];
 }
@@ -269,14 +291,37 @@ namespace
     self.needsLayout = YES;
 }
 
+- (void)setTrailingImage:(NSImage*)image
+{
+    if (image == nil) {
+        [m_Trailing removeFromSuperview];
+        [m_Trailing release];
+        m_Trailing = nil;
+    }
+    else {
+        if (m_Trailing == nil) {
+            m_Trailing = [[NSImageView alloc] initWithFrame:NSZeroRect];
+            m_Trailing.imageScaling = NSImageScaleNone;
+            [self addSubview:m_Trailing];
+        }
+        m_Trailing.image = image;
+        [m_Trailing setFrameSize:image.size];
+    }
+    self.needsLayout = YES;
+}
+
 - (CGFloat)naturalWidth
 {
     CGFloat width = 2 * k_ItemPadding;
     CGFloat iconWidth = m_Icon != nil ? NSWidth(m_Icon.frame) : 0;
     CGFloat labelWidth = m_Label.hidden ? 0 : NSWidth(m_Label.frame);
-    width += iconWidth + labelWidth;
+    CGFloat trailingWidth = m_Trailing != nil ? NSWidth(m_Trailing.frame) : 0;
+    width += iconWidth + labelWidth + trailingWidth;
     if (iconWidth > 0 && labelWidth > 0) {
         width += k_ItemGap;
+    }
+    if (trailingWidth > 0 && (iconWidth > 0 || labelWidth > 0)) {
+        width += k_TrailingGap;
     }
     return ceil(width);
 }
@@ -296,9 +341,15 @@ namespace
         [m_Icon setFrameOrigin:NSMakePoint(x, round((size.height - iconSize.height) / 2))];
         x += iconSize.width + k_ItemGap;
     }
+    CGFloat trailingWidth = m_Trailing != nil ? NSWidth(m_Trailing.frame) : 0;
+    if (m_Trailing != nil) {
+        [m_Trailing setFrameOrigin:NSMakePoint(size.width - k_ItemPadding - trailingWidth,
+                                               round((size.height - NSHeight(m_Trailing.frame)) / 2))];
+    }
     if (!m_Label.hidden) {
         CGFloat labelHeight = NSHeight(m_Label.frame);
-        m_Label.frame = NSMakeRect(x, round((size.height - labelHeight) / 2), MAX(size.width - x - k_ItemPadding, 0), labelHeight);
+        CGFloat right = size.width - k_ItemPadding - (trailingWidth > 0 ? trailingWidth + k_TrailingGap : 0);
+        m_Label.frame = NSMakeRect(x, round((size.height - labelHeight) / 2), MAX(right - x, 0), labelHeight);
     }
 }
 
@@ -941,9 +992,19 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     NSTextField* m_SliderHigh;
     NSTextField* m_Caption;
     NotchQuality::State m_Bitrate;  // what it shows
+    // Quality's Stream Battery Saver note
+    NSView* m_SaverBox;
+    NSTextField* m_SaverText;
     // Control Center's bitrate, while it's open; not retained either
     NSTextField* m_BitrateTileDetail;
     ForkMenuControl* m_BitrateTileBar;
+    // Battery's, while it's open; not retained either
+    NSView* m_BatteryContent;
+    ForkBatteryView* m_BatteryView;
+    NSView* m_BatteryLines[2];
+    ForkMenuControl* m_SaverSwitch;
+    NSTextField* m_SaverCaptions[2];
+    ForkMenuControl* m_BatterySettingsRow;
     // The bitrate the slider was let go at, shown until the PC runs at it, or for k_HeldSeconds
     int m_HeldKbps;
     CFTimeInterval m_HeldUntil;
@@ -1058,6 +1119,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     else if (m_Open == NotchMenus::Menu::Quality) {
         [self buildQuality:content state:state.bitrate];
         *size = NSMakeSize(k_QualityWidth, [self layoutQuality]);
+    }
+    else if (m_Open == NotchMenus::Menu::Battery) {
+        [self buildBattery:content];
+        *size = NSMakeSize(k_BatteryWidth, [self layoutBattery:state]);
     }
     else if (m_Open == NotchMenus::Menu::ControlCenter) {
         CGFloat width = k_CenterWidth - 2 * k_CenterPadding;
@@ -1208,7 +1273,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     effect.state = NSVisualEffectStateActive;
     effect.wantsLayer = YES;
     effect.layer.cornerRadius = menu == NotchMenus::Menu::ControlCenter ? 22 :
-                                menu == NotchMenus::Menu::Status || menu == NotchMenus::Menu::Quality ? 14 : 12;
+                                menu == NotchMenus::Menu::Status || menu == NotchMenus::Menu::Quality ||
+                                menu == NotchMenus::Menu::Battery ? 14 : 12;
     effect.layer.masksToBounds = YES;
     effect.layer.borderWidth = 1;
     effect.layer.borderColor = white(0.10);
@@ -1219,7 +1285,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [effect setAccessibilityRole:menu == NotchMenus::Menu::Session ? NSAccessibilityMenuRole : NSAccessibilityGroupRole];
     [effect setAccessibilityLabel:menu == NotchMenus::Menu::Session ? tr("Session") :
                                   menu == NotchMenus::Menu::Status  ? tr("Stream status") :
-                                  menu == NotchMenus::Menu::Quality ? tr("Quality") : tr("Stream Control Center")];
+                                  menu == NotchMenus::Menu::Quality ? tr("Quality") :
+                                  menu == NotchMenus::Menu::Battery ? tr("Battery") : tr("Stream Control Center")];
 
     // Under its item, kept on the screen
     NSScreen* screen = [m_Host menusBarWindow].screen;
@@ -1291,6 +1358,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_Caption = nil;
     m_BitrateTileDetail = nil;
     m_BitrateTileBar = nil;
+    m_SaverBox = nil;
+    m_SaverText = nil;
+    m_BatteryContent = nil;
+    m_BatteryView = nil;
+    m_BatteryLines[0] = m_BatteryLines[1] = nil;
+    m_SaverSwitch = nil;
+    m_SaverCaptions[0] = m_SaverCaptions[1] = nil;
+    m_BatterySettingsRow = nil;
     m_HeldKbps = 0;
     [self dropControls];
     m_Selected = -1;
@@ -1338,6 +1413,11 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     if (m_Open == NotchMenus::Menu::Quality) {
         // In place too: a drag on the slider goes on while the PC answers
         [self qualityChanged];
+        return;
+    }
+    if (m_Open == NotchMenus::Menu::Battery) {
+        // In place, as the battery changes every few seconds under a pointer on its switch
+        [self batteryChanged];
         return;
     }
     int selected = m_Selected;
@@ -1388,6 +1468,21 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_QualityValue.alignment = NSTextAlignmentRight;
     [content addSubview:m_QualityValue];
 
+    // Stream Battery Saver's note, in a yellow box with a dot, as on the canvas
+    m_SaverBox = [[[NSView alloc] initWithFrame:NSZeroRect] autorelease];
+    m_SaverBox.wantsLayer = YES;
+    m_SaverBox.layer.cornerRadius = 6;
+    m_SaverBox.layer.backgroundColor = [saverColor() colorWithAlphaComponent:0.12].CGColor;
+    NSView* saverDot = [[[NSView alloc] initWithFrame:NSMakeRect(6, 0, 7, 7)] autorelease];
+    saverDot.wantsLayer = YES;
+    saverDot.layer.cornerRadius = 3.5;
+    saverDot.layer.backgroundColor = saverColor().CGColor;
+    saverDot.identifier = @"dot";
+    [m_SaverBox addSubview:saverDot];
+    m_SaverText = makeWrappingText([NSFont systemFontOfSize:12], NSColor.labelColor);
+    [m_SaverBox addSubview:m_SaverText];
+    [content addSubview:m_SaverBox];
+
     m_AdaptSwitch = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlSwitch owner:self] autorelease];
     m_AdaptSwitch->m_Action = NotchMenus::Action::ToggleAdaptiveBitrate;
     [m_AdaptSwitch setTitle:tr("Adapt to the network") detail:nil symbol:nil];
@@ -1428,6 +1523,20 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         m_HeldKbps = 0;
     }
 
+    switch (NotchQuality::saverNote(state)) {
+    case NotchQuality::SaverNote::Caps:
+        m_SaverText.stringValue = QCoreApplication::translate("NotchBar", "Stream Battery Saver caps the bitrate at %1.")
+                                      .arg(mbpsText(PowerRules::k_SaverKbps)).toNSString();
+        break;
+    case NotchQuality::SaverNote::NeedsReconnect:
+        m_SaverText.stringValue = tr("On this PC, Stream Battery Saver needs a reconnect to cap the bitrate.");
+        break;
+    case NotchQuality::SaverNote::None:
+        m_SaverText.stringValue = @"";
+        break;
+    }
+    m_SaverBox.hidden = m_SaverText.stringValue.length == 0;
+
     m_AdaptSwitch->m_On = state.adapting;
     m_AdaptSwitch->m_Enabled = NotchQuality::switchEnabled(state);
     [m_AdaptSwitch setAccessibilityValue:state.adapting ? @1 : @0];
@@ -1453,7 +1562,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         lowered = YES;
         break;
     case NotchQuality::Line::Climbing:
-        line = QCoreApplication::translate("NotchBar", "Climbing back to your %1 Mb/s").arg(own);
+        // To the user's own, or to the saver's cap while it holds the stream down
+        line = NotchQuality::saverCaps(state) ?
+                   QCoreApplication::translate("NotchBar", "Climbing back to %1").arg(mbpsText(NotchQuality::climbKbps(state))) :
+                   QCoreApplication::translate("NotchBar", "Climbing back to your %1 Mb/s").arg(own);
         break;
     case NotchQuality::Line::Holding:
         line = QCoreApplication::translate("NotchBar", "Holding the bitrate you set");
@@ -1542,6 +1654,22 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
                                       MAX(inner - valueWidth - 12, 0), NSHeight(m_QualityTitle.frame));
     y += k_QualityHeaderHeight;
 
+    // The saver's note: inset 3 from the rows, 6 inside, the dot then the text
+    if (!m_SaverBox.hidden) {
+        CGFloat boxWidth = width - 6;
+        CGFloat textWidth = boxWidth - 6 - 7 - 7 - 6;
+        CGFloat noteHeight = textHeight(m_SaverText, textWidth);
+        CGFloat boxHeight = MAX(noteHeight + 6, 22);
+        m_SaverBox.frame = NSMakeRect(k_QualityPadding + 3, y, boxWidth, boxHeight);
+        m_SaverText.frame = NSMakeRect(6 + 7 + 7, round((boxHeight - noteHeight) / 2), textWidth, noteHeight);
+        for (NSView* view in m_SaverBox.subviews) {
+            if ([view.identifier isEqualToString:@"dot"]) {
+                [view setFrameOrigin:NSMakePoint(6, round((boxHeight - 7) / 2))];
+            }
+        }
+        y += boxHeight + 4;
+    }
+
     m_AdaptSwitch.frame = NSMakeRect(k_QualityPadding, y, width, k_SwitchRowHeight);
     y += k_SwitchRowHeight;
 
@@ -1627,6 +1755,88 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [self sliderMoved:m_Slider final:YES];
 }
 
+// Battery: the battery view, then Stream Battery Saver's switch and its captions, then Battery
+// Settings…. batteryChanged updates it in place.
+- (void)buildBattery:(NSView*)content
+{
+    m_BatteryContent = content;
+    m_BatteryView = [[[ForkBatteryView alloc] initWithWidth:k_BatteryWidth - 2 * k_BatteryPadding] autorelease];
+    [content addSubview:m_BatteryView];
+    for (int i = 0; i < 2; i++) {
+        m_BatteryLines[i] = makeSeparatorLine();
+        [content addSubview:m_BatteryLines[i]];
+    }
+
+    m_SaverSwitch = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlSwitch owner:self] autorelease];
+    m_SaverSwitch->m_Action = NotchMenus::Action::ToggleBatterySaver;
+    [m_SaverSwitch setTitle:tr("Stream Battery Saver") detail:nil symbol:nil];
+    [content addSubview:m_SaverSwitch];
+    [m_Controls addObject:m_SaverSwitch];
+    for (int i = 0; i < 2; i++) {
+        m_SaverCaptions[i] = makeWrappingText([NSFont systemFontOfSize:12], NSColor.secondaryLabelColor);
+        [content addSubview:m_SaverCaptions[i]];
+    }
+    m_SaverCaptions[1].stringValue = tr("Turns on with Low Power Mode. Turning it off isn’t remembered.");
+
+    m_BatterySettingsRow = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlRow owner:self] autorelease];
+    m_BatterySettingsRow->m_Action = NotchMenus::Action::OpenBatterySettings;
+    [m_BatterySettingsRow setTitle:tr("Battery Settings…") detail:nil symbol:nil];
+    [content addSubview:m_BatterySettingsRow];
+    [m_Controls addObject:m_BatterySettingsRow];
+}
+
+// Puts the state in Battery's parts and places them top down; returns the height they take
+- (CGFloat)layoutBattery:(const NotchBar::MenuState&)state
+{
+    CGFloat width = k_BatteryWidth - 2 * k_BatteryPadding;
+    CGFloat left = k_BatteryPadding + 9;
+    CGFloat inner = width - 18;
+    CGFloat y = k_BatteryPadding;
+
+    CGFloat height = [m_BatteryView update:state];
+    [m_BatteryView setFrameOrigin:NSMakePoint(k_BatteryPadding, y)];
+    y += height;
+
+    m_BatteryLines[0].frame = NSMakeRect(left, y + 5, inner, 1);
+    y += 11;
+
+    // The switch, then what it does: live, or only with a reconnect on a PC that can't
+    m_SaverSwitch->m_On = state.saverOn;
+    [m_SaverSwitch setAccessibilityValue:state.saverOn ? @1 : @0];
+    [m_SaverSwitch refreshAppearance];
+    m_SaverSwitch.frame = NSMakeRect(k_BatteryPadding, y + 4, width, 26);
+    y += 4 + 26;
+    m_SaverCaptions[0].stringValue = state.bitrate.live ?
+        QCoreApplication::translate("NotchBar", "Caps the bitrate at %1, without reconnecting.").arg(mbpsText(PowerRules::k_SaverKbps)).toNSString() :
+        tr("On this PC, it needs a reconnect to cap the bitrate.");
+    for (int i = 0; i < 2; i++) {
+        CGFloat captionHeight = textHeight(m_SaverCaptions[i], inner);
+        m_SaverCaptions[i].frame = NSMakeRect(left, y + (i == 1 ? 2 : 0), inner, captionHeight);
+        y += captionHeight + (i == 1 ? 2 : 0);
+    }
+    y += 6;
+
+    m_BatteryLines[1].frame = NSMakeRect(left, y + 5, inner, 1);
+    y += 11;
+
+    m_BatterySettingsRow.frame = NSMakeRect(k_BatteryPadding, y, width, k_RowHeight);
+    y += k_RowHeight;
+    return y + k_BatteryPadding;
+}
+
+- (void)batteryChanged
+{
+    if (m_BatteryView == nil || m_Host == nil) {
+        return;
+    }
+    CGFloat height = [self layoutBattery:[m_Host menusState]];
+    NSRect frame = m_Panel.frame;
+    if (m_Panel != nil && height != NSHeight(frame)) {
+        m_BatteryContent.frame = NSMakeRect(0, 0, k_BatteryWidth, height);
+        [m_Panel setFrame:NSMakeRect(NSMinX(frame), NSMaxY(frame) - height, NSWidth(frame), height) display:YES];
+    }
+}
+
 // Control Center's bitrate, to look at: "Adaptive · 18 Mb/s" over the slider, disabled. Quality
 // changes it. showBitrateTile updates it in place.
 - (NSView*)bitrateTile:(const NotchQuality::State&)state width:(CGFloat)width
@@ -1662,7 +1872,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     NSView* tile = m_BitrateTileDetail.superview;
     CGFloat width = NSWidth(tile.frame);
     int shown = NotchQuality::shownKbps(state);
-    NSString* detail = (state.adapting ? QCoreApplication::translate("NotchBar", "Adaptive · %1")
+    NSString* detail = (NotchQuality::saverCaps(state) && shown <= PowerRules::k_SaverKbps ? QCoreApplication::translate("NotchBar", "Battery Saver · %1") :
+                        state.adapting ? QCoreApplication::translate("NotchBar", "Adaptive · %1")
                                        : QCoreApplication::translate("NotchBar", "Fixed · %1")).arg(mbpsText(shown)).toNSString();
     m_BitrateTileDetail.stringValue = detail;
     [m_BitrateTileDetail sizeToFit];
@@ -1679,10 +1890,19 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [tile setAccessibilityLabel:[NSString stringWithFormat:@"%@, %@", tr("Bitrate"), detail]];
 }
 
+- (void)powerChanged
+{
+    [self batteryChanged];
+}
+
 - (void)bitrateChanged
 {
     if (m_Host == nil) {
         return;
+    }
+    if (m_BatteryView != nil) {
+        // Whether the saver caps it live
+        [self batteryChanged];
     }
     if (m_Slider != nil) {
         [self qualityChanged];
