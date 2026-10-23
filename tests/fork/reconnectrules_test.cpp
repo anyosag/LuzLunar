@@ -146,6 +146,11 @@ static void testTrackpad()
     CHECK(next.trackpadMode == k_TrackpadWindowsTouchpad && !next.absoluteMouse);
     // Mac mouse keeps the remote desktop's
     CHECK(apply(settings, Overrides()).absoluteMouse);
+
+    // Stream Settings' codec
+    Overrides codec;
+    codec.codec = 4;
+    CHECK(apply(settings, codec).codec == 4 && apply(settings, Overrides()).codec == 0);
 }
 
 int main()

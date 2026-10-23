@@ -161,7 +161,7 @@ namespace NotchQuality
     enum class Caption {
         Adapting,       // "Adapting never goes above your 20 Mb/s."
         ByHand,         // "Up to 25 Mb/s without reconnecting."
-        CantChange,     // "Changing it takes a new stream."
+        CantChange,     // "Stream Settings can change it; that reconnects."
     };
 
     inline Caption caption(const State& state)

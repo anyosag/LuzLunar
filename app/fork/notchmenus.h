@@ -34,6 +34,9 @@ namespace NotchMenus
         ReconnectAtResolution,      // at another resolution (the value, ReconnectRules::packSize())
         ReconnectAtBitrate,         // at another bitrate in kbps (the value): the saver on a PC that can't change it live
         SetTrackpadMode,            // Control Center's Trackpad (the value, as StreamingPreferences::TrackpadMode): at once, or by reconnecting
+        OpenStreamSettings,         // the Stream Settings panel (the menus do this themselves)
+        StreamSettingsApply,        // Stream Settings' Apply: what the draft changed, in the stream or by reconnecting
+        StreamSettingsSave,         // Save for Next Time: the draft becomes the app's profile
     };
 
     // The bar's menus, left to right as their items sit on the bar
@@ -44,6 +47,7 @@ namespace NotchMenus
         Quality,        // the bitrate
         Battery,        // the Mac's battery
         ControlCenter,
+        StreamSettings, // centred under the notch, from the Session menu and Quality; not on the bar
     };
 
     // The menus in the bar's order, for Left and Right between them

@@ -231,6 +231,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/reconnectrules_test.cpp -o "$RUNNER_TEMP/reconnectrules_test"
           "$RUNNER_TEMP/reconnectrules_test"
+          # The notch bar's Stream Settings: presets, what changed, what reconnects
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/streamsettingsrules_test.cpp -o "$RUNNER_TEMP/streamsettingsrules_test"
+          "$RUNNER_TEMP/streamsettingsrules_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"

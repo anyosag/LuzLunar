@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <vector>
 
@@ -27,6 +28,7 @@ namespace ReconnectRules
         bool yuv444 = false;
         int trackpadMode = k_TrackpadMacMouse;
         bool absoluteMouse = false;     // the mouse as a remote desktop's, not captured
+        int codec = 0;                  // StreamingPreferences::VideoCodecConfig
     };
 
     // What a reconnect changes; 0 or nullopt keeps the stream's
@@ -38,6 +40,7 @@ namespace ReconnectRules
         std::optional<bool> hdr;
         std::optional<bool> yuv444;
         std::optional<int> trackpadMode;
+        std::optional<int> codec;
     };
 
     // What was chosen in the notch bar for the stream, which the stream after its reconnect keeps, as
@@ -48,6 +51,9 @@ namespace ReconnectRules
         std::optional<bool> saver;      // Stream Battery Saver switched by hand (PowerRules::Saver::manual())
         bool lowPowerMode = false;      // Low Power Mode then: a choice by hand holds until it changes
         bool absoluteBeforeTouchpad = false;    // the remote desktop's mouse a touchpad mode took, for Mac mouse to give back
+        // What the stream applied from Stream Settings (ForkStreamSettings::pack()), so the next
+        // stream's panel starts from it
+        std::optional<std::map<int, int>> streamSettings;
     };
 
     // The choices the next stream keeps: a bitrate set by hand only while not adapting, and none after
@@ -83,6 +89,9 @@ namespace ReconnectRules
         }
         if (overrides.trackpadMode) {
             settings.trackpadMode = *overrides.trackpadMode;
+        }
+        if (overrides.codec) {
+            settings.codec = *overrides.codec;
         }
         // The trackpad as a touchpad needs the game's mouse, as StreamProfiles::createSession() has it
         if (settings.trackpadMode != k_TrackpadMacMouse) {

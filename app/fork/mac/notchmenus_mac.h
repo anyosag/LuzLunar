@@ -42,6 +42,12 @@
 - (NotchBar::MenuState)menusState;
 // What Stream status shows now
 - (void)menusStatus:(ForkStatusModel*)model;
+// Stream Settings' contents (open: the panel is opening, so the draft starts again); NO without the panel
+- (BOOL)menusStreamSettings:(ForkStreamSettings::View*)view open:(BOOL)open;
+// Its draft's edits: a row's choice (0 is Global), a preset card, Reset to Global
+- (void)menusStreamSettingsPick:(int)row choice:(int)choice;
+- (void)menusStreamSettingsPreset:(int)preset;
+- (void)menusStreamSettingsReset;
 // Where a menu hangs from: its item on screen (in the bar's strip), and whether the menu lines up
 // with the item's right edge. NSZeroRect when the item isn't on screen.
 - (NSRect)menusAnchorFor:(NotchMenus::Menu)menu alignRight:(BOOL*)alignRight;
