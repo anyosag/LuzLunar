@@ -95,8 +95,8 @@ namespace StreamHistory
         Parts parts = unknownParts();
         double fps = 0;
         double dropPercent = 0;         // frames lost on the network
-        double capMbps = 0;             // what adaptive bitrate lowered the stream to, as the PC confirmed; 0: not lowered
-        bool lowered = false;           // the cap went down here (History::add() sets it)
+        double targetMbps = 0;          // the bitrate the PC runs the stream at, as it confirmed; 0 while unknown
+        bool lowered = false;           // it went down here, by adaptive bitrate or by hand (History::add() sets it)
         double pacingLowest = unknown();    // the PC's frame pacing scores since the last sample (hostcadence.h)
         double pacingAverage = unknown();
     };
@@ -113,14 +113,16 @@ namespace StreamHistory
         void reset()
         {
             m_Samples.clear();
-            m_LastCapMbps = 0;
+            m_LastTargetMbps = 0;
         }
 
-        // Marks the sample lowered when the cap first appears or goes down; not when it's lifted
+        // Marks the sample lowered when the bitrate went down since the last; not when it goes up
         void add(Sample sample)
         {
-            sample.lowered = sample.capMbps > 0 && (m_LastCapMbps <= 0 || sample.capMbps < m_LastCapMbps);
-            m_LastCapMbps = sample.capMbps;
+            sample.lowered = m_LastTargetMbps > 0 && sample.targetMbps > 0 && sample.targetMbps < m_LastTargetMbps;
+            if (sample.targetMbps > 0) {
+                m_LastTargetMbps = sample.targetMbps;
+            }
             m_Samples.push_back(sample);
             while (m_Samples.size() > Capacity) {
                 m_Samples.pop_front();
@@ -144,7 +146,7 @@ namespace StreamHistory
 
     private:
         std::deque<Sample> m_Samples;
-        double m_LastCapMbps = 0;
+        double m_LastTargetMbps = 0;
     };
 
     // Where each stretch the graph draws as one line starts, in samples oldest first: a new one

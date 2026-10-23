@@ -17,6 +17,8 @@
 - (instancetype)initWithSymbol:(NSString*)symbol;
 // Another SF Symbol, or none for nil
 - (void)setSymbol:(NSString*)symbol;
+// In a color of its own; nil for the title's
+- (void)setSymbol:(NSString*)symbol tint:(NSColor*)tint;
 // Called on mouse down, as macOS's menu bar opens its menus
 @property (nonatomic, copy) void (^onPress)(void);
 // False for an item that only shows something (the stats)
@@ -32,6 +34,8 @@
 // What the menus need from the bar
 @protocol ForkNotchMenusHost <NSObject>
 - (void)menusPerform:(NotchMenus::Action)action;
+// SetBitrate's kbps
+- (void)menusPerform:(NotchMenus::Action)action value:(int)value;
 - (NotchBar::MenuState)menusState;
 // What Stream status shows now
 - (void)menusStatus:(ForkStatusModel*)model;
@@ -59,6 +63,11 @@
 - (void)refresh;
 // Stream status shows what's new, if it's open
 - (void)statusChanged;
+// Quality shows what's new, if it's open
+- (void)qualityChanged;
+// The bitrate changed: Quality and Control Center's bitrate show it in place, if one is open, so a
+// click in Control Center isn't lost to a rebuild
+- (void)bitrateChanged;
 - (void)invalidate;
 @end
 

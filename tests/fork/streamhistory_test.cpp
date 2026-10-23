@@ -59,11 +59,11 @@ static void testLatency()
     CHECK(!known(latency(totals)[Display]));
 }
 
-static Sample at(double seconds, double capMbps = 0)
+static Sample at(double seconds, double targetMbps = 0)
 {
     Sample sample;
     sample.seconds = seconds;
-    sample.capMbps = capMbps;
+    sample.targetMbps = targetMbps;
     return sample;
 }
 
@@ -109,25 +109,27 @@ static void testRuns()
 static void testLowered()
 {
     History history;
-    history.add(at(1));
+    history.add(at(1));             // the PC's bitrate not known yet
     CHECK(!history.latest().lowered);
-    history.add(at(2, 40));         // adaptive bitrate lowered it
+    history.add(at(2, 50));         // the stream's own
+    CHECK(!history.latest().lowered);
+    history.add(at(3, 40));         // adaptive bitrate lowered it
     CHECK(history.latest().lowered);
-    history.add(at(3, 40));         // still there
+    history.add(at(4, 40));         // still there
     CHECK(!history.latest().lowered);
-    history.add(at(4, 30));         // lower again
+    history.add(at(5, 30));         // lower again
     CHECK(history.latest().lowered);
-    history.add(at(5, 35));         // climbing back
+    history.add(at(6, 35));         // climbing back
     CHECK(!history.latest().lowered);
-    history.add(at(6, 0));          // back to the full bitrate
+    history.add(at(7, 0));          // unknown for a moment: no change
     CHECK(!history.latest().lowered);
-    history.add(at(7, 20));
+    history.add(at(8, 20));         // lowered by hand, against the last known
     CHECK(history.latest().lowered);
 
-    // A new stream doesn't remember the last one's cap
+    // A new stream doesn't remember the last one's bitrate
     history.reset();
     history.add(at(1, 20));
-    CHECK(history.latest().lowered);
+    CHECK(!history.latest().lowered);
 }
 
 int main()

@@ -25,6 +25,8 @@ namespace NotchMenus
         CopyDiagnostics,            // a summary of the stream for a bug report, on the Mac's clipboard
         ToggleClipboardSync,        // automatic clipboard sync for the rest of the stream
         ToggleNotchStats,           // the bar's stats text, or just its icon (the bar does this itself)
+        ToggleAdaptiveBitrate,      // adaptive bitrate on or off for the rest of the stream
+        SetBitrate,                 // the Quality slider's bitrate, in kbps (the action's value)
     };
 
     // The bar's menus, left to right as their items sit on the bar
@@ -32,13 +34,14 @@ namespace NotchMenus
         None,
         Session,
         Status,         // the stats right of the notch
+        Quality,        // the bitrate
         ControlCenter,
     };
 
     // The menus in the bar's order, for Left and Right between them
     inline const std::vector<Menu>& order()
     {
-        static const std::vector<Menu> menus = { Menu::Session, Menu::Status, Menu::ControlCenter };
+        static const std::vector<Menu> menus = { Menu::Session, Menu::Status, Menu::Quality, Menu::ControlCenter };
         return menus;
     }
 
