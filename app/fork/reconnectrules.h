@@ -32,6 +32,25 @@ namespace ReconnectRules
         std::optional<bool> yuv444;
     };
 
+    // What was chosen in the notch bar for the stream, which the stream after its reconnect keeps, as
+    // it's the same stream to the user
+    struct Choices {
+        std::optional<bool> adaptive;   // adaptive bitrate, as Quality's switch left it
+        int manualKbps = 0;             // the bitrate set by hand while not adapting; 0 for none
+        std::optional<bool> saver;      // Stream Battery Saver switched by hand (PowerRules::Saver::manual())
+        bool lowPowerMode = false;      // Low Power Mode then: a choice by hand holds until it changes
+    };
+
+    // The choices the next stream keeps: a bitrate set by hand only while not adapting, and none after
+    // a reconnect at another bitrate
+    inline Choices carried(Choices choices, const Overrides& overrides)
+    {
+        if (overrides.bitrateKbps > 0 || choices.adaptive.value_or(false)) {
+            choices.manualKbps = 0;
+        }
+        return choices;
+    }
+
     // The new stream's settings: the overrides over the stream's own, sizes even as the decoders want
     // (as StreamProfiles::createSession() rounds them). The bitrate stays the stream's own unless it's
     // overridden, whatever else changes: it's what the user chose for this stream.

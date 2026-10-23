@@ -10,6 +10,7 @@
 #include "notchquality.h"
 #include "powernotice.h"
 #include "powerrules.h"
+#include "reconnectrules.h"
 
 class AdaptiveBitrate;
 class BitrateClient;
@@ -28,9 +29,10 @@ class ForkStreamExtensions
 {
 public:
     // prefs is the session's own copy, with the app's stream profile applied; bitrateKbps is the
-    // bitrate the stream was started with
+    // bitrate the stream was started with; choices, what the notch bar chose for the stream before a
+    // reconnect
     ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
-                         const StreamingPreferences& prefs, int bitrateKbps);
+                         const StreamingPreferences& prefs, int bitrateKbps, const ReconnectRules::Choices& choices);
     ~ForkStreamExtensions();
 
     ForkStreamExtensions(const ForkStreamExtensions&) = delete;
@@ -94,6 +96,7 @@ private:
     int m_ManualKbps = 0;           // the bitrate set by hand last, which the saver gives back; 0 for the user's own
     int m_AppliedCeiling = 0;       // the ceiling applySaver() put into effect last
     bool m_SaverPending = false;    // applySaver() waits for the PC's answers
+    bool m_ManualPending = false;   // and asks for m_ManualKbps, kept across a reconnect
     QString m_HostName;
     QString m_HostUuid;
     // The menus free the pointer while they're open, from MenusOpened to MenusClosed. Control

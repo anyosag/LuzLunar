@@ -12,4 +12,9 @@ namespace ForkReconnect
     // a new resolution to its virtual display only while no stream is running. A PC that doesn't
     // answer it gets a second.
     void waitForHostToDrop(NvComputer* computer);
+
+    // The verb the new stream starts its app with. Apollo resumes a launch of the app it runs, and
+    // launches one that quit (as an app set to quit when its stream pauses does); others need
+    // "resume" for the app that kept running.
+    const char* startVerb(NvComputer* computer);
 }

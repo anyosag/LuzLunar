@@ -137,9 +137,9 @@ public:
     void forkQuitHostAppOnEnd();
     // Once the stream has ended, the PC quits the app and sleeps (ForkHostPower)
     void forkSleepHostOnEnd() { m_ForkSleepHostAfter = true; }
-    // The stream ends to start again with these changes: its app keeps running on the PC, and
-    // forkReconnectStarting() comes instead of sessionFinished()
-    void forkReconnect(const ReconnectRules::Overrides& overrides);
+    // The stream ends to start again with these changes, keeping what was chosen in the notch bar: its
+    // app keeps running on the PC, and forkReconnectStarting() comes instead of sessionFinished()
+    void forkReconnect(const ReconnectRules::Overrides& overrides, const ReconnectRules::Choices& choices);
 
 signals:
     void stageStarting(QString stage);
@@ -289,6 +289,8 @@ private:
     bool m_ForkSleepHostAfter = false;  // [fork] forkSleepHostOnEnd()
     int m_ForkOwnBitrateKbps = 0;       // [fork] the stream's own bitrate, which m_StreamConfig.bitrate launches above
     std::optional<ReconnectRules::Overrides> m_ForkReconnect; // [fork] forkReconnect()
+    ReconnectRules::Choices m_ForkReconnectChoices; // [fork] forkReconnect()'s, for the next stream
+    ReconnectRules::Choices m_ForkChoices;  // [fork] kept from the stream before a reconnect, for ForkStreamExtensions
     bool m_ForkQuitAppAfter = false;    // [fork] quitAppAfter before forkReconnect() cleared it, for the next stream
     bool m_ForkReconnecting = false;    // [fork] this stream follows a reconnect: Apollo lets the old one go first
     int m_PortTestResults;

@@ -114,6 +114,7 @@ Item {
     {
         forkReconnecting = true
         stageText = qsTr("Reconnecting to %1...").arg(appName)
+        summary = [] // the old settings', which the next stream may not have
         launchPanel.reconnect = true
         launchPanel.connected = false
         launchPanel.stagesDone = 0

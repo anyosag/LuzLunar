@@ -94,12 +94,39 @@ static void testPacking()
     }
 }
 
+static void testCarried()
+{
+    Choices choices;
+    choices.adaptive = false;
+    choices.manualKbps = 15000;
+    choices.saver = false;
+    choices.lowPowerMode = true;
+
+    // Another frame rate keeps all of it
+    Overrides fps;
+    fps.fps = 60;
+    Choices kept = carried(choices, fps);
+    CHECK(kept.adaptive == std::optional<bool>(false) && kept.manualKbps == 15000);
+    CHECK(kept.saver == std::optional<bool>(false) && kept.lowPowerMode);
+
+    // Another bitrate replaces the one set by hand
+    Overrides bitrate;
+    bitrate.bitrateKbps = 10000;
+    CHECK(carried(choices, bitrate).manualKbps == 0);
+    CHECK(carried(choices, bitrate).adaptive == std::optional<bool>(false));
+
+    // Adapting, no bitrate by hand
+    choices.adaptive = true;
+    CHECK(carried(choices, fps).manualKbps == 0);
+}
+
 int main()
 {
     testApply();
     testFps();
     testResolutions();
     testPacking();
+    testCarried();
 
     if (s_Failures == 0) {
         std::printf("reconnectrules: all tests passed\n");

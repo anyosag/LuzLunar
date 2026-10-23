@@ -457,6 +457,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     ForkMenuControlSwitch,      // a title and an on/off switch at the right, as in Quality
     ForkMenuControlSlider,      // a bitrate slider: dragged without a tracking loop, so the stream runs on
     ForkMenuControlChip,        // one choice of a segmented control, as Quality's frame rates
+    ForkMenuControlPopup,       // a value in a capsule with up and down chevrons, its choices under it: Resolution
 };
 
 @class ForkNotchMenus;
@@ -582,6 +583,17 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         m_Title.alignment = NSTextAlignmentCenter;
         [self addSubview:m_Title];
         break;
+    case ForkMenuControlPopup:
+        self.layer.cornerRadius = 6;
+        m_Title = [makeText(@"", [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular], NSColor.labelColor) retain];
+        [self addSubview:m_Title];
+        m_Icon = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        m_Icon.imageScaling = NSImageScaleNone;
+        m_Icon.contentTintColor = NSColor.labelColor;
+        m_Icon.image = symbol(@"chevron.up.chevron.down", 9, NSFontWeightSemibold);
+        [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
+        [self addSubview:m_Icon];
+        break;
     }
 
     BOOL actionable = kind == ForkMenuControlRow || kind == ForkMenuControlToggle || kind == ForkMenuControlTile;
@@ -590,6 +602,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
                                kind == ForkMenuControlToggle || kind == ForkMenuControlSwitch ? NSAccessibilityCheckBoxRole :
                                kind == ForkMenuControlSlider ? NSAccessibilitySliderRole :
                                kind == ForkMenuControlChip ? NSAccessibilityRadioButtonRole :
+                               kind == ForkMenuControlPopup ? NSAccessibilityPopUpButtonRole :
                                actionable ? NSAccessibilityButtonRole : NSAccessibilityStaticTextRole];
     if (kind == ForkMenuControlToggle || kind == ForkMenuControlSwitch) {
         [self setAccessibilitySubrole:NSAccessibilitySwitchSubrole];
@@ -616,7 +629,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 {
     m_Title.stringValue = title != nil ? title : @"";
     m_Detail.stringValue = detail != nil ? detail : @"";
-    if (m_Icon != nil) {
+    if (m_Icon != nil && m_Kind != ForkMenuControlPopup) {
         m_Icon.image = symbol(name, 14, NSFontWeightMedium);
         [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
     }
@@ -638,6 +651,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (CGFloat)naturalWidth
 {
     [m_Title sizeToFit];
+    if (m_Kind == ForkMenuControlPopup) {
+        // As on the canvas: 9 before the value, 6 between it and the chevrons, 6 after
+        return ceil(9 + NSWidth(m_Title.frame) + 6 + NSWidth(m_Icon.frame) + 6);
+    }
     CGFloat width = 18 + NSWidth(m_Title.frame);
     if (m_Detail != nil && m_Detail.stringValue.length > 0) {
         [m_Detail sizeToFit];
@@ -700,6 +717,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     case ForkMenuControlChip: {
         [m_Title sizeToFit];
         m_Title.frame = NSMakeRect(0, round((size.height - NSHeight(m_Title.frame)) / 2), size.width, NSHeight(m_Title.frame));
+        break;
+    }
+    case ForkMenuControlPopup: {
+        NSSize iconSize = m_Icon.frame.size;
+        CGFloat iconX = size.width - 6 - iconSize.width;
+        [m_Icon setFrameOrigin:NSMakePoint(iconX, round((size.height - iconSize.height) / 2))];
+        [m_Title sizeToFit];
+        m_Title.frame = NSMakeRect(9, round((size.height - NSHeight(m_Title.frame)) / 2), MAX(iconX - 6 - 9, 0), NSHeight(m_Title.frame));
         break;
     }
     }
@@ -859,6 +884,12 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     case ForkMenuControlChip:
         // The chosen one lit, as on the canvas; the pointer's lighter
         self.layer.backgroundColor = white(m_On ? 0.24 : (m_Pressed ? 0.16 : (m_Hovered ? 0.10 : 0)));
+        self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
+        self.layer.borderColor = accent.CGColor;
+        break;
+    case ForkMenuControlPopup:
+        // The canvas's 0.12, lighter under the pointer and while its choices are open
+        self.layer.backgroundColor = white(m_Pressed ? 0.24 : (m_On || m_Hovered ? 0.18 : 0.12));
         self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
         self.layer.borderColor = accent.CGColor;
         break;
@@ -1022,7 +1053,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     NSView* m_QualityLine;
     NSTextField* m_FpsTitle;
     NSView* m_FpsGroup;
-    ForkMenuControl* m_ResolutionRow;
+    NSTextField* m_ResolutionTitle;
+    ForkMenuControl* m_ResolutionButton;
     NSMutableArray<ForkMenuControl*>* m_ResolutionChoices;  // not retained either: shown while m_ResolutionsShown
     NSTextField* m_ReconnectCaption;
     BOOL m_ResolutionsShown;
@@ -1400,7 +1432,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_QualityLine = nil;
     m_FpsTitle = nil;
     m_FpsGroup = nil;
-    m_ResolutionRow = nil;
+    m_ResolutionTitle = nil;
+    m_ResolutionButton = nil;
     [m_ResolutionChoices release];
     m_ResolutionChoices = nil;
     m_ReconnectCaption = nil;
@@ -1601,13 +1634,17 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
 
     ReconnectRules::Size streamSize { menuState.streamWidth, menuState.streamHeight };
-    m_ResolutionRow = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlRow owner:self] autorelease];
-    [m_ResolutionRow setTitle:tr("Resolution")
-                       detail:[NSString stringWithFormat:@"%d × %d %@", streamSize.width, streamSize.height, m_ResolutionsShown ? @"⌃" : @"⌄"]
-                       symbol:nil];
-    [m_ResolutionRow setAccessibilityExpanded:m_ResolutionsShown];
-    [content addSubview:m_ResolutionRow];
-    [m_Controls addObject:m_ResolutionRow];
+    m_ResolutionTitle = makeText(tr("Resolution"), [NSFont systemFontOfSize:13], NSColor.labelColor);
+    [content addSubview:m_ResolutionTitle];
+    m_ResolutionButton = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlPopup owner:self] autorelease];
+    m_ResolutionButton->m_On = m_ResolutionsShown;
+    [m_ResolutionButton setTitle:[NSString stringWithFormat:@"%d × %d", streamSize.width, streamSize.height] detail:nil symbol:nil];
+    [m_ResolutionButton setAccessibilityLabel:tr("Resolution")];
+    [m_ResolutionButton setAccessibilityValue:QCoreApplication::translate("NotchBar", "%1 by %2")
+                                                  .arg(streamSize.width).arg(streamSize.height).toNSString()];
+    [m_ResolutionButton setAccessibilityExpanded:m_ResolutionsShown];
+    [content addSubview:m_ResolutionButton];
+    [m_Controls addObject:m_ResolutionButton];
     [m_ResolutionChoices release];
     m_ResolutionChoices = [[NSMutableArray alloc] init];
     if (m_ResolutionsShown) {
@@ -1627,6 +1664,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
             row->m_Action = current ? NotchMenus::Action::None : NotchMenus::Action::ReconnectAtResolution;
             row->m_Value = ReconnectRules::packSize(size);
             [row setTitle:[NSString stringWithFormat:@"    %d × %d", size.width, size.height] detail:current ? @"✓" : nil symbol:nil];
+            [row setAccessibilityLabel:QCoreApplication::translate("NotchBar", "%1 by %2").arg(size.width).arg(size.height).toNSString()];
+            [row setAccessibilitySelected:current];
             [content addSubview:row];
             [m_Controls addObject:row];
             [m_ResolutionChoices addObject:row];
@@ -1857,16 +1896,21 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_FpsTitle.frame = NSMakeRect(left, y + round((32 - NSHeight(m_FpsTitle.frame)) / 2), MAX(inner - chipX - 12, 0), NSHeight(m_FpsTitle.frame));
     y += 32;
 
-    // Resolution, its choices under it while they're open
-    m_ResolutionRow.frame = NSMakeRect(k_QualityPadding, y + 4, width, k_RowHeight);
-    y += 4 + k_RowHeight;
+    // Resolution: the title, the stream's size in its capsule at the right, 32 pt; its choices under
+    // it while they're open
+    CGFloat buttonWidth = MIN([m_ResolutionButton naturalWidth], inner);
+    m_ResolutionButton.frame = NSMakeRect(left + inner - buttonWidth, y + 5, buttonWidth, 22);
+    [m_ResolutionTitle sizeToFit];
+    m_ResolutionTitle.frame = NSMakeRect(left, y + round((32 - NSHeight(m_ResolutionTitle.frame)) / 2), MAX(inner - buttonWidth - 12, 0),
+                                         NSHeight(m_ResolutionTitle.frame));
+    y += 32;
     for (ForkMenuControl* choice in m_ResolutionChoices) {
         choice.frame = NSMakeRect(k_QualityPadding, y, width, k_RowHeight);
         y += k_RowHeight;
     }
     CGFloat reconnectHeight = textHeight(m_ReconnectCaption, inner);
-    m_ReconnectCaption.frame = NSMakeRect(left, y + 4, inner, reconnectHeight);
-    y += 4 + reconnectHeight;
+    m_ReconnectCaption.frame = NSMakeRect(left, y + 2, inner, reconnectHeight);
+    y += 2 + reconnectHeight;
     return y + 4 + k_QualityPadding;
 }
 
@@ -2164,7 +2208,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
     // Rebuilding drops the menu's controls, and this may run inside this one's mouseUp:
     [[control retain] autorelease];
-    if (control == m_ResolutionRow) {
+    if (control == m_ResolutionButton) {
         // Opens or closes the resolutions under it
         m_ResolutionsShown = !m_ResolutionsShown;
         [self rebuild];
@@ -2174,7 +2218,13 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         // The stream's own frame rate or resolution: nothing to reconnect for
         if (m_ResolutionsShown && control->m_Kind == ForkMenuControlRow) {
             m_ResolutionsShown = NO;
+            BOOL keyboard = m_KeyboardSelection;
             [self rebuild];
+            // Back on Resolution, as the choice it was on has gone
+            NSUInteger row = [m_Controls indexOfObject:m_ResolutionButton];
+            if (row != NSNotFound) {
+                [self select:(int)row keyboard:keyboard];
+            }
         }
         return;
     }
@@ -2235,6 +2285,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         ForkMenuControl* selected = [self selectable:m_Selected] ? m_Controls[(NSUInteger)m_Selected] : nil;
         if (m_KeyboardSelection && selected != nil && selected->m_Kind == ForkMenuControlSlider) {
             [self slider:selected step:step];
+            break;
+        }
+        // Along a segmented control the keyboard selected, as in macOS; it stays at either end
+        if (m_KeyboardSelection && selected != nil && selected->m_Kind == ForkMenuControlChip) {
+            int next = m_Selected + step;
+            if ([self selectable:next] && ((ForkMenuControl*)m_Controls[(NSUInteger)next])->m_Kind == ForkMenuControlChip) {
+                [self select:next keyboard:YES];
+            }
             break;
         }
         // To the next menu whose item is on screen; none, and this one stays open

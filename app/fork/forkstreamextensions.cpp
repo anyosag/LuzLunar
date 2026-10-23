@@ -22,7 +22,6 @@
 #include "macdrive.h"
 #include "mac/pasteboard.h"
 #include "powernotice.h"
-#include "reconnectrules.h"
 #include "settings/streamingpreferences.h"
 #include "streamdiagnostics.h"
 #include "streamstats.h"
@@ -76,7 +75,8 @@ namespace
 }
 
 ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
-                                           const StreamingPreferences& prefs, int bitrateKbps)
+                                           const StreamingPreferences& prefs, int bitrateKbps,
+                                           const ReconnectRules::Choices& choices)
     : m_AppName(app.name),
       m_Width(prefs.width),
       m_Height(prefs.height),
@@ -192,6 +192,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     if (m_NotchBar) {
         m_Power = std::make_unique<ForkPower>();
         m_Saver = std::make_unique<PowerRules::Saver>(m_Power->lowPowerMode());
+        m_Saver->restore(choices.saver, choices.lowPowerMode);
         // The bar asked before there was a battery to read: the item comes now
         m_NotchBar->powerChanged();
         NotchBar* notchBar = m_NotchBar.get();
@@ -203,12 +204,19 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     // The stream's bitrate changed on the PC while it runs: by adaptive bitrate, which lowers it while
     // the network struggles and gives the stream's own back when it recovers, by the notch bar's
     // Quality menu, and by Stream Battery Saver
-    if (forkPrefs->adaptiveBitrate() || m_NotchBar) {
+    // Settings say whether it adapts, unless Quality's switch said otherwise before a reconnect
+    bool adaptive = choices.adaptive.value_or(forkPrefs->adaptiveBitrate());
+    if (adaptive || m_NotchBar) {
         m_BitrateClient = std::make_shared<BitrateClient>(computer, bitrateKbps);
     }
     m_AppliedCeiling = bitrateKbps;
-    if (forkPrefs->adaptiveBitrate()) {
+    if (adaptive) {
         m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateKbps, prefs.enableHdr, bitrateKbps);
+    }
+    else if (choices.manualKbps > 0 && m_BitrateClient) {
+        // The bitrate set by hand before a reconnect, asked for once the PC says it can change it
+        m_ManualKbps = choices.manualKbps;
+        m_ManualPending = true;
     }
     // The saver's cap from the start, once the PC has said what it can do
     applySaver();
@@ -337,6 +345,16 @@ void ForkStreamExtensions::applySaver()
         return;
     }
     m_SaverPending = false;
+    if (m_ManualPending) {
+        m_ManualPending = false;
+        if (client.live && !m_AdaptiveBitrate) {
+            m_AppliedCeiling = adaptiveCeiling();
+            int cap = saverCapKbps();
+            m_BitrateClient->request(cap > 0 ? std::min(m_ManualKbps, cap) : m_ManualKbps);
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Reconnected: the bitrate set by hand, %d kbps, again", m_ManualKbps);
+            return;
+        }
+    }
     int ceiling = adaptiveCeiling();
     if (!client.live || ceiling == m_AppliedCeiling) {
         // Nothing to cap live (Quality says a reconnect would), or nothing changed
@@ -572,8 +590,19 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
         else if (action == NotchMenus::Action::ReconnectAtBitrate) {
             overrides.bitrateKbps = value;
         }
+        // What the bar chose for this stream holds for the next: adaptive bitrate on or off, the
+        // bitrate set by hand, Stream Battery Saver switched by hand
+        ReconnectRules::Choices choices;
+        if (m_BitrateClient) {
+            choices.adaptive = m_AdaptiveBitrate != nullptr;
+            choices.manualKbps = m_AdaptiveBitrate ? 0 : m_ManualKbps;
+        }
+        if (m_Saver) {
+            choices.saver = m_Saver->manual();
+            choices.lowPowerMode = m_Saver->lowPowerMode();
+        }
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: reconnect%s", action == NotchMenus::Action::Reconnect ? "" : " with a change");
-        session->forkReconnect(overrides);
+        session->forkReconnect(overrides, choices);
         pushQuit();
         break;
     }

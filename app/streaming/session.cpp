@@ -1693,7 +1693,8 @@ bool Session::startConnectionAsync()
 
     try {
         NvHTTP http(m_Computer);
-        http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
+        // [fork] A reconnect's app runs on, but currentGameId may not know (polling stops while streaming)
+        http.startApp(m_ForkReconnecting ? ForkReconnect::startVerb(m_Computer) : m_Computer->currentGameId != 0 ? "resume" : "launch",
                       m_Computer->isNvidiaServerSoftware,
                       m_App.id, &m_StreamConfig,
                       enableGameOptimizations,
@@ -1808,12 +1809,13 @@ void Session::forkQuitHostAppOnEnd()
 }
 
 // [fork] The notch bar's reconnects: the app keeps running on the PC, for the stream that follows
-void Session::forkReconnect(const ReconnectRules::Overrides& overrides)
+void Session::forkReconnect(const ReconnectRules::Overrides& overrides, const ReconnectRules::Choices& choices)
 {
     if (!m_ForkReconnect) {
         m_ForkQuitAppAfter = m_Preferences->quitAppAfter;
     }
     m_ForkReconnect = overrides;
+    m_ForkReconnectChoices = choices;
     m_Preferences->quitAppAfter = false;
     m_ShouldExit = false;
     m_ForkSleepHostAfter = false;
@@ -1829,6 +1831,7 @@ Session* Session::forkCreateReconnectSession()
     // The user's choice to quit the app after a stream holds for the stream that follows
     next->m_Preferences->quitAppAfter = m_ForkQuitAppAfter;
     next->m_ForkReconnecting = true;
+    next->m_ForkChoices = ReconnectRules::carried(m_ForkReconnectChoices, *m_ForkReconnect);
     return next;
 }
 
@@ -2054,7 +2057,7 @@ void Session::exec()
     RichPresenceManager presence(*m_Preferences, m_App.name);
 
     // [fork] Per-stream fork features (shortcut guard, clipboard sync, notch bar, fullscreen stretch, ...)
-    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences, m_ForkOwnBitrateKbps);
+    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences, m_ForkOwnBitrateKbps, m_ForkChoices);
 
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
