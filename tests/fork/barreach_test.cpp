@@ -16,170 +16,213 @@ static int s_Failures = 0;
         }                                                               \
     } while (0)
 
-// Moves every 10 ms from ms for duration, each dy pixels and dyPoints up; the time of the first move
-// that asks, or 0
-static std::uint32_t push(Tracker& tracker, std::uint32_t& ms, std::uint32_t duration, int dy = -4, double dyPoints = -2,
-                          double dxPoints = 0, bool button = false)
+static const std::uint32_t k_Release = k_Pulses * k_PulseMs;
+
+// One move up: 4 px, 2 points
+static Step up(Tracker& tracker, std::uint32_t ms, int dy = -4, double dyPoints = -2, double dxPoints = 0, bool button = false)
 {
-    std::uint32_t asked = 0;
+    return tracker.moved(0, dy, dxPoints, dyPoints, button, ms);
+}
+
+// Moves up every 10 ms from ms for duration, until a step isn't None; that step
+static Step push(Tracker& tracker, std::uint32_t& ms, std::uint32_t duration, int dy = -4, double dyPoints = -2)
+{
     for (std::uint32_t end = ms + duration; ms < end; ms += 10) {
-        if (tracker.moved(0, dy, dxPoints, dyPoints, button, ms) && asked == 0) {
-            asked = ms;
+        Step step = up(tracker, ms, dy, dyPoints);
+        if (step.action != Action::None) {
+            ms += 10;
+            return step;
         }
     }
-    return asked;
+    return {};
 }
 
-static Cursor at(int x, int y, bool shown = true)
+static Cursor at(int x, int y, bool pulsing = true, bool shown = true)
 {
-    return { x, y, 2560, 1440, shown };
+    Cursor cursor;
+    cursor.x = x;
+    cursor.y = y;
+    cursor.width = 2560;
+    cursor.height = 1440;
+    cursor.shown = shown;
+    cursor.pulsing = pulsing;
+    return cursor;
 }
 
-static void testFirstPushAsks()
+static void testAsksAsThePushBegins()
 {
     Tracker tracker;
-    std::uint32_t ms = 1000;
-    // Not known yet: a push long and far enough asks, once until it's answered
-    std::uint32_t asked = push(tracker, ms, 400);
-    CHECK(asked >= 1000 + k_PushMs);
+    // Not known yet: the first move up asks, at once
+    CHECK(up(tracker, 1000).action == Action::Ask);
     CHECK(tracker.asking());
-    CHECK(push(tracker, ms, 300) == 0);
+    std::uint32_t ms = 1010;
+    CHECK(push(tracker, ms, 300).action == Action::None);
 }
 
-static void testAtTopHandsOver()
+static void testGoesAsTheSecondPulseEnds()
 {
     Tracker tracker;
-    std::uint32_t ms = 1000;
-    push(tracker, ms, 300);
-    // At the top, still pushed: the Mac's pointer goes in above it
-    std::optional<double> x = tracker.answered(at(1279, 0), ms);
-    CHECK(x && *x > 0.49 && *x < 0.51);
-    CHECK(tracker.known() && tracker.y() == 0);
+    CHECK(up(tracker, 1000).action == Action::Ask);
+    // At the top, and the PC pulses it
+    CHECK(tracker.answered(at(1279, 0), 1040).action == Action::None);
+    CHECK(tracker.busy());
+    // Pushed on: nothing until the pulses end
+    std::uint32_t ms = 1050;
+    CHECK(push(tracker, ms, k_Release - 20).action == Action::None);
+    Step step = push(tracker, ms, 60);
+    CHECK(step.action == Action::HandOver);
+    CHECK(step.fraction > 0.49 && step.fraction < 0.51);
+    CHECK(!tracker.busy());
 }
 
-// Moves as push() does until one asks; its time, or 0
-static std::uint32_t pushUntilAsked(Tracker& tracker, std::uint32_t& ms, std::uint32_t duration, int dy = -4, double dyPoints = -2)
+static void testPulsesHereWhenThePcCant()
 {
-    for (std::uint32_t end = ms + duration; ms < end; ms += 10) {
-        if (tracker.moved(0, dy, 0, dyPoints, false, ms)) {
-            return ms;
-        }
-    }
-    return 0;
+    Tracker tracker;
+    up(tracker, 1000);
+    CHECK(tracker.answered(at(500, 0, false), 1040).action == Action::PulseHere);
+    std::uint32_t ms = 1050;
+    CHECK(push(tracker, ms, k_Release + 20).action == Action::HandOver);
 }
 
 static void testLowerSyncs()
 {
     Tracker tracker;
-    std::uint32_t ms = 1000;
-    CHECK(pushUntilAsked(tracker, ms, 400) != 0);
-    // 300 px down: no handing over, and the pointer is followed from there, with the moves since
-    tracker.moved(0, -8, 0, -4, false, ms + 5);
-    CHECK(!tracker.answered(at(100, 300), ms + 10));
-    CHECK(tracker.known() && tracker.x() == 100 && tracker.y() == 292);
+    up(tracker, 1000);
+    // 300 px down: followed from there, with the moves since
+    up(tracker, 1005, -8, -4);
+    CHECK(tracker.answered(at(100, 300, false), 1010).action == Action::None);
+    CHECK(tracker.known() && tracker.x() == 100 && tracker.y() == 292 && !tracker.busy());
 
-    // Pushed up to the top: the push starts there, and asks once it's long enough. 292 px at 4 a
-    // move reach the top with the 73rd move.
-    ms += 300;
+    // Pushed up to the top: it asks as it gets there. 292 px at 4 a move reach it with the 73rd.
+    std::uint32_t ms = 1300;
     std::uint32_t top = ms + 72 * 10;
-    std::uint32_t asked = pushUntilAsked(tracker, ms, 1500);
-    CHECK(asked >= top + k_PushMs && asked <= top + k_PushMs + 10);
-    CHECK(tracker.answered(at(100, 0), asked + 5));
+    Step step;
+    std::uint32_t askedAt = 0;
+    for (std::uint32_t end = ms + 1000; ms < end; ms += 10) {
+        step = up(tracker, ms);
+        if (step.action == Action::Ask) {
+            askedAt = ms;
+            break;
+        }
+    }
+    CHECK(askedAt == top);
 }
 
-static void testThrowDoesntReach()
+static void testStopsShort()
 {
+    // Stopped while the PC pulses: a pause, seen by the tick
     Tracker tracker;
-    std::uint32_t ms = 1000;
-    push(tracker, ms, 300);
-    tracker.answered(at(500, 40), ms);
-    // Thrown up, past the top for a moment, then still: no question
-    CHECK(push(tracker, ms, 150, -8, -6) == 0);
-    ms += 200;
-    // The next push starts over: a short one doesn't ask either
-    CHECK(push(tracker, ms, 200) == 0);
+    up(tracker, 1000);
+    tracker.answered(at(500, 0), 1040);
+    std::uint32_t ms = 1050;
+    push(tracker, ms, 100);
+    CHECK(tracker.tick(ms + 100).action == Action::None);
+    Step step = tracker.tick(ms + k_PauseMs + 20);
+    CHECK(step.action == Action::Cancel && step.pcPulses);
+    CHECK(!tracker.busy());
+
+    // Moving down instead
+    Tracker down;
+    up(down, 1000);
+    down.answered(at(500, 0), 1040);
+    CHECK(down.moved(0, 10, 0, 5, false, 1100).action == Action::Cancel);
+
+    // The pulses over the picture settle too
+    Tracker here;
+    up(here, 1000);
+    here.answered(at(500, 0, false), 1040);
+    Step settle = here.moved(0, 10, 0, 5, false, 1100);
+    CHECK(settle.action == Action::Cancel && !settle.pcPulses);
 }
 
-static void testSlidingAlongTop()
+static void testEndsBeforeTheAnswer()
 {
     Tracker tracker;
-    std::uint32_t ms = 1000;
-    push(tracker, ms, 300);
-    tracker.answered(at(500, 0), ms);
-    ms += 300;
+    up(tracker, 1000);
+    // The PC pulses, but the push had stopped by then
+    Step step = tracker.answered(at(500, 0), 1000 + k_PauseMs + 50);
+    CHECK(step.action == Action::Cancel && step.pcPulses);
+}
+
+static void testNotEnoughPush()
+{
+    Tracker tracker;
+    up(tracker, 1000, -4, -1);
+    tracker.answered(at(500, 0), 1010);
+    // A gentle push: half a point a move, 18 points by the time the pulses end
+    std::uint32_t ms = 1020;
+    CHECK(push(tracker, ms, k_Release, -1, -0.5).action == Action::None);
+    // On until 24
+    CHECK(push(tracker, ms, 200, -1, -0.5).action == Action::HandOver);
+}
+
+static void testSlidingAndDragging()
+{
+    Tracker tracker;
+    up(tracker, 1000);
+    tracker.answered(at(500, 0, false), 1010);
+    tracker.moved(0, 10, 0, 5, false, 1020);
     // Across tabs: a little up, mostly sideways
-    CHECK(push(tracker, ms, 600, 0, -1, 5) == 0);
-    // Dragging, as a window to the top: no push either
-    CHECK(push(tracker, ms, 600, -4, -2, 0, true) == 0);
+    std::uint32_t ms = 1400;
+    Step step;
+    for (std::uint32_t end = ms + 600; ms < end; ms += 10) {
+        step = tracker.moved(0, -4, 5, -1, false, ms);
+        CHECK(step.action == Action::None);
+    }
+    // Dragging, as a window to the top
+    for (std::uint32_t end = ms + 600; ms < end; ms += 10) {
+        CHECK(up(tracker, ms, -4, -2, 0, true).action == Action::None);
+    }
 }
 
-static void testShownAndStillPushed()
+static void testHiddenOrBeside()
 {
-    Tracker tracker;
-    std::uint32_t ms = 1000;
-    push(tracker, ms, 300);
-    // A game hides the pointer
-    CHECK(!tracker.answered(at(500, 0, false), ms));
+    Tracker hidden;
+    up(hidden, 1000);
+    CHECK(hidden.answered(at(500, 0, false, false), 1010).action == Action::None);
+    CHECK(!hidden.busy());
 
-    // The answer comes after the push stopped
-    ms += 300;
-    push(tracker, ms, 300);
-    CHECK(!tracker.answered(at(500, 0), ms + k_PauseMs + 20));
+    Tracker beside;
+    up(beside, 1000);
+    CHECK(beside.answered(at(-200, 0, false), 1010).action == Action::None);
+    CHECK(!beside.known());
+
+    // Above, on a display over this one: at the top
+    Tracker above;
+    up(above, 1000);
+    above.answered(at(640, -30), 1010);
+    std::uint32_t ms = 1020;
+    CHECK(push(above, ms, k_Release + 20).action == Action::HandOver);
 }
 
 static void testAskGap()
 {
     Tracker tracker;
-    std::uint32_t ms = 1000;
-    std::uint32_t first = push(tracker, ms, 260);
-    CHECK(first != 0);
+    CHECK(up(tracker, 1000).action == Action::Ask);
     tracker.unanswered();
-    // Asked again no sooner than the gap allows
-    std::uint32_t second = push(tracker, ms, 300);
-    CHECK(second >= first + k_AskGapMs);
-}
-
-static void testOtherDisplays()
-{
-    Tracker tracker;
-    std::uint32_t ms = 1000;
-    push(tracker, ms, 300);
-    // Beside the display: nothing known
-    CHECK(!tracker.answered(at(-200, 0), ms));
-    CHECK(!tracker.known());
-
-    // Above it, on a display over this one: past the top
-    push(tracker, ms, 300);
-    CHECK(tracker.answered(at(640, -30), ms));
-}
-
-static void testPlaced()
-{
-    Tracker tracker;
-    // Before any answer the display's size isn't known
-    tracker.placed(0.5, 0.1);
-    CHECK(!tracker.known());
-
-    std::uint32_t ms = 1000;
-    push(tracker, ms, 300);
-    tracker.answered(at(500, 500), ms);
-    tracker.placed(0.25, 0);
-    CHECK(tracker.known() && tracker.x() == 640 && tracker.y() == 0);
-    tracker.forget();
-    CHECK(!tracker.known());
+    std::uint32_t ms = 1010;
+    std::uint32_t askedAt = 0;
+    for (std::uint32_t end = ms + 400; ms < end; ms += 10) {
+        if (up(tracker, ms).action == Action::Ask) {
+            askedAt = ms;
+            break;
+        }
+    }
+    CHECK(askedAt == 1000 + k_AskGapMs);
 }
 
 int main()
 {
-    testFirstPushAsks();
-    testAtTopHandsOver();
+    testAsksAsThePushBegins();
+    testGoesAsTheSecondPulseEnds();
+    testPulsesHereWhenThePcCant();
     testLowerSyncs();
-    testThrowDoesntReach();
-    testSlidingAlongTop();
-    testShownAndStillPushed();
+    testStopsShort();
+    testEndsBeforeTheAnswer();
+    testNotEnoughPush();
+    testSlidingAndDragging();
+    testHiddenOrBeside();
     testAskGap();
-    testOtherDisplays();
-    testPlaced();
 
     if (s_Failures == 0) {
         std::printf("barreach: all tests passed\n");

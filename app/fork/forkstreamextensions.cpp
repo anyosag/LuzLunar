@@ -301,9 +301,20 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         pcSaysCursor = computer->apolloCursor;
     }
     if (m_NotchBar && pcSaysCursor) {
-        m_BarReach = std::make_unique<ForkBarReach>(computer, [this](double fraction) {
+        ForkBarReach::Callbacks callbacks;
+        callbacks.handOver = [this](double fraction) {
             handBarThePointer(fraction);
-        });
+        };
+        callbacks.pulseHere = [this](int pulses) {
+            pulseOverPicture(pulses);
+        };
+        callbacks.settleHere = [this]() {
+            m_NotchBar->settlePulse();
+        };
+        callbacks.reduceMotion = [] {
+            return NotchBar::reduceMotion();
+        };
+        m_BarReach = std::make_unique<ForkBarReach>(computer, std::move(callbacks));
         ForkBarReach* reach = m_BarReach.get();
         ForkTrackpadPassthrough::setMacPointerListener([reach](int dx, int dy, double dxPoints, double dyPoints) {
             reach->moved(dx, dy, dxPoints, dyPoints);
@@ -772,6 +783,29 @@ SDL_Rect ForkStreamExtensions::videoRect() const
     return dst;
 }
 
+std::optional<std::pair<double, double>> ForkStreamExtensions::pcPointerInWindow() const
+{
+    std::optional<std::pair<double, double>> pointer = m_BarReach ? m_BarReach->pointer() : std::nullopt;
+    if (!pointer) {
+        return std::nullopt;
+    }
+    SDL_Rect video = videoRect();
+    return std::make_pair(video.x + pointer->first * video.w, video.y + pointer->second * video.h);
+}
+
+void ForkStreamExtensions::pulseOverPicture(int pulses)
+{
+    std::optional<std::pair<double, double>> point = pcPointerInWindow();
+    if (!point) {
+        return;
+    }
+    // Windows' standard arrow is about 19 pixels tall at 100% scaling; the PC's scaling isn't known
+    SDL_Rect video = videoRect();
+    int height = m_BarReach->displayHeight() > 0 ? m_BarReach->displayHeight() : m_Height;
+    double size = height > 0 ? 19.0 * video.h / height : 19.0;
+    m_NotchBar->pulseAt(point->first, point->second, pulses, size);
+}
+
 void ForkStreamExtensions::handBarThePointer(double fraction)
 {
     SdlInputHandler* input = inputHandler();
@@ -781,25 +815,31 @@ void ForkStreamExtensions::handBarThePointer(double fraction)
         return;
     }
     SDL_Rect video = videoRect();
+    std::optional<std::pair<double, double>> from = pcPointerInWindow();
+    if (!from) {
+        from = std::make_pair(video.x + fraction * video.w, static_cast<double>(video.y));
+    }
     // As the menus let a game's hold go (MenusOpened)
     input->setCaptureActive(false);
     input->raiseAllKeys();
     m_BarHasPointer = true;
-    m_NotchBar->takePointer(video.x + fraction * video.w);
+    // Its ghost floats up from the PC's pointer, which stays where it is
+    m_NotchBar->projectUp(from->first, from->second);
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: the pointer went up past the top into the bar");
 }
 
 void ForkStreamExtensions::takePointerFromBar(SdlInputHandler* input, int x, int y)
 {
     m_BarHasPointer = false;
-    SDL_Rect video = videoRect();
     input->setCaptureActive(true);
-    // The PC's pointer comes down where the Mac's did, and goes on from there
-    LiSendMousePositionEvent(static_cast<short>(x - video.x), static_cast<short>(y - video.y), static_cast<short>(video.w),
-                             static_cast<short>(video.h));
-    if (m_BarReach && video.w > 0 && video.h > 0) {
-        m_BarReach->placed(static_cast<double>(x - video.x) / video.w, static_cast<double>(y - video.y) / video.h);
-    }
+    // The PC's pointer stays where it went up from, and goes on from there: the Mac's ghost is
+    // sucked back into it, following it if it moves meanwhile, and it pulses once as the ghost gets
+    // there (over the picture for a PC that can't)
+    m_NotchBar->pullHome(x, y, [this] { return pcPointerInWindow(); }, [this] {
+        if (m_BarReach && !m_BarReach->pulseOnce()) {
+            pulseOverPicture(1);
+        }
+    });
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: the pointer came back down into the picture");
 }
 

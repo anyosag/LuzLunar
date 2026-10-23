@@ -132,6 +132,7 @@ HEADERS += \
     $$PWD/mac/notchbar.h \
     $$PWD/mac/notchbattery_mac.h \
     $$PWD/mac/notchmenus_mac.h \
+    $$PWD/mac/notchreach_mac.h \
     $$PWD/mac/notchstatus_mac.h \
     $$PWD/mac/pasteboard.h \
     $$PWD/mac/selfupdate_mac.h \
@@ -150,6 +151,7 @@ macx {
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/notchbattery_mac.mm \
         $$PWD/mac/notchmenus_mac.mm \
+        $$PWD/mac/notchreach_mac.mm \
         $$PWD/mac/notchstatus_mac.mm \
         $$PWD/mac/pasteboard_mac.mm \
         $$PWD/mac/power_mac.mm \

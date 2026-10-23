@@ -2,6 +2,8 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
+#include <utility>
 
 #include <QString>
 #include <QtGlobal>
@@ -110,10 +112,25 @@ public:
     // The bar is beside the notch now, where the pointer must be able to reach it
     virtual bool onScreen() const = 0;
 
-    // Puts the Mac's pointer in the strip, above this x of the stream window (in its points): Mac
-    // trackpad mode's pointer came up past the top of the picture (ForkBarReach). The stream has let
-    // the pointer go first.
-    virtual void takePointer(double windowX) = 0;
+    // Mac trackpad mode's pointer up into the bar and back (ForkBarReach), drawn on a panel over the
+    // stream (notchreach_mac.mm). Points are in the stream window's points, from its top left.
+    //
+    // projectUp: the PC's pointer, at this point at the top of the picture, came up past it. The
+    // Mac's pointer goes into the strip above it, and a ghost of it floats up there. The stream has
+    // let the pointer go first.
+    virtual void projectUp(double windowX, double windowY) = 0;
+    // pullHome: the Mac's pointer, at this point, came back down into the picture. Its ghost is
+    // sucked back into the PC's pointer, wherever pcPoint says it is as it goes (none: where it
+    // left); arriving is called just before it gets there.
+    virtual void pullHome(double windowX, double windowY, std::function<std::optional<std::pair<double, double>>()> pcPoint,
+                          std::function<void()> arriving) = 0;
+    // Pulses over the PC's pointer at this point, for a PC that can't pulse its own; size: its
+    // arrow's height in points. settlePulse: they stop short, settling back.
+    virtual void pulseAt(double windowX, double windowY, int pulses, double size) = 0;
+    virtual void settlePulse() = 0;
+
+    // macOS's Reduce Motion
+    static bool reduceMotion();
 
     // An open menu and the Quality item show MenuState again, after an action changed it
     virtual void refreshMenus() = 0;
