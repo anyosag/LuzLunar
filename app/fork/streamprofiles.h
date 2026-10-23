@@ -41,6 +41,11 @@ public:
     static Session* createReconnectSession(NvComputer* computer, NvApp& app, const StreamingPreferences* from,
                                            const ReconnectRules::Overrides& overrides);
 
+signals:
+    // The notch bar's Stream Settings saved a profile during a stream, so the app tiles show it
+    // (queued: it arrives once the Qt loop runs again after the stream)
+    void profileSaved();
+
 private:
     explicit StreamProfiles(QObject* parent = nullptr);
 };

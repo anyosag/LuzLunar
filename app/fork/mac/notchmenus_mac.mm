@@ -1063,7 +1063,8 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
     }
     case ForkMenuControlPopup:
         // The canvas's 0.12, lighter under the pointer and while its choices are open
-        self.layer.backgroundColor = white(m_Pressed ? 0.24 : (m_On || m_Hovered ? 0.18 : 0.12));
+        // The canvas's 0.22 while its choices are open
+        self.layer.backgroundColor = white(m_Pressed ? 0.24 : (m_On ? 0.22 : (m_Hovered ? 0.18 : 0.12)));
         self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
         self.layer.borderColor = accent.CGColor;
         break;
@@ -1226,6 +1227,9 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
     // so the draft starts again from what the stream applied
     ForkStreamSettings::View m_SettingsView;
     BOOL m_Opening;
+    // What the PC could change live when Stream Settings was built, which decides its ↻ and Apply's title
+    BOOL m_SettingsLive;
+    int m_SettingsMaxKbps;
     // Quality's Stream Battery Saver note, and its reconnect on a PC that can't change the bitrate live
     NSView* m_SaverBox;
     NSTextField* m_SaverText;
@@ -1754,9 +1758,10 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
     }
     NSRect openerFrame = [content convertRect:opener.bounds fromView:opener];
     CGFloat x = MAX(4, MIN(NSMaxX(openerFrame) - width, NSWidth(content.bounds) - 4 - width));
-    CGFloat y = NSMaxY(openerFrame) + 4;
+    // Just under its opener, as on the canvas, or above it without room below
+    CGFloat y = NSMaxY(openerFrame) + 2;
     if (y + height > NSHeight(content.bounds) - 4) {
-        y = MAX(4, NSMinY(openerFrame) - 4 - height);
+        y = MAX(4, NSMinY(openerFrame) - 2 - height);
     }
     list.frame = NSMakeRect(x, y, width, height);
     m_ListFirst = m_Controls.count;
@@ -1795,6 +1800,9 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
         return;
     }
     const ForkStreamSettings::View& view = m_SettingsView;
+    NotchQuality::State bitrate = [m_Host menusState].bitrate;
+    m_SettingsLive = bitrate.live;
+    m_SettingsMaxKbps = bitrate.maxKbps;
     const CGFloat outer = k_SettingsWidth - 2 * k_SettingsPadding;
     const CGFloat left = k_SettingsPadding + 4;    // the rows' text inset
     const CGFloat inner = outer - 8;
@@ -1930,11 +1938,17 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
     ForkMenuControl* apply = addButton(view.applyReconnects ? tr("Apply and Reconnect") : tr("Apply"), ForkButtonPrimary, view.canApply);
     apply->m_Action = NotchMenus::Action::StreamSettingsApply;
     CGFloat right = k_SettingsPadding + outer;
-    CGFloat applyWidth = [apply naturalWidth];
-    apply.frame = NSMakeRect(right - applyWidth, y, applyWidth, 24);
+    CGFloat resetWidth = [reset naturalWidth];
     CGFloat saveWidth = [save naturalWidth];
+    CGFloat applyWidth = [apply naturalWidth];
+    reset.frame = NSMakeRect(k_SettingsPadding, y, resetWidth, 24);
+    if (k_SettingsPadding + resetWidth + 8 + saveWidth + 8 + applyWidth > right) {
+        // As the canvas's footer wraps: Save and Apply on a line of their own when they don't fit
+        // beside Reset to Global ("Apply and Reconnect")
+        y += 24 + 8;
+    }
+    apply.frame = NSMakeRect(right - applyWidth, y, applyWidth, 24);
     save.frame = NSMakeRect(NSMinX(apply.frame) - 8 - saveWidth, y, saveWidth, 24);
-    reset.frame = NSMakeRect(k_SettingsPadding, y, [reset naturalWidth], 24);
     y += 24 + 10;
     *size = NSMakeSize(k_SettingsWidth, y);
 }
@@ -1964,6 +1978,8 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
         choice->m_Value = (wanted << 8) | static_cast<int>(i);
         [choice setTitle:option.text.toNSString() detail:nil symbol:nil];
         [choice setChecked:option.checked reconnects:option.reconnects];
+        choice->m_Enabled = option.enabled;
+        [choice setAccessibilityEnabled:option.enabled];
         [choices addObject:choice];
         if (option.separatorAfter) {
             [choices addObject:[[[ForkMenuControl alloc] initWithKind:ForkMenuControlSeparator owner:self] autorelease]];
@@ -2727,6 +2743,14 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
     }
     else if (m_BitrateTileDetail != nil) {
         [self showBitrateTile:[m_Host menusState].bitrate];
+    }
+    else if (m_Open == NotchMenus::Menu::StreamSettings && m_ListView == nil) {
+        // What the PC can change live decides which choices reconnect, and Apply's title; only that,
+        // as a rebuild under the pointer would lose a click (the bitrate itself moves every few seconds)
+        NotchQuality::State bitrate = [m_Host menusState].bitrate;
+        if (bitrate.live != m_SettingsLive || bitrate.maxKbps != m_SettingsMaxKbps) {
+            [self rebuild];
+        }
     }
 }
 

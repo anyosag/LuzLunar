@@ -77,16 +77,21 @@ static void testReconnects()
     stream.bitrateMaxKbps = 25000;
 
     for (Key key : { Key::Resolution, Key::Fps, Key::Hdr, Key::Codec, Key::Yuv444 }) {
-        CHECK(alwaysReconnects(key) && reconnects(key, 0, stream));
+        CHECK(alwaysReconnects(key, stream) && reconnects(key, 0, stream));
+    }
+    for (Key key : { Key::Fill, Key::Vsync, Key::Pacing, Key::Mouse, Key::Bitrate }) {
+        CHECK(!alwaysReconnects(key, stream));
     }
     for (Key key : { Key::Fill, Key::Vsync, Key::Pacing, Key::Mouse }) {
-        CHECK(!alwaysReconnects(key) && !reconnects(key, 1, stream));
+        CHECK(!reconnects(key, 1, stream));
     }
     // The bitrate within Apollo's max, live
     CHECK(!reconnects(Key::Bitrate, 25000, stream));
     CHECK(reconnects(Key::Bitrate, 40000, stream));
     stream.bitrateLive = false;
     CHECK(reconnects(Key::Bitrate, 10000, stream));
+    // Then every bitrate reconnects, so the row says so by its label alone
+    CHECK(alwaysReconnects(Key::Bitrate, stream));
     // The trackpad as Control Center's
     CHECK(!reconnects(Key::Trackpad, ReconnectRules::k_TrackpadMacMouse, stream));
     CHECK(reconnects(Key::Trackpad, ReconnectRules::k_TrackpadWindowsTouchpad, stream));
@@ -110,6 +115,46 @@ static void testMouse()
     CHECK(!absoluteMouse({}, g));
 }
 
+static void testToApply()
+{
+    Profile g = global();
+    // The stream as it runs: at 60 after Quality's reconnect, and at the 40 Mb/s Settings gives 4:4:4
+    Profile actual = g;
+    actual[Key::Fps] = 60;
+    actual[Key::Bitrate] = 40000;
+
+    // Nothing chosen: nothing to apply, whatever the stream runs at
+    CHECK(toApply({}, g, actual, {}).empty());
+    // 120 chosen again: the stream runs at 60, so it applies
+    CHECK((toApply({ { Key::Fps, 120 } }, g, actual, { Key::Fps }) == std::vector<Key> { Key::Fps }));
+    // Global chosen for it does too, Settings having 120
+    CHECK((toApply({}, g, actual, { Key::Fps }) == std::vector<Key> { Key::Fps }));
+    // 60 chosen: the stream has it already
+    CHECK(toApply({ { Key::Fps, 60 } }, g, actual, { Key::Fps }).empty());
+    // 20 Mb/s chosen, which the panel's Global shows, while the stream runs at 40
+    CHECK((toApply({ { Key::Bitrate, 20000 } }, g, actual, { Key::Bitrate }) == std::vector<Key> { Key::Bitrate }));
+
+    // The mouse goes with the trackpad: Office's remote desktop mouse, the stream in Mac trackpad
+    // without it; Mac mouse chosen brings the remote desktop's mouse
+    Profile draft = office();
+    draft[Key::Trackpad] = ReconnectRules::k_TrackpadMacMouse;
+    Profile running = g;
+    running[Key::Mouse] = 0;
+    std::vector<Key> keys = toApply(draft, g, running, { Key::Trackpad });
+    CHECK((keys == std::vector<Key> { Key::Mouse, Key::Trackpad }));
+    // Office's mouse alone, with Mac trackpad: the stream can't have it, and doesn't
+    CHECK(toApply(office(), g, running, { Key::Mouse }).empty());
+}
+
+static void testDifferences()
+{
+    CHECK(differences({}, {}).empty());
+    std::set<Key> keys = differences(office(), gaming());
+    // Gaming sets no V-Sync; both set the rest, HDR and 4:4:4 and the codec, mouse and pacing to others
+    CHECK((keys == std::set<Key> { Key::Hdr, Key::Codec, Key::Yuv444, Key::Vsync, Key::Pacing, Key::Mouse }));
+    CHECK((differences(office(), {}) == std::set<Key> { Key::Hdr, Key::Codec, Key::Yuv444, Key::Vsync, Key::Pacing, Key::Mouse }));
+}
+
 int main()
 {
     testPresets();
@@ -117,6 +162,8 @@ int main()
     testChanged();
     testReconnects();
     testMouse();
+    testToApply();
+    testDifferences();
 
     if (s_Failures == 0) {
         std::printf("streamsettingsrules: all tests passed\n");

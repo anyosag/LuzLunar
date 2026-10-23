@@ -93,8 +93,10 @@ namespace
         return map;
     }
 
-    Profile fromSettings(const StreamingPreferences& prefs)
+    Profile fromSettings(const StreamingPreferences& prefs, bool asRunning = false)
     {
+        // As the stream runs, the remote desktop's mouse is there only with Mac mouse
+        bool absolute = prefs.absoluteMouseMode && (!asRunning || prefs.trackpadMode == StreamingPreferences::TM_MAC_MOUSE);
         return { { Key::Resolution, ReconnectRules::packSize({ prefs.width, prefs.height }) },
                  { Key::Fps, prefs.fps },
                  { Key::Hdr, prefs.enableHdr ? 1 : 0 },
@@ -104,7 +106,7 @@ namespace
                  { Key::Fill, prefs.fullscreenStretch ? 1 : 0 },
                  { Key::Vsync, prefs.enableVsync ? 1 : 0 },
                  { Key::Pacing, prefs.framePacing ? 1 : 0 },
-                 { Key::Mouse, prefs.absoluteMouseMode ? 1 : 0 },
+                 { Key::Mouse, absolute ? 1 : 0 },
                  { Key::Trackpad, prefs.trackpadMode } };
     }
 
@@ -126,9 +128,18 @@ ForkStreamSettings::ForkStreamSettings(const QString& hostUuid, const QString& h
 {
     m_Baseline = carriedBaseline ? unpack(*carriedBaseline) : m_Saved;
     m_Draft = m_Baseline;
-    if (StreamSettingsRules::presetOf(m_Saved) == StreamSettingsRules::Preset::Custom) {
+    // The Custom card's settings: what the stream applied, else what's saved, if either isn't a preset
+    if (StreamSettingsRules::presetOf(m_Baseline) == StreamSettingsRules::Preset::Custom) {
+        m_LastCustom = m_Baseline;
+    }
+    else if (StreamSettingsRules::presetOf(m_Saved) == StreamSettingsRules::Preset::Custom) {
         m_LastCustom = m_Saved;
     }
+}
+
+Profile ForkStreamSettings::fromPreferences(const StreamingPreferences& prefs)
+{
+    return fromSettings(prefs, true);
 }
 
 std::map<int, int> ForkStreamSettings::pack(const Profile& profile)
@@ -156,12 +167,23 @@ QString ForkStreamSettings::effectiveRatioKey(const Profile& profile) const
     return AspectRatios::get()->keyFor(size.width, size.height, m_Display);
 }
 
+QVariantList ForkStreamSettings::sizesFor(const QString& ratioKey) const
+{
+    double ratio = 0;
+    if (ratioKey == QStringLiteral("custom")) {
+        // A size of no standard ratio: its own ratio's sizes, as the dialog lists them
+        ReconnectRules::Size size = ReconnectRules::unpackSize(StreamSettingsRules::effective(m_Draft, m_Global, Key::Resolution));
+        ratio = size.height > 0 ? static_cast<double>(size.width) / size.height : 0;
+    }
+    return AspectRatios::get()->presets(ratioKey, ratio, m_Display);
+}
+
 // The size to pick for a ratio, as the dialog does: the one that fills the display, else the one
 // nearest the draft's size by pixel count
 std::optional<int> ForkStreamSettings::fillingSize(const QString& ratioKey) const
 {
     ReconnectRules::Size current = ReconnectRules::unpackSize(StreamSettingsRules::effective(m_Draft, m_Global, Key::Resolution));
-    QVariantList presets = AspectRatios::get()->presets(ratioKey, 0, m_Display);
+    QVariantList presets = sizesFor(ratioKey);
     std::optional<int> best;
     double bestDistance = 0;
     for (const QVariant& item : presets) {
@@ -208,7 +230,7 @@ std::vector<ForkStreamSettings::Option> ForkStreamSettings::options(RowId row) c
     }
     case RowId::Resolution: {
         // The sizes of the ratio, then the draft's own if it's another; typing one is left to the dialog
-        for (const QVariant& item : AspectRatios::get()->presets(effectiveRatioKey(m_Draft), 0, m_Display)) {
+        for (const QVariant& item : sizesFor(effectiveRatioKey(m_Draft))) {
             QVariantMap preset = item.toMap();
             int packed = ReconnectRules::packSize({ preset.value("width").toInt(), preset.value("height").toInt() });
             result.push_back({ preset.value("text").toString(), sizeText(packed), packed, QString() });
@@ -258,17 +280,17 @@ std::vector<ForkStreamSettings::Option> ForkStreamSettings::options(RowId row) c
         break;
     }
     case RowId::Fill:
-        result.push_back({ tr("Fit (black bars)"), tr("Fit"), 0, QString() });
+        // The canvas's names, shorter than the dialog's
+        result.push_back({ tr("Fit"), QString(), 0, QString() });
         result.push_back({ tr("Stretch"), QString(), 1, QString() });
         break;
     case RowId::Mouse:
-        result.push_back({ tr("Remote desktop (cursor not captured)"), tr("Remote desktop"), 1, QString() });
-        result.push_back({ tr("Games (cursor captured)"), tr("Games"), 0, QString() });
+        result.push_back({ tr("Remote desktop"), QString(), 1, QString() });
+        result.push_back({ tr("Games"), QString(), 0, QString() });
         break;
     case RowId::Trackpad:
-        result.push_back({ tr("Mac trackpad (Windows gets the gestures)"), tr("Mac trackpad"), ReconnectRules::k_TrackpadMacTrackpad, QString() });
-        result.push_back({ tr("Windows touchpad (Windows gets every finger)"), tr("Windows touchpad"),
-                           ReconnectRules::k_TrackpadWindowsTouchpad, QString() });
+        result.push_back({ tr("Mac trackpad"), QString(), ReconnectRules::k_TrackpadMacTrackpad, QString() });
+        result.push_back({ tr("Windows touchpad"), QString(), ReconnectRules::k_TrackpadWindowsTouchpad, QString() });
         result.push_back({ tr("Mac mouse"), QString(), ReconnectRules::k_TrackpadMacMouse, QString() });
         break;
     }
@@ -316,12 +338,14 @@ QString ForkStreamSettings::valueText(RowId row, const Profile& profile) const
     return QString::number(value);
 }
 
-ForkStreamSettings::View ForkStreamSettings::view(const StreamSettingsRules::Stream& stream, bool open)
+ForkStreamSettings::View ForkStreamSettings::view(const StreamSettingsRules::Stream& stream, const Profile& actual, bool open)
 {
     using StreamSettingsRules::Preset;
     if (open) {
         m_Draft = m_Baseline;
+        m_Touched.clear();
     }
+    m_Stream = stream;
 
     View view;
     view.title = tr("Stream Settings for %1").arg(m_AppName);
@@ -381,8 +405,14 @@ ForkStreamSettings::View ForkStreamSettings::view(const StreamSettingsRules::Str
                     choice.checked = row.set && m_Draft.at(key) == option.value;
                 }
                 // Only where the row's other values don't: rows that always reconnect say so by their label
-                choice.reconnects = !StreamSettingsRules::alwaysReconnects(key) &&
+                choice.reconnects = !StreamSettingsRules::alwaysReconnects(key, stream) &&
                                     StreamSettingsRules::reconnects(key, option.value, stream);
+                // A trackpad mode the PC's Apollo can't take is greyed, as in Control Center
+                if (key == Key::Trackpad && !choice.checked) {
+                    choice.enabled = option.value == ReconnectRules::k_TrackpadMacMouse ||
+                                     (option.value == ReconnectRules::k_TrackpadWindowsTouchpad ? stream.touchpadSupported
+                                                                                                 : stream.macTrackpadSupported);
+                }
                 row.choices.push_back(choice);
             }
             section.rows.push_back(row);
@@ -390,20 +420,24 @@ ForkStreamSettings::View ForkStreamSettings::view(const StreamSettingsRules::Str
         view.sections.push_back(section);
     }
 
-    std::vector<Key> changed = changes();
+    std::vector<Key> changed = changes(actual);
     view.canApply = !changed.empty();
     view.applyReconnects = StreamSettingsRules::anyReconnects(changed, m_Draft, m_Global, stream);
     view.canSave = m_Draft != m_Saved;
     return view;
 }
 
-std::vector<Key> ForkStreamSettings::changes() const
+std::vector<Key> ForkStreamSettings::changes(const Profile& actual) const
 {
-    return StreamSettingsRules::changed(m_Baseline, m_Draft, m_Global);
+    return StreamSettingsRules::toApply(m_Draft, m_Global, actual, m_Touched);
 }
 
 void ForkStreamSettings::setDraft(const Profile& draft)
 {
+    // What changed is chosen, for Apply
+    for (Key key : StreamSettingsRules::differences(m_Draft, draft)) {
+        m_Touched.insert(key);
+    }
     m_Draft = draft;
     if (StreamSettingsRules::presetOf(draft) == StreamSettingsRules::Preset::Custom) {
         m_LastCustom = draft;
@@ -418,6 +452,8 @@ void ForkStreamSettings::pick(int row, int choice)
     RowId id = static_cast<RowId>(row);
     Key key = keyOf(row);
     Profile draft = m_Draft;
+    // Chosen, even the value it has: Apply makes the stream have it (StreamSettingsRules::toApply())
+    m_Touched.insert(key);
     if (choice == 0) {
         // Global; the aspect ratio row only picks sizes, so the resolution follows Settings again
         draft.erase(key);
@@ -441,6 +477,11 @@ void ForkStreamSettings::pick(int row, int choice)
         draft[Key::Resolution] = *size;
     }
     else {
+        if (key == Key::Trackpad && option.value != ReconnectRules::k_TrackpadMacMouse &&
+            !(option.value == ReconnectRules::k_TrackpadWindowsTouchpad ? m_Stream.touchpadSupported : m_Stream.macTrackpadSupported)) {
+            // Greyed in the list: the PC's Apollo can't take it
+            return;
+        }
         draft[key] = option.value;
     }
     setDraft(draft);

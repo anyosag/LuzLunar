@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <set>
 #include <vector>
 
 #include "reconnectrules.h"
@@ -98,12 +99,16 @@ namespace StreamSettingsRules
         int startedTrackpad = ReconnectRules::k_TrackpadMacMouse; // the mode Apollo set its side up for
         bool bitrateLive = false;       // the PC changes the bitrate during the stream
         int bitrateMaxKbps = 0;         // up to this (Apollo's max: the stream's launch bitrate)
+        bool touchpadSupported = true;  // the PC's Apollo takes the trackpad as a touchpad
+        bool macTrackpadSupported = true;   // and in Mac trackpad mode
     };
 
-    // Settings that always reconnect: the picture and the video take a new stream
-    inline bool alwaysReconnects(Key key)
+    // Settings that always reconnect: the picture and the video take a new stream, and the bitrate
+    // on a PC that can't change it live
+    inline bool alwaysReconnects(Key key, const Stream& stream)
     {
-        return key == Key::Resolution || key == Key::Fps || key == Key::Hdr || key == Key::Codec || key == Key::Yuv444;
+        return key == Key::Resolution || key == Key::Fps || key == Key::Hdr || key == Key::Codec || key == Key::Yuv444 ||
+               (key == Key::Bitrate && !stream.bitrateLive);
     }
 
     // Whether a setting at this value takes a reconnect. Fill, V-Sync, frame pacing and the mouse apply
@@ -111,7 +116,7 @@ namespace StreamSettingsRules
     // live; the trackpad as Control Center's does.
     inline bool reconnects(Key key, int value, const Stream& stream)
     {
-        if (alwaysReconnects(key)) {
+        if (alwaysReconnects(key, stream)) {
             return true;
         }
         if (key == Key::Bitrate) {
@@ -139,5 +144,43 @@ namespace StreamSettingsRules
     {
         return effective(profile, global, Key::Mouse) != 0 &&
                effective(profile, global, Key::Trackpad) == ReconnectRules::k_TrackpadMacMouse;
+    }
+
+    // What Apply takes: the settings chosen in the panel since it opened (touched) that the stream
+    // doesn't have (actual: the stream's own settings now, which a reconnect from Quality or Settings'
+    // bitrate for 4:4:4 may have made other than the profile says). The mouse goes with the trackpad,
+    // as one decides the other.
+    inline std::vector<Key> toApply(const Profile& draft, const Profile& global, const Profile& actual, std::set<Key> touched)
+    {
+        if (touched.count(Key::Trackpad) != 0) {
+            touched.insert(Key::Mouse);
+        }
+        std::vector<Key> result;
+        for (Key key : keys()) {
+            if (touched.count(key) == 0) {
+                continue;
+            }
+            int wanted = key == Key::Mouse ? (absoluteMouse(draft, global) ? 1 : 0) : effective(draft, global, key);
+            auto now = actual.find(key);
+            if (now == actual.end() || now->second != wanted) {
+                result.push_back(key);
+            }
+        }
+        return result;
+    }
+
+    // The keys whose setting differs between two profiles: set in one and not the other, or set to
+    // another value. A preset or Reset to Global touches these.
+    inline std::set<Key> differences(const Profile& a, const Profile& b)
+    {
+        std::set<Key> result;
+        for (Key key : keys()) {
+            auto inA = a.find(key);
+            auto inB = b.find(key);
+            if ((inA == a.end()) != (inB == b.end()) || (inA != a.end() && inA->second != inB->second)) {
+                result.insert(key);
+            }
+        }
+        return result;
     }
 }
