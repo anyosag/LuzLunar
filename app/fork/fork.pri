@@ -52,6 +52,7 @@ SOURCES += \
     $$PWD/forkvideoscaling.cpp \
     $$PWD/forkpower.cpp \
     $$PWD/forkreconnect.cpp \
+    $$PWD/streamsettings.cpp \
     $$PWD/adaptivebitrate.cpp \
     $$PWD/bitrateclient.cpp \
     $$PWD/bitraterules.cpp \
@@ -110,6 +111,8 @@ HEADERS += \
     $$PWD/forkreconnect.h \
     $$PWD/powerrules.h \
     $$PWD/reconnectrules.h \
+    $$PWD/streamsettings.h \
+    $$PWD/streamsettingsrules.h \
     $$PWD/notchstatus.h \
     $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \

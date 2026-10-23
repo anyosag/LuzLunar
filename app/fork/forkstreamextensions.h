@@ -11,6 +11,7 @@
 #include "powernotice.h"
 #include "powerrules.h"
 #include "reconnectrules.h"
+#include "streamsettings.h"
 
 class AdaptiveBitrate;
 class BitrateClient;
@@ -93,6 +94,21 @@ private:
     // Control Center's Trackpad: switches the mode in place when Apollo's side allows, or reconnects
     void setTrackpadMode(int mode);
 
+    // The remote desktop's mouse or the game's, as the stream's own setting too. With a menu open the
+    // stream's hold on input is let go first, and MenusClosed takes it again as it would have.
+    void setAbsoluteMouse(SdlInputHandler* input, bool absolute);
+
+    // The bitrate the stream's own from now on: adaptive bitrate starts again under it, or it's asked
+    // for; the PC already takes it live, up to its max
+    void setOwnBitrate(int kbps);
+
+    // What the stream can do now, for which of Stream Settings' changes reconnect
+    StreamSettingsRules::Stream streamSettingsStream() const;
+
+    // Stream Settings' Apply and Save for Next Time
+    void applyStreamSettings();
+    void saveStreamSettings();
+
     QString m_AppName;
     int m_Width;
     int m_Height;
@@ -131,4 +147,6 @@ private:
     // Shared with adaptive bitrate, which goes first
     std::shared_ptr<BitrateClient> m_BitrateClient;
     std::unique_ptr<AdaptiveBitrate> m_AdaptiveBitrate;
+    // The notch bar's Stream Settings, with the bar only
+    std::unique_ptr<ForkStreamSettings> m_StreamSettings;
 };

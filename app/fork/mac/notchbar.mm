@@ -232,6 +232,8 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     ForkNotchMenus* m_Menus;
     std::function<void(NotchMenus::Action, int)> m_Actions;
     std::function<NotchBar::MenuState()> m_State;
+    NotchBar::StreamSettingsSource m_StreamSettings;
+    NotchMenus::Menu m_OpenMenu;    // the menu open now, Stream Settings (no item of its own) included
     NSRect m_StripFrame;            // the strip beside the notch on screen, from the last layout
 
     // Messages beside the notch, in a pill that grows out of a blinking red dot
@@ -269,6 +271,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName
                           videoWidth:(int)videoWidth videoHeight:(int)videoHeight;
 - (void)setActions:(std::function<void(NotchMenus::Action, int)>)actions state:(std::function<NotchBar::MenuState()>)state;
+- (void)setStreamSettings:(NotchBar::StreamSettingsSource)source;
 - (BOOL)toggleMenusByKeyboard;
 - (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
 - (BOOL)menuOpen;
@@ -680,6 +683,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     // Quietly: the stream is ending, and its event loop with it
     m_Actions = nullptr;
     m_State = nullptr;
+    m_StreamSettings = NotchBar::StreamSettingsSource();
     [m_Menus invalidate];
     m_SessionItem.onPress = nil;
     m_StatsItem.onPress = nil;
@@ -1083,6 +1087,41 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return state;
 }
 
+- (void)setStreamSettings:(NotchBar::StreamSettingsSource)source
+{
+    m_StreamSettings = std::move(source);
+}
+
+- (BOOL)menusStreamSettings:(ForkStreamSettings::View*)view open:(BOOL)open
+{
+    if (!m_StreamSettings.view) {
+        return NO;
+    }
+    *view = m_StreamSettings.view(open);
+    return YES;
+}
+
+- (void)menusStreamSettingsPick:(int)row choice:(int)choice
+{
+    if (m_StreamSettings.pick) {
+        m_StreamSettings.pick(row, choice);
+    }
+}
+
+- (void)menusStreamSettingsPreset:(int)preset
+{
+    if (m_StreamSettings.preset) {
+        m_StreamSettings.preset(preset);
+    }
+}
+
+- (void)menusStreamSettingsReset
+{
+    if (m_StreamSettings.reset) {
+        m_StreamSettings.reset();
+    }
+}
+
 - (void)menusStatus:(ForkStatusModel*)model
 {
     model->now = ForkStreamStats::nowSeconds();
@@ -1126,6 +1165,14 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (NSRect)menusAnchorFor:(NotchMenus::Menu)menu alignRight:(BOOL*)alignRight
 {
+    if (menu == NotchMenus::Menu::StreamSettings) {
+        // Centred under the notch, which is at the middle of the screen: a point-wide anchor there
+        if (!m_BarOnScreen || !m_StreamSettings.view) {
+            return NSZeroRect;
+        }
+        *alignRight = NO;
+        return NSMakeRect(NSMidX(m_StripFrame) - 0.5, NSMinY(m_StripFrame), 1, NSHeight(m_StripFrame));
+    }
     ForkBarItem* item = menu == NotchMenus::Menu::Session ? m_SessionItem :
                         menu == NotchMenus::Menu::Status ? m_StatsItem :
                         menu == NotchMenus::Menu::Quality ? m_QualityItem :
@@ -1143,7 +1190,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)menusChanged:(NotchMenus::Menu)menu
 {
-    BOOL wasOpen = m_SessionItem.open || m_StatsItem.open || m_QualityItem.open || m_BatteryItem.open || m_ControlItem.open;
+    BOOL wasOpen = m_OpenMenu != NotchMenus::Menu::None;
+    m_OpenMenu = menu;
     BOOL tickedOpen = m_StatsItem.open || m_QualityItem.open || m_BatteryItem.open;
     m_SessionItem.open = menu == NotchMenus::Menu::Session;
     m_StatsItem.open = menu == NotchMenus::Menu::Status;
@@ -1990,6 +2038,11 @@ namespace
         void setActions(std::function<void(NotchMenus::Action, int)> actions, std::function<MenuState()> state) override
         {
             [m_Controller setActions:std::move(actions) state:std::move(state)];
+        }
+
+        void setStreamSettings(StreamSettingsSource source) override
+        {
+            [m_Controller setStreamSettings:std::move(source)];
         }
 
         bool toggleMenus() override

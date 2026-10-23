@@ -230,6 +230,7 @@ Session* StreamProfiles::createReconnectSession(NvComputer* computer, NvApp& app
     settings.yuv444 = prefs->enableYUV444;
     settings.trackpadMode = prefs->trackpadMode;
     settings.absoluteMouse = prefs->absoluteMouseMode;
+    settings.codec = prefs->videoCodecConfig;
     settings = ReconnectRules::apply(settings, overrides);
     prefs->width = settings.width;
     prefs->height = settings.height;
@@ -239,6 +240,7 @@ Session* StreamProfiles::createReconnectSession(NvComputer* computer, NvApp& app
     prefs->enableYUV444 = settings.yuv444;
     prefs->trackpadMode = static_cast<StreamingPreferences::TrackpadMode>(settings.trackpadMode);
     prefs->absoluteMouseMode = settings.absoluteMouse;
+    prefs->videoCodecConfig = static_cast<StreamingPreferences::VideoCodecConfig>(settings.codec);
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Reconnecting \"%s\" at %dx%d, %d fps, %d kbps%s%s, trackpad mode %d",
                 qPrintable(app.name), prefs->width, prefs->height, prefs->fps, prefs->bitrateKbps,

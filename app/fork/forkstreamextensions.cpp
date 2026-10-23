@@ -1,5 +1,7 @@
 #include "forkstreamextensions.h"
 
+#include <algorithm>
+
 #include <QCoreApplication>
 #include <QReadLocker>
 
@@ -27,6 +29,7 @@
 #include "powernotice.h"
 #include "settings/streamingpreferences.h"
 #include "streamdiagnostics.h"
+#include "streamprofiles.h"
 #include "streamstats.h"
 #include "streaming/input/input.h"
 #include "streaming/session.h"
@@ -242,6 +245,28 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     applySaver();
     if (m_Saver && m_Saver->lowPowerMode()) {
         m_PowerNotice->offer([this] { return powerNotice(); });
+    }
+
+    // The notch bar's Stream Settings: a draft of the app's profile, its edits straight from the panel
+    if (m_NotchBar) {
+        m_StreamSettings = std::make_unique<ForkStreamSettings>(m_HostUuid, m_HostName, m_AppName, choices.streamSettings);
+        NotchBar::StreamSettingsSource source;
+        source.view = [this](bool open) {
+            Session* session = Session::get();
+            StreamSettingsRules::Profile actual =
+                session != nullptr ? ForkStreamSettings::fromPreferences(*session->forkPreferences()) : StreamSettingsRules::Profile();
+            return m_StreamSettings->view(streamSettingsStream(), actual, open);
+        };
+        source.pick = [this](int row, int choice) {
+            m_StreamSettings->pick(row, choice);
+        };
+        source.preset = [this](int preset) {
+            m_StreamSettings->choosePreset(preset);
+        };
+        source.reset = [this] {
+            m_StreamSettings->reset();
+        };
+        m_NotchBar->setStreamSettings(std::move(source));
     }
 
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
@@ -616,6 +641,14 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
     case NotchMenus::Action::SetTrackpadMode:
         setTrackpadMode(value);
         break;
+    case NotchMenus::Action::StreamSettingsApply:
+        applyStreamSettings();
+        break;
+    case NotchMenus::Action::StreamSettingsSave:
+        saveStreamSettings();
+        break;
+    case NotchMenus::Action::OpenStreamSettings:
+        // The menus' own
     case NotchMenus::Action::OpenBatterySettings:
         // The bar's own
     case NotchMenus::Action::ToggleNotchStats:
@@ -647,6 +680,9 @@ void ForkStreamExtensions::reconnect(const ReconnectRules::Overrides& overrides,
         choices.lowPowerMode = m_Saver->lowPowerMode();
     }
     choices.absoluteBeforeTouchpad = m_AbsoluteBeforeTouchpad;
+    if (m_StreamSettings) {
+        choices.streamSettings = ForkStreamSettings::pack(m_StreamSettings->baseline());
+    }
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: reconnect%s", why);
     session->forkReconnect(overrides, choices);
     pushQuit();
@@ -672,6 +708,36 @@ void ForkStreamExtensions::setTrackpadMode(int mode)
         return;
     }
 
+    // In place: the stream's own settings, which a later reconnect copies, then the passthrough again
+    StreamingPreferences* prefs = session->forkPreferences();
+    prefs->trackpadMode = static_cast<StreamingPreferences::TrackpadMode>(mode);
+    // A touchpad mode takes the game's mouse, as StreamProfiles::createSession() has it; Mac mouse
+    // gives back a remote desktop's it took
+    if (mode != ReconnectRules::k_TrackpadMacMouse && input->forkAbsoluteMouseMode()) {
+        m_AbsoluteBeforeTouchpad = true;
+        setAbsoluteMouse(input, false);
+    }
+    else if (mode == ReconnectRules::k_TrackpadMacMouse && m_AbsoluteBeforeTouchpad) {
+        m_AbsoluteBeforeTouchpad = false;
+        setAbsoluteMouse(input, true);
+    }
+
+    ForkTrackpadPassthrough::deactivate();
+    ForkTrackpadPassthrough::activate(m_Window, *prefs);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: trackpad mode %d, in place (the stream started in %d)", mode,
+                m_TrackpadStartedMode);
+    m_TrackpadMode = mode;
+}
+
+void ForkStreamExtensions::setAbsoluteMouse(SdlInputHandler* input, bool absolute)
+{
+    Session* session = Session::get();
+    if (session != nullptr) {
+        session->forkPreferences()->absoluteMouseMode = absolute;
+    }
+    if (input->forkAbsoluteMouseMode() == absolute) {
+        return;
+    }
     // An open menu holds the pointer free (MenusOpened). A remote desktop's mouse stays held to the
     // stream then, and taking it again in a game's mode would hide the pointer under the menu: it's let
     // go now, and MenusClosed takes it as it would have.
@@ -682,27 +748,191 @@ void ForkStreamExtensions::setTrackpadMode(int mode)
         m_CaptureAfterMenus = after;
         m_CaptureLeftByBar = false;
     }
+    input->forkSetAbsoluteMouseMode(absolute);
+}
 
-    // In place: the stream's own settings, which a later reconnect copies, then the passthrough again
+void ForkStreamExtensions::setOwnBitrate(int kbps)
+{
+    Session* session = Session::get();
+    if (session != nullptr) {
+        session->forkPreferences()->bitrateKbps = kbps;
+    }
+    m_OwnBitrateKbps = kbps;
+    if (!m_BitrateClient) {
+        return;
+    }
+    // The user's own now, so nothing set by hand holds; the saver's cap still does
+    m_ManualKbps = 0;
+    m_ManualPending = false;
+    m_AppliedCeiling = adaptiveCeiling();
+    if (m_AdaptiveBitrate) {
+        // From where the stream is going: above the new ceiling, it's asked down to it at once
+        int start = m_BitrateClient->latestKbps();
+        m_AdaptiveBitrate.reset();
+        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, m_AppliedCeiling, m_Hdr, start);
+    }
+    else {
+        m_BitrateClient->request(m_AppliedCeiling);
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Stream Settings: the stream's own bitrate is %d kbps", kbps);
+}
+
+StreamSettingsRules::Stream ForkStreamExtensions::streamSettingsStream() const
+{
+    StreamSettingsRules::Stream stream;
+    stream.startedTrackpad = m_TrackpadStartedMode;
+    if (m_BitrateClient) {
+        BitrateState::State client = m_BitrateClient->state();
+        stream.bitrateLive = client.live;
+        // Apollo's max, the stream's launch bitrate; the stream's own until it answers
+        stream.bitrateMaxKbps = client.maxKbps > 0 ? client.maxKbps : m_OwnBitrateKbps;
+    }
+    stream.touchpadSupported = m_TouchpadSupported;
+    stream.macTrackpadSupported = m_MacTrackpadSupported;
+    return stream;
+}
+
+void ForkStreamExtensions::applyStreamSettings()
+{
+    using StreamSettingsRules::Key;
+    Session* session = Session::get();
+    SdlInputHandler* input = inputHandler();
+    if (!m_StreamSettings || session == nullptr || input == nullptr) {
+        return;
+    }
     StreamingPreferences* prefs = session->forkPreferences();
-    prefs->trackpadMode = static_cast<StreamingPreferences::TrackpadMode>(mode);
-    // A touchpad mode takes the game's mouse, as StreamProfiles::createSession() has it; Mac mouse
-    // gives back a remote desktop's it took
-    if (mode != ReconnectRules::k_TrackpadMacMouse && input->forkAbsoluteMouseMode()) {
-        m_AbsoluteBeforeTouchpad = true;
-        input->forkSetAbsoluteMouseMode(false);
+    std::vector<Key> changes = m_StreamSettings->changes(ForkStreamSettings::fromPreferences(*prefs));
+    if (changes.empty()) {
+        return;
     }
-    else if (mode == ReconnectRules::k_TrackpadMacMouse && m_AbsoluteBeforeTouchpad) {
-        m_AbsoluteBeforeTouchpad = false;
-        input->forkSetAbsoluteMouseMode(true);
-    }
-    prefs->absoluteMouseMode = input->forkAbsoluteMouseMode();
+    const StreamSettingsRules::Profile& draft = m_StreamSettings->draft();
+    const StreamSettingsRules::Profile& global = m_StreamSettings->global();
+    auto value = [&](Key key) {
+        return StreamSettingsRules::effective(draft, global, key);
+    };
+    auto changed = [&](Key key) {
+        return std::find(changes.begin(), changes.end(), key) != changes.end();
+    };
+    // The mouse goes with the trackpad (StreamSettingsRules::absoluteMouse()). A remote desktop's mouse
+    // chosen with a touchpad mode is the one Control Center's Mac mouse gives back.
+    bool mouseChanged = changed(Key::Mouse);
+    bool absolute = StreamSettingsRules::absoluteMouse(draft, global);
+    bool mouseDecided = mouseChanged || changed(Key::Trackpad);
+    bool absoluteBeforeTouchpad = value(Key::Mouse) != 0 && value(Key::Trackpad) != ReconnectRules::k_TrackpadMacMouse;
 
-    ForkTrackpadPassthrough::deactivate();
-    ForkTrackpadPassthrough::activate(m_Window, *prefs);
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: trackpad mode %d, in place (the stream started in %d)", mode,
-                m_TrackpadStartedMode);
-    m_TrackpadMode = mode;
+    if (StreamSettingsRules::anyReconnects(changes, draft, global, streamSettingsStream())) {
+        // A new stream: what changes there goes into the reconnect, the rest into the stream's own
+        // settings, which the reconnect copies
+        ReconnectRules::Overrides overrides;
+        for (Key key : changes) {
+            switch (key) {
+            case Key::Resolution: {
+                ReconnectRules::Size size = ReconnectRules::unpackSize(value(key));
+                overrides.width = size.width;
+                overrides.height = size.height;
+                break;
+            }
+            case Key::Fps:
+                overrides.fps = value(key);
+                break;
+            case Key::Hdr:
+                overrides.hdr = value(key) != 0;
+                break;
+            case Key::Codec:
+                overrides.codec = value(key);
+                break;
+            case Key::Yuv444:
+                overrides.yuv444 = value(key) != 0;
+                break;
+            case Key::Bitrate:
+                overrides.bitrateKbps = value(key);
+                break;
+            case Key::Trackpad:
+                overrides.trackpadMode = value(key);
+                break;
+            case Key::Fill:
+                prefs->fullscreenStretch = value(key) != 0;
+                break;
+            case Key::Vsync:
+                prefs->enableVsync = value(key) != 0;
+                break;
+            case Key::Pacing:
+                prefs->framePacing = value(key) != 0;
+                break;
+            case Key::Mouse:
+                break;
+            }
+        }
+        if (mouseChanged) {
+            prefs->absoluteMouseMode = absolute;
+        }
+        if (mouseDecided) {
+            m_AbsoluteBeforeTouchpad = absoluteBeforeTouchpad;
+        }
+        m_StreamSettings->applied();
+        reconnect(overrides, " to apply Stream Settings");
+        return;
+    }
+
+    // In place
+    bool newPicture = false;
+    for (Key key : changes) {
+        switch (key) {
+        case Key::Bitrate:
+            setOwnBitrate(value(key));
+            break;
+        case Key::Fill:
+            prefs->fullscreenStretch = value(key) != 0;
+            ForkVideoScaling::activate(m_Window, prefs->fullscreenStretch);
+            // The Metal renderer reads it each frame; the AVSampleLayer one when it's made
+            newPicture = true;
+            break;
+        case Key::Vsync:
+            prefs->enableVsync = value(key) != 0;
+            newPicture = true;
+            break;
+        case Key::Pacing:
+            prefs->framePacing = value(key) != 0;
+            newPicture = true;
+            break;
+        case Key::Trackpad:
+            setTrackpadMode(value(key));
+            break;
+        default:
+            // The mouse below; the rest reconnect
+            break;
+        }
+    }
+    if (mouseChanged) {
+        // After the trackpad, which may have taken or given back a remote desktop's mouse: the draft decides
+        setAbsoluteMouse(input, absolute);
+    }
+    if (mouseDecided) {
+        m_AbsoluteBeforeTouchpad = absoluteBeforeTouchpad;
+    }
+    if (newPicture) {
+        // The decoder and renderer again, with the stream's new settings (Session's event loop)
+        SDL_Event event = {};
+        event.type = SDL_RENDER_DEVICE_RESET;
+        SDL_PushEvent(&event);
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Stream Settings: %d setting(s) applied in the stream%s",
+                static_cast<int>(changes.size()), newPicture ? ", with a new picture" : "");
+    m_StreamSettings->applied();
+}
+
+void ForkStreamExtensions::saveStreamSettings()
+{
+    if (!m_StreamSettings) {
+        return;
+    }
+    QString text = m_StreamSettings->save();
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Stream Settings: %s", qPrintable(text));
+    // The app tiles' profile chips, once the Qt loop runs again after the stream: no QML now
+    QMetaObject::invokeMethod(StreamProfiles::get(), [] { emit StreamProfiles::get()->profileSaved(); }, Qt::QueuedConnection);
+    if (m_NotchBar) {
+        m_NotchBar->showToast(text);
+    }
 }
 
 void ForkStreamExtensions::copyDiagnostics()

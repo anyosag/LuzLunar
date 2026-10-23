@@ -49,6 +49,11 @@ namespace
     const CGFloat k_BatteryWidth = 320;
     const CGFloat k_BatteryPadding = 6;
 
+    // Stream Settings, as on the canvas
+    const CGFloat k_SettingsWidth = 360;
+    const CGFloat k_SettingsPadding = 12;
+    const CGFloat k_SettingsRowHeight = 27;
+
     // Stream Control Center
     const CGFloat k_CenterWidth = 340;
     const CGFloat k_CenterPadding = 10;
@@ -467,6 +472,23 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     ForkMenuControlPopup,       // a value in a capsule with up and down chevrons, its choices under it: Resolution
     ForkMenuControlModule,      // a Control Center tile with a circle and a title over a line: Trackpad, Notch Stats
     ForkMenuControlChoice,      // one choice of a list over the menu: a tick, its title, and ↻ if it reconnects
+    ForkMenuControlButton,      // a push button: Stream Settings' Reset to Global, Save for Next Time and Apply
+};
+
+// What a control does in the menus themselves, rather than through an action: Stream Settings' draft
+typedef NS_ENUM(NSInteger, ForkMenuLocal) {
+    ForkMenuLocalNone,
+    ForkMenuLocalPreset,        // a preset card (m_Value: 0 Office, 1 Gaming, 2 Custom)
+    ForkMenuLocalRow,           // a row's capsule, which opens its choices (m_Value: the row)
+    ForkMenuLocalPick,          // a choice in that list (m_Value: the row << 8 | the choice)
+    ForkMenuLocalReset,         // Reset to Global
+};
+
+// A button's look
+typedef NS_ENUM(NSInteger, ForkButtonStyle) {
+    ForkButtonLink,             // blue text alone
+    ForkButtonSecondary,        // grey
+    ForkButtonPrimary,          // blue, white text
 };
 
 @class ForkNotchMenus;
@@ -529,6 +551,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     CGFloat m_GrabOffset;       // where on the knob the drag took it, so taking it doesn't move it
     BOOL m_ReadOnly;            // only shows the value, as Control Center's Bitrate does
     int m_Value;                // what the action carries, as a frame rate; 0 for nothing
+    ForkMenuLocal m_Local;      // what it does in the menus themselves, for Stream Settings
+    ForkButtonStyle m_ButtonStyle;
 }
 - (instancetype)initWithKind:(ForkMenuControlKind)kind owner:(ForkNotchMenus*)owner;
 - (void)setTitle:(NSString*)title detail:(NSString*)detail symbol:(NSString*)name;
@@ -637,6 +661,12 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
         [self addSubview:m_Icon];
         break;
+    case ForkMenuControlButton:
+        self.layer.cornerRadius = 6;
+        m_Title = [makeText(@"", [NSFont systemFontOfSize:13], NSColor.labelColor) retain];
+        m_Title.alignment = NSTextAlignmentCenter;
+        [self addSubview:m_Title];
+        break;
     case ForkMenuControlChoice:
         self.layer.cornerRadius = 5;
         m_Icon = [[NSImageView alloc] initWithFrame:NSZeroRect];
@@ -655,7 +685,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
 
     BOOL actionable = kind == ForkMenuControlRow || kind == ForkMenuControlToggle || kind == ForkMenuControlTile ||
-                      kind == ForkMenuControlModule;
+                      kind == ForkMenuControlModule || kind == ForkMenuControlButton;
     [self setAccessibilityElement:kind != ForkMenuControlSeparator];
     [self setAccessibilityRole:kind == ForkMenuControlRow ? NSAccessibilityMenuItemRole :
                                kind == ForkMenuControlToggle || kind == ForkMenuControlSwitch ? NSAccessibilityCheckBoxRole :
@@ -714,6 +744,12 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     if (m_Kind == ForkMenuControlPopup) {
         // As on the canvas: 9 before the value, 6 between it and the chevrons, 6 after
         return ceil(9 + NSWidth(m_Title.frame) + 6 + NSWidth(m_Icon.frame) + 6);
+    }
+    if (m_Kind == ForkMenuControlChoice) {
+        return ceil(24 + NSWidth(m_Title.frame) + 8 + (m_Badge.hidden ? 0 : 6 + NSWidth(m_Badge.frame)));
+    }
+    if (m_Kind == ForkMenuControlButton) {
+        return ceil(NSWidth(m_Title.frame) + (m_ButtonStyle == ForkButtonLink ? 8 : 20));
     }
     CGFloat width = 18 + NSWidth(m_Title.frame);
     if (m_Detail != nil && m_Detail.stringValue.length > 0) {
@@ -806,6 +842,11 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [m_Title sizeToFit];
         m_Title.frame = NSMakeRect(10, 10 + k_Circle + 6, width, NSHeight(m_Title.frame));
         m_Detail.frame = NSMakeRect(10, NSMaxY(m_Title.frame), width, textHeight(m_Detail, width));
+        break;
+    }
+    case ForkMenuControlButton: {
+        [m_Title sizeToFit];
+        m_Title.frame = NSMakeRect(0, round((size.height - NSHeight(m_Title.frame)) / 2), size.width, NSHeight(m_Title.frame));
         break;
     }
     case ForkMenuControlChoice: {
@@ -988,6 +1029,28 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
         self.layer.borderColor = accent.CGColor;
         break;
+    case ForkMenuControlButton: {
+        // As on the canvas: Reset to Global blue text, Save for Next Time grey, Apply blue
+        NSColor* blue = [NSColor colorWithSRGBRed:0x0a / 255.0 green:0x84 / 255.0 blue:1 alpha:1];
+        CGColorRef background = CGColorGetConstantColor(kCGColorClear);
+        if (m_ButtonStyle == ForkButtonPrimary) {
+            background = (m_Pressed ? [blue blendedColorWithFraction:0.25 ofColor:NSColor.blackColor] : blue).CGColor;
+        }
+        else if (m_ButtonStyle == ForkButtonSecondary) {
+            background = white(m_Pressed ? 0.22 : 0.14);
+        }
+        else if (m_Pressed || (m_Hovered && m_Enabled)) {
+            background = white(0.08);
+        }
+        self.layer.backgroundColor = background;
+        m_Title.textColor = m_ButtonStyle == ForkButtonLink ? [NSColor colorWithSRGBRed:0x4d / 255.0 green:0xa3 / 255.0 blue:1 alpha:1]
+                                                            : (m_ButtonStyle == ForkButtonPrimary ? NSColor.whiteColor : NSColor.labelColor);
+        m_Title.font = [NSFont systemFontOfSize:13 weight:m_ButtonStyle == ForkButtonPrimary ? NSFontWeightMedium : NSFontWeightRegular];
+        self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
+        self.layer.borderColor = (m_ButtonStyle == ForkButtonPrimary ? NSColor.whiteColor : accent).CGColor;
+        self.alphaValue = m_Enabled ? 1 : 0.45;
+        break;
+    }
     case ForkMenuControlChoice: {
         // As a menu's rows: the accent under the pointer or the keyboard
         BOOL lit = m_Selected && m_Enabled;
@@ -1000,7 +1063,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
     case ForkMenuControlPopup:
         // The canvas's 0.12, lighter under the pointer and while its choices are open
-        self.layer.backgroundColor = white(m_Pressed ? 0.24 : (m_On || m_Hovered ? 0.18 : 0.12));
+        // The canvas's 0.22 while its choices are open
+        self.layer.backgroundColor = white(m_Pressed ? 0.24 : (m_On ? 0.22 : (m_Hovered ? 0.18 : 0.12)));
         self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
         self.layer.borderColor = accent.CGColor;
         break;
@@ -1156,6 +1220,16 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     NSTextField* m_SliderHigh;
     NSTextField* m_Caption;
     NotchQuality::State m_Bitrate;  // what it shows
+    // Quality's way to Stream Settings
+    NSView* m_QualitySettingsLine;
+    ForkMenuControl* m_QualitySettingsRow;
+    // Stream Settings' contents, from the bar (ForkStreamSettings); m_Opening while its panel opens,
+    // so the draft starts again from what the stream applied
+    ForkStreamSettings::View m_SettingsView;
+    BOOL m_Opening;
+    // What the PC could change live when Stream Settings was built, which decides its ↻ and Apply's title
+    BOOL m_SettingsLive;
+    int m_SettingsMaxKbps;
     // Quality's Stream Battery Saver note, and its reconnect on a PC that can't change the bitrate live
     NSView* m_SaverBox;
     NSTextField* m_SaverText;
@@ -1261,6 +1335,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
             nil, NotchMenus::Action::QuitAndSleepPc, state.canSleepPc);
         add(ForkMenuControlSeparator, nil, nil, NotchMenus::Action::None, NO);
         add(ForkMenuControlRow, tr("Reconnect"), nil, NotchMenus::Action::Reconnect, YES);
+        add(ForkMenuControlRow, QCoreApplication::translate("NotchBar", "Stream Settings for %1…").arg(app).toNSString(), nil,
+            NotchMenus::Action::OpenStreamSettings, YES);
 
         // As wide as its widest row, like macOS's menus, within limits
         CGFloat width = k_SessionWidth - 2 * k_SessionPadding;
@@ -1309,6 +1385,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     else if (m_Open == NotchMenus::Menu::Battery) {
         [self buildBattery:content];
         *size = NSMakeSize(k_BatteryWidth, [self layoutBattery:state]);
+    }
+    else if (m_Open == NotchMenus::Menu::StreamSettings) {
+        [self buildStreamSettings:content size:size];
     }
     else if (m_Open == NotchMenus::Menu::ControlCenter) {
         CGFloat width = k_CenterWidth - 2 * k_CenterPadding;
@@ -1477,7 +1556,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_Selected = -1;
 
     NSSize size;
+    m_Opening = YES;
     NSView* content = [self buildContent:&size];
+    m_Opening = NO;
 
     // A new panel each time: one shown before belongs to the Space it was shown on, and a new one
     // joins the stream's
@@ -1506,7 +1587,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     effect.wantsLayer = YES;
     effect.layer.cornerRadius = menu == NotchMenus::Menu::ControlCenter ? 22 :
                                 menu == NotchMenus::Menu::Status || menu == NotchMenus::Menu::Quality ||
-                                menu == NotchMenus::Menu::Battery ? 14 : 12;
+                                menu == NotchMenus::Menu::Battery || menu == NotchMenus::Menu::StreamSettings ? 14 : 12;
     effect.layer.masksToBounds = YES;
     effect.layer.borderWidth = 1;
     effect.layer.borderColor = white(0.10);
@@ -1518,12 +1599,15 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [effect setAccessibilityLabel:menu == NotchMenus::Menu::Session ? tr("Session") :
                                   menu == NotchMenus::Menu::Status  ? tr("Stream status") :
                                   menu == NotchMenus::Menu::Quality ? tr("Quality") :
-                                  menu == NotchMenus::Menu::Battery ? tr("Battery") : tr("Stream Control Center")];
+                                  menu == NotchMenus::Menu::Battery ? tr("Battery") :
+                                  menu == NotchMenus::Menu::StreamSettings ? m_SettingsView.title.toNSString() : tr("Stream Control Center")];
 
     // Under its item, kept on the screen
     NSScreen* screen = [m_Host menusBarWindow].screen;
     NSRect screenFrame = screen != nil ? screen.frame : NSMakeRect(0, 0, 10000, 10000);
-    CGFloat x = alignRight ? NSMaxX(anchor) - size.width : NSMinX(anchor);
+    // Stream Settings is centred under the notch
+    CGFloat x = menu == NotchMenus::Menu::StreamSettings ? round(NSMidX(anchor) - size.width / 2) :
+                alignRight ? NSMaxX(anchor) - size.width : NSMinX(anchor);
     x = MAX(NSMinX(screenFrame) + k_ScreenMargin, MIN(x, NSMaxX(screenFrame) - k_ScreenMargin - size.width));
     CGFloat top = NSMinY(anchor) - k_MenuGap;
     [m_Panel setFrame:NSMakeRect(x, top - size.height, size.width, size.height) display:NO];
@@ -1601,6 +1685,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [m_ResolutionChoices release];
     m_ResolutionChoices = nil;
     m_ReconnectCaption = nil;
+    m_QualitySettingsLine = nil;
+    m_QualitySettingsRow = nil;
     m_ResolutionsShown = NO;
     m_BatteryReconnect = nil;
     m_BatteryContent = nil;
@@ -1639,9 +1725,17 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     if (content == nil) {
         return;
     }
-    const CGFloat width = 224;
     const CGFloat rowHeight = 22;
+    const CGFloat separatorHeight = 9;
     const CGFloat padding = 5;
+    // The canvas's 224, wider for a long choice, within the menu
+    CGFloat width = 224;
+    for (ForkMenuControl* choice in choices) {
+        if (choice->m_Kind == ForkMenuControlChoice) {
+            width = MAX(width, [choice naturalWidth] + 2 * padding);
+        }
+    }
+    width = MIN(width, NSWidth(content.bounds) - 8);
 
     m_ListScrim = [[[ForkListScrim alloc] initWithFrame:content.bounds] autorelease];
     m_ListScrim->m_Owner = self;
@@ -1658,21 +1752,26 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     list.layer.shadowOffset = CGSizeZero;   // all round: a flipped view's layer would turn an offset upwards
     [list setAccessibilityElement:YES];
     [list setAccessibilityRole:NSAccessibilityMenuRole];
-    CGFloat height = padding * 2 + rowHeight * choices.count;
+    CGFloat height = padding * 2;
+    for (ForkMenuControl* choice in choices) {
+        height += choice->m_Kind == ForkMenuControlSeparator ? separatorHeight : rowHeight;
+    }
     NSRect openerFrame = [content convertRect:opener.bounds fromView:opener];
     CGFloat x = MAX(4, MIN(NSMaxX(openerFrame) - width, NSWidth(content.bounds) - 4 - width));
-    CGFloat y = NSMaxY(openerFrame) + 4;
+    // Just under its opener, as on the canvas, or above it without room below
+    CGFloat y = NSMaxY(openerFrame) + 2;
     if (y + height > NSHeight(content.bounds) - 4) {
-        y = MAX(4, NSMinY(openerFrame) - 4 - height);
+        y = MAX(4, NSMinY(openerFrame) - 2 - height);
     }
     list.frame = NSMakeRect(x, y, width, height);
     m_ListFirst = m_Controls.count;
     CGFloat rowY = padding;
     for (ForkMenuControl* choice in choices) {
-        choice.frame = NSMakeRect(padding, rowY, width - 2 * padding, rowHeight);
+        CGFloat itemHeight = choice->m_Kind == ForkMenuControlSeparator ? separatorHeight : rowHeight;
+        choice.frame = NSMakeRect(padding, rowY, width - 2 * padding, itemHeight);
         [list addSubview:choice];
         [m_Controls addObject:choice];
-        rowY += rowHeight;
+        rowY += itemHeight;
     }
     [content addSubview:list];
     m_ListView = list;
@@ -1689,6 +1788,206 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         }
     }
     [self select:keyboard ? (ticked >= 0 ? ticked : (int)m_ListFirst) : -1 keyboard:keyboard];
+}
+
+// Stream Settings, as on the canvas: the app's settings over Settings, a draft until Apply or Save for
+// Next Time (ForkStreamSettings). Its rows' capsules open their choices in a list over the panel.
+- (void)buildStreamSettings:(NSView*)content size:(NSSize*)size
+{
+    m_SettingsView = ForkStreamSettings::View();
+    if (m_Host == nil || ![m_Host menusStreamSettings:&m_SettingsView open:m_Opening]) {
+        *size = NSMakeSize(k_SettingsWidth, 2 * k_SettingsPadding);
+        return;
+    }
+    const ForkStreamSettings::View& view = m_SettingsView;
+    NotchQuality::State bitrate = [m_Host menusState].bitrate;
+    m_SettingsLive = bitrate.live;
+    m_SettingsMaxKbps = bitrate.maxKbps;
+    const CGFloat outer = k_SettingsWidth - 2 * k_SettingsPadding;
+    const CGFloat left = k_SettingsPadding + 4;    // the rows' text inset
+    const CGFloat inner = outer - 8;
+    CGFloat y = k_SettingsPadding;
+    auto addText = [&](NSString* text, NSFont* font, NSColor* color, CGFloat x, CGFloat width) {
+        NSTextField* label = makeWrappingText(font, color);
+        label.stringValue = text;
+        CGFloat height = textHeight(label, width);
+        label.frame = NSMakeRect(x, y, width, height);
+        [content addSubview:label];
+        return height;
+    };
+    auto reconnectIcon = [&]() {
+        NSImageView* icon = [[[NSImageView alloc] initWithFrame:NSZeroRect] autorelease];
+        icon.imageScaling = NSImageScaleNone;
+        icon.image = symbol(@"arrow.clockwise", 10, NSFontWeightMedium);
+        icon.contentTintColor = NSColor.secondaryLabelColor;
+        [icon setFrameSize:icon.image != nil ? icon.image.size : NSMakeSize(11, 11)];
+        [icon setAccessibilityElement:YES];
+        [icon setAccessibilityRole:NSAccessibilityImageRole];
+        [icon setAccessibilityLabel:tr("Reconnects the stream")];
+        return icon;
+    };
+
+    // "Stream Settings for Desktop", "GAMING-PC · Office profile"
+    y += addText(view.title.toNSString(), [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold], NSColor.labelColor, left, inner) + 2;
+    y += addText(view.subtitle.toNSString(), [NSFont systemFontOfSize:12], NSColor.secondaryLabelColor, left, inner);
+
+    // The preset cards, a segmented control
+    y += 10;
+    NSView* presets = [[[ForkFlippedView alloc] initWithFrame:NSMakeRect(k_SettingsPadding, y, outer, 28)] autorelease];
+    presets.wantsLayer = YES;
+    presets.layer.cornerRadius = 8;
+    presets.layer.backgroundColor = white(0.08);
+    [presets setAccessibilityElement:YES];
+    [presets setAccessibilityRole:NSAccessibilityRadioGroupRole];
+    [presets setAccessibilityLabel:tr("Profile")];
+    [content addSubview:presets];
+    NSString* presetNames[] = { tr("Office"), tr("Gaming"), tr("Custom") };
+    CGFloat chipWidth = (outer - 4 - 4) / 3;
+    for (int i = 0; i < 3; i++) {
+        ForkMenuControl* chip = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlChip owner:self] autorelease];
+        chip->m_Local = ForkMenuLocalPreset;
+        chip->m_Value = i;
+        chip->m_On = view.preset == i;
+        chip.layer.cornerRadius = 6;
+        [chip setTitle:presetNames[i] detail:nil symbol:nil];
+        [chip setAccessibilityValue:chip->m_On ? @1 : @0];
+        chip.frame = NSMakeRect(2 + i * (chipWidth + 2), 2, chipWidth, 24);
+        [presets addSubview:chip];
+        [m_Controls addObject:chip];
+    }
+    y += 28 + 6;
+
+    // "2 settings are set for Desktop. The rest follow Settings."
+    y += addText(view.countText.toNSString(), [NSFont systemFontOfSize:12], NSColor.secondaryLabelColor, left, inner) + 4;
+
+    // The sections and their rows: a gold dot when set for the app, ↻ when the row's value reconnects,
+    // the value in a capsule
+    NSColor* gold = [NSColor colorWithSRGBRed:0xe3 / 255.0 green:0xb3 / 255.0 blue:0x41 / 255.0 alpha:1];
+    int rowIndex = 0;
+    for (const ForkStreamSettings::Section& section : view.sections) {
+        y += 8;
+        y += addText(section.title.toNSString(), [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold], NSColor.secondaryLabelColor,
+                     left, inner) + 2;
+        for (const ForkStreamSettings::Row& row : section.rows) {
+            ForkMenuControl* popup = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlPopup owner:self] autorelease];
+            popup->m_Local = ForkMenuLocalRow;
+            popup->m_Value = rowIndex;
+            [popup setTitle:row.value.toNSString() detail:nil symbol:nil];
+            [popup setAccessibilityLabel:row.accessibility.toNSString()];
+            [popup setAccessibilityExpanded:NO];
+            CGFloat popupWidth = MIN([popup naturalWidth], 190);
+            popup.frame = NSMakeRect(left + inner - popupWidth, y + 2, popupWidth, 22);
+
+            NSView* dot = [[[NSView alloc] initWithFrame:NSMakeRect(left, y + round((k_SettingsRowHeight - 6) / 2), 6, 6)] autorelease];
+            dot.wantsLayer = YES;
+            dot.layer.cornerRadius = 3;
+            dot.layer.backgroundColor = row.set ? gold.CGColor : CGColorGetConstantColor(kCGColorClear);
+            [content addSubview:dot];
+
+            NSTextField* label = makeText(row.label.toNSString(), [NSFont systemFontOfSize:13], NSColor.labelColor);
+            [label sizeToFit];
+            CGFloat labelX = left + 6 + 6;
+            NSImageView* icon = row.reconnects ? reconnectIcon() : nil;
+            CGFloat room = NSMinX(popup.frame) - 10 - labelX - (icon != nil ? 6 + NSWidth(icon.frame) : 0);
+            label.frame = NSMakeRect(labelX, y + round((k_SettingsRowHeight - NSHeight(label.frame)) / 2), MAX(MIN(NSWidth(label.frame), room), 0),
+                                     NSHeight(label.frame));
+            [content addSubview:label];
+            if (icon != nil) {
+                [icon setFrameOrigin:NSMakePoint(NSMaxX(label.frame) + 6, y + round((k_SettingsRowHeight - NSHeight(icon.frame)) / 2))];
+                [content addSubview:icon];
+            }
+            [content addSubview:popup];
+            [m_Controls addObject:popup];
+            y += k_SettingsRowHeight;
+            rowIndex++;
+        }
+    }
+
+    // "↻ Reconnects the stream, for a second or two"
+    y += 6;
+    NSImageView* legendIcon = reconnectIcon();
+    [legendIcon setAccessibilityElement:NO];
+    NSTextField* legend = makeText(tr("Reconnects the stream, for a second or two"), [NSFont systemFontOfSize:12], NSColor.secondaryLabelColor);
+    [legend sizeToFit];
+    [legendIcon setFrameOrigin:NSMakePoint(left, y + round((NSHeight(legend.frame) - NSHeight(legendIcon.frame)) / 2))];
+    legend.frame = NSMakeRect(left + NSWidth(legendIcon.frame) + 6, y, inner - NSWidth(legendIcon.frame) - 6, NSHeight(legend.frame));
+    [content addSubview:legendIcon];
+    [content addSubview:legend];
+    y += NSHeight(legend.frame);
+
+    // Reset to Global at the left; Save for Next Time and Apply at the right
+    y += 10;
+    NSView* line = makeSeparatorLine();
+    line.frame = NSMakeRect(k_SettingsPadding, y, outer, 1);
+    [content addSubview:line];
+    y += 1 + 10;
+    auto addButton = [&](NSString* title, ForkButtonStyle style, BOOL enabled) {
+        ForkMenuControl* button = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlButton owner:self] autorelease];
+        button->m_ButtonStyle = style;
+        button->m_Enabled = enabled;
+        [button setTitle:title detail:nil symbol:nil];
+        [content addSubview:button];
+        [m_Controls addObject:button];
+        [button refreshAppearance];
+        return button;
+    };
+    ForkMenuControl* reset = addButton(tr("Reset to Global"), ForkButtonLink, YES);
+    reset->m_Local = ForkMenuLocalReset;
+    ForkMenuControl* save = addButton(tr("Save for Next Time"), ForkButtonSecondary, view.canSave);
+    save->m_Action = NotchMenus::Action::StreamSettingsSave;
+    ForkMenuControl* apply = addButton(view.applyReconnects ? tr("Apply and Reconnect") : tr("Apply"), ForkButtonPrimary, view.canApply);
+    apply->m_Action = NotchMenus::Action::StreamSettingsApply;
+    CGFloat right = k_SettingsPadding + outer;
+    CGFloat resetWidth = [reset naturalWidth];
+    CGFloat saveWidth = [save naturalWidth];
+    CGFloat applyWidth = [apply naturalWidth];
+    reset.frame = NSMakeRect(k_SettingsPadding, y, resetWidth, 24);
+    if (k_SettingsPadding + resetWidth + 8 + saveWidth + 8 + applyWidth > right) {
+        // As the canvas's footer wraps: Save and Apply on a line of their own when they don't fit
+        // beside Reset to Global ("Apply and Reconnect")
+        y += 24 + 8;
+    }
+    apply.frame = NSMakeRect(right - applyWidth, y, applyWidth, 24);
+    save.frame = NSMakeRect(NSMinX(apply.frame) - 8 - saveWidth, y, saveWidth, 24);
+    y += 24 + 10;
+    *size = NSMakeSize(k_SettingsWidth, y);
+}
+
+// A Stream Settings row's choices: Global first, then a line, then the row's values; ↻ on those that
+// reconnect where the row's others don't
+- (void)openStreamSettingsList:(ForkMenuControl*)popup
+{
+    int wanted = popup->m_Value;
+    int rowIndex = 0;
+    const ForkStreamSettings::Row* found = nullptr;
+    for (const ForkStreamSettings::Section& section : m_SettingsView.sections) {
+        for (const ForkStreamSettings::Row& row : section.rows) {
+            if (rowIndex++ == wanted) {
+                found = &row;
+            }
+        }
+    }
+    if (found == nullptr) {
+        return;
+    }
+    NSMutableArray<ForkMenuControl*>* choices = [NSMutableArray array];
+    for (size_t i = 0; i < found->choices.size(); i++) {
+        const ForkStreamSettings::Choice& option = found->choices[i];
+        ForkMenuControl* choice = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlChoice owner:self] autorelease];
+        choice->m_Local = ForkMenuLocalPick;
+        choice->m_Value = (wanted << 8) | static_cast<int>(i);
+        [choice setTitle:option.text.toNSString() detail:nil symbol:nil];
+        [choice setChecked:option.checked reconnects:option.reconnects];
+        choice->m_Enabled = option.enabled;
+        [choice setAccessibilityEnabled:option.enabled];
+        [choices addObject:choice];
+        if (option.separatorAfter) {
+            [choices addObject:[[[ForkMenuControl alloc] initWithKind:ForkMenuControlSeparator owner:self] autorelease]];
+        }
+    }
+    popup->m_On = YES;
+    [popup refreshAppearance];
+    [self openListFor:popup choices:choices];
 }
 
 // Control Center's Trackpad: the three modes, the stream's ticked, ↻ on those that reconnect
@@ -1738,6 +2037,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     ForkMenuControl* opener = m_ListOpener;
     m_ListOpener = nil;
     [opener setAccessibilityExpanded:NO];
+    if (opener != nil && opener->m_Local == ForkMenuLocalRow) {
+        opener->m_On = NO;
+        [opener refreshAppearance];
+    }
     NSUInteger index = opener != nil ? [m_Controls indexOfObject:opener] : NSNotFound;
     [self select:index != NSNotFound && m_KeyboardSelection ? (int)index : -1 keyboard:m_KeyboardSelection];
 }
@@ -1966,6 +2269,16 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_ReconnectCaption.stringValue = tr("Changing these reconnects the stream.");
     [content addSubview:m_ReconnectCaption];
 
+    // Every setting of the app's, in Stream Settings
+    m_QualitySettingsLine = makeSeparatorLine();
+    [content addSubview:m_QualitySettingsLine];
+    m_QualitySettingsRow = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlRow owner:self] autorelease];
+    m_QualitySettingsRow->m_Action = NotchMenus::Action::OpenStreamSettings;
+    [m_QualitySettingsRow setTitle:QCoreApplication::translate("NotchBar", "Stream Settings for %1…").arg(shortName(m_AppName)).toNSString()
+                            detail:nil symbol:nil];
+    [content addSubview:m_QualitySettingsRow];
+    [m_Controls addObject:m_QualitySettingsRow];
+
     [self showQuality:state];
 }
 
@@ -2081,7 +2394,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         m_Caption.stringValue = QCoreApplication::translate("NotchBar", "Up to %1 without reconnecting.").arg(mbpsText(range.maxKbps)).toNSString();
         break;
     case NotchQuality::Caption::CantChange:
-        m_Caption.stringValue = tr("Changing it takes a new stream.");
+        m_Caption.stringValue = tr("Stream Settings can change it; that reconnects.");
         break;
     }
 
@@ -2201,8 +2514,13 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
     CGFloat reconnectHeight = textHeight(m_ReconnectCaption, inner);
     m_ReconnectCaption.frame = NSMakeRect(left, y + 2, inner, reconnectHeight);
-    y += 2 + reconnectHeight;
-    return y + 4 + k_QualityPadding;
+    y += 2 + reconnectHeight + 4;
+
+    m_QualitySettingsLine.frame = NSMakeRect(left, y + 5, inner, 1);
+    y += 11;
+    m_QualitySettingsRow.frame = NSMakeRect(k_QualityPadding, y, width, k_RowHeight);
+    y += k_RowHeight;
+    return y + k_QualityPadding;
 }
 
 // Lays Quality out again, its panel's top edge where it was if its height changed
@@ -2426,6 +2744,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     else if (m_BitrateTileDetail != nil) {
         [self showBitrateTile:[m_Host menusState].bitrate];
     }
+    else if (m_Open == NotchMenus::Menu::StreamSettings && m_ListView == nil) {
+        // What the PC can change live decides which choices reconnect, and Apply's title; only that,
+        // as a rebuild under the pointer would lose a click (the bitrate itself moves every few seconds)
+        NotchQuality::State bitrate = [m_Host menusState].bitrate;
+        if (bitrate.live != m_SettingsLive || bitrate.maxKbps != m_SettingsMaxKbps) {
+            [self rebuild];
+        }
+    }
 }
 
 // "This Mac is drive M:", "On GAMING-PC, over the LAN": shows only
@@ -2502,6 +2828,33 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     if (m_ListView != nil && control->m_Kind != ForkMenuControlChoice) {
         // Under an open list (VoiceOver can reach it there), or its opener again: the list closes
         [self closeList];
+        return;
+    }
+    // Stream Settings' draft changes in the menus, at once; Apply and Save are actions
+    switch (control->m_Local) {
+    case ForkMenuLocalPreset:
+        [m_Host menusStreamSettingsPreset:control->m_Value];
+        [self rebuild];
+        return;
+    case ForkMenuLocalRow:
+        [self openStreamSettingsList:control];
+        return;
+    case ForkMenuLocalPick: {
+        int value = control->m_Value;
+        [self closeList];
+        [m_Host menusStreamSettingsPick:value >> 8 choice:value & 0xff];
+        [self rebuild];
+        return;
+    }
+    case ForkMenuLocalReset:
+        [m_Host menusStreamSettingsReset];
+        [self rebuild];
+        return;
+    case ForkMenuLocalNone:
+        break;
+    }
+    if (control->m_Action == NotchMenus::Action::OpenStreamSettings) {
+        [self open:NotchMenus::Menu::StreamSettings keyboard:m_KeyboardSelection];
         return;
     }
     if (control == m_TrackpadTile) {

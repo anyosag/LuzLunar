@@ -9,6 +9,7 @@
 #include "fork/notchmenus.h"
 #include "fork/notchquality.h"
 #include "fork/powerrules.h"
+#include "fork/streamsettings.h"
 
 struct SDL_Window;
 
@@ -117,6 +118,17 @@ public:
     // The battery, Low Power Mode or Stream Battery Saver changed: the Battery item, and Battery if
     // open, show it
     virtual void powerChanged() = 0;
+
+    // Stream Settings' panel (ForkStreamSettings): its contents, open starting the draft again from
+    // what the stream applied, and the draft's edits. On the main thread inside AppKit's event
+    // handling: they change the draft alone, so they needn't wait for the event loop.
+    struct StreamSettingsSource {
+        std::function<ForkStreamSettings::View(bool open)> view;
+        std::function<void(int row, int choice)> pick;
+        std::function<void(int preset)> preset;
+        std::function<void()> reset;
+    };
+    virtual void setStreamSettings(StreamSettingsSource source) = 0;
 
 protected:
     NotchBar() = default;
