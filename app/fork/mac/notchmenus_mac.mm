@@ -29,6 +29,10 @@ namespace
     const CGFloat k_RowHeight = 24;
     const CGFloat k_SeparatorHeight = 11;
 
+    // Stream status
+    const CGFloat k_StatusWidth = 300;
+    const CGFloat k_StatusPadding = 6;
+
     // Stream Control Center
     const CGFloat k_CenterWidth = 340;
     const CGFloat k_CenterPadding = 10;
@@ -167,6 +171,27 @@ namespace
     return self;
 }
 
+- (void)setSymbol:(NSString*)name
+{
+    NSImage* image = symbol(name, 13, NSFontWeightMedium);
+    if (image == nil) {
+        [m_Icon removeFromSuperview];
+        [m_Icon release];
+        m_Icon = nil;
+    }
+    else {
+        if (m_Icon == nil) {
+            m_Icon = [[NSImageView alloc] initWithFrame:NSZeroRect];
+            m_Icon.imageScaling = NSImageScaleNone;
+            m_Icon.contentTintColor = NSColor.labelColor;
+            [self addSubview:m_Icon];
+        }
+        m_Icon.image = image;
+        [m_Icon setFrameSize:image.size];
+    }
+    self.needsLayout = YES;
+}
+
 - (void)dealloc
 {
     [_onPress release];
@@ -194,6 +219,11 @@ namespace
         width += k_ItemGap;
     }
     return ceil(width);
+}
+
+- (CGFloat)iconOnlyWidth
+{
+    return ceil(2 * k_ItemPadding + (m_Icon != nil ? NSWidth(m_Icon.frame) : 0));
 }
 
 - (void)layout
@@ -656,6 +686,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     BOOL m_KeyboardSelection;
     id m_ClickMonitor;
     NSMutableSet<NSNumber*>* m_OwedReleases;   // keys whose press a menu took
+    ForkStatusView* m_StatusView;   // Stream status's, while it's open; not retained: the panel holds it
 }
 
 - (instancetype)initWithHost:(id<ForkNotchMenusHost>)host appName:(NSString*)appName hostName:(NSString*)hostName
@@ -741,6 +772,29 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         }
         *size = NSMakeSize(width + 2 * k_SessionPadding, y + k_SessionPadding);
     }
+    else if (m_Open == NotchMenus::Menu::Status) {
+        // The status above, the two rows below: only the rows take the keyboard and choose
+        CGFloat width = k_StatusWidth - 2 * k_StatusPadding;
+        ForkStatusView* status = [[[ForkStatusView alloc] initWithWidth:width] autorelease];
+        [status setFrameOrigin:NSMakePoint(k_StatusPadding, k_StatusPadding)];
+        [content addSubview:status];
+        m_StatusView = status;
+        [self statusChanged];
+        CGFloat y = k_StatusPadding + NSHeight(status.frame);
+        auto addRow = [&](NSString* title, NSString* detail, NotchMenus::Action action) {
+            ForkMenuControl* control = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlRow owner:self] autorelease];
+            control->m_Action = action;
+            [control setTitle:title detail:detail symbol:nil];
+            control.frame = NSMakeRect(k_StatusPadding, y, width, k_RowHeight);
+            [content addSubview:control];
+            [m_Controls addObject:control];
+            y += k_RowHeight;
+        };
+        addRow(state.statsOverlayShown ? tr("Hide Stats Overlay") : tr("Show Stats Overlay"), @"⌃⌥⇧S",
+               NotchMenus::Action::ToggleStatsOverlay);
+        addRow(tr("Copy Diagnostics"), nil, NotchMenus::Action::CopyDiagnostics);
+        *size = NSMakeSize(k_StatusWidth, y + k_StatusPadding);
+    }
     else if (m_Open == NotchMenus::Menu::ControlCenter) {
         CGFloat width = k_CenterWidth - 2 * k_CenterPadding;
         CGFloat y = k_CenterPadding;
@@ -752,10 +806,11 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         group.layer.backgroundColor = white(0.08);
         [content addSubview:group];
         CGFloat groupY = k_CenterPadding;
-        auto addToggle = [&](NSString* title, NSString* detail, NSString* name, BOOL on, NotchMenus::Action action) {
+        auto addToggle = [&](NSString* title, NSString* detail, NSString* name, BOOL on, NotchMenus::Action action, BOOL enabled) {
             ForkMenuControl* control = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlToggle owner:self] autorelease];
             control->m_Action = action;
             control->m_On = on;
+            control->m_Enabled = enabled;
             [control setTitle:title detail:detail symbol:name];
             [control setAccessibilityValue:on ? @1 : @0];
             control.frame = NSMakeRect(10, groupY, width - 20, k_ToggleHeight);
@@ -763,13 +818,32 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
             [m_Controls addObject:control];
             groupY += k_ToggleHeight + 6;
         };
+        // Automatic for this stream, or by shortcut; greyed when the PC can't sync
+        using Clipboard = NotchBar::MenuState::Clipboard;
+        bool clipboardUsable = state.clipboard == Clipboard::Available || state.clipboard == Clipboard::Unknown;
+        NSString* clipboardDetail = state.clipboard == Clipboard::OffInSettings ? tr("Off in Settings") :
+                                    state.clipboard == Clipboard::NeedsApollo   ? tr("Needs Apollo") :
+                                    state.clipboard == Clipboard::NotAllowed    ? tr("Not allowed in Apollo") :
+                                    state.clipboardAutomatic                     ? tr("Automatic") : tr("With ⌃⌥⇧U and ⌃⌥⇧G");
+        addToggle(tr("Clipboard Sync"), clipboardDetail, @"doc.on.clipboard", clipboardUsable && state.clipboardAutomatic,
+                  NotchMenus::Action::ToggleClipboardSync, clipboardUsable);
         addToggle(tr("Mac Shortcuts"), state.systemKeysToPc ? tr("Sent to the PC") : tr("Kept on the Mac"),
-                  @"keyboard", state.systemKeysToPc, NotchMenus::Action::ToggleSystemKeys);
+                  @"keyboard", state.systemKeysToPc, NotchMenus::Action::ToggleSystemKeys, YES);
         addToggle(tr("Mouse"), state.mouseCaptured ? tr("Captured · ⌃⌥⇧Z") : tr("Free · ⌃⌥⇧Z"),
-                  @"cursorarrow", state.mouseCaptured, NotchMenus::Action::ToggleMouseCapture);
+                  @"cursorarrow", state.mouseCaptured, NotchMenus::Action::ToggleMouseCapture, YES);
+        addToggle(tr("Notch Stats"), state.notchStatsShown ? tr("Shown") : tr("Hidden"),
+                  @"chart.bar.fill", state.notchStatsShown, NotchMenus::Action::ToggleNotchStats, YES);
         // The last switch's gap below it becomes the tile's padding
         group.frame = NSMakeRect(k_CenterPadding, y, width, groupY - 6 + k_CenterPadding);
         y += NSHeight(group.frame) + k_TileGap;
+
+        // This Mac as a drive on the PC, while it is one
+        if (state.driveMapped) {
+            NSView* drive = [self driveTile:state width:width];
+            [drive setFrameOrigin:NSMakePoint(k_CenterPadding, y)];
+            [content addSubview:drive];
+            y += NSHeight(drive.frame) + k_TileGap;
+        }
 
         // The session's buttons, three across
         CGFloat tileWidth = floor((width - 2 * k_TileGap) / 3);
@@ -863,7 +937,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     effect.blendingMode = NSVisualEffectBlendingModeBehindWindow;
     effect.state = NSVisualEffectStateActive;
     effect.wantsLayer = YES;
-    effect.layer.cornerRadius = menu == NotchMenus::Menu::ControlCenter ? 22 : 12;
+    effect.layer.cornerRadius = menu == NotchMenus::Menu::ControlCenter ? 22 : menu == NotchMenus::Menu::Status ? 14 : 12;
     effect.layer.masksToBounds = YES;
     effect.layer.borderWidth = 1;
     effect.layer.borderColor = white(0.10);
@@ -872,7 +946,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 
     [effect setAccessibilityElement:YES];
     [effect setAccessibilityRole:menu == NotchMenus::Menu::Session ? NSAccessibilityMenuRole : NSAccessibilityGroupRole];
-    [effect setAccessibilityLabel:menu == NotchMenus::Menu::Session ? tr("Session") : tr("Stream Control Center")];
+    [effect setAccessibilityLabel:menu == NotchMenus::Menu::Session ? tr("Session") :
+                                  menu == NotchMenus::Menu::Status  ? tr("Stream status") : tr("Stream Control Center")];
 
     // Under its item, kept on the screen
     NSScreen* screen = [m_Host menusBarWindow].screen;
@@ -931,6 +1006,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     // Not released yet: this may run inside one of its controls' mouseUp:
     [m_Panel autorelease];
     m_Panel = nil;
+    m_StatusView = nil;
     [self dropControls];
     m_Selected = -1;
 }
@@ -968,6 +1044,12 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     if (m_Open == NotchMenus::Menu::None || m_Panel == nil) {
         return;
     }
+    if (m_Open == NotchMenus::Menu::Status) {
+        // In place, keeping what the pointer is on; rebuilding would lose it, and MenusOpened
+        // refreshes right after the menu opens
+        [self statusChanged];
+        return;
+    }
     int selected = m_Selected;
     BOOL keyboard = m_KeyboardSelection;
 
@@ -985,6 +1067,66 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     if (selected >= 0 && [self selectable:selected]) {
         [self select:selected keyboard:keyboard];
     }
+}
+
+- (void)statusChanged
+{
+    if (m_StatusView == nil || m_Host == nil) {
+        return;
+    }
+    ForkStatusModel model;
+    [m_Host menusStatus:&model];
+    [m_StatusView update:model];
+
+    // Control-Option-Shift-S reaches the stream while the menu is open, so the row follows it
+    for (ForkMenuControl* control in m_Controls) {
+        if (control->m_Action == NotchMenus::Action::ToggleStatsOverlay) {
+            [control setTitle:[m_Host menusState].statsOverlayShown ? tr("Hide Stats Overlay") : tr("Show Stats Overlay")
+                       detail:@"⌃⌥⇧S" symbol:nil];
+        }
+    }
+}
+
+// "This Mac is drive M:", "On GAMING-PC, over the LAN": shows only
+- (NSView*)driveTile:(const NotchBar::MenuState&)state width:(CGFloat)width
+{
+    NSView* tile = [[[ForkFlippedView alloc] initWithFrame:NSMakeRect(0, 0, width, 56)] autorelease];
+    tile.wantsLayer = YES;
+    tile.layer.cornerRadius = 16;
+    tile.layer.backgroundColor = white(0.08);
+
+    NSView* circle = [[[NSView alloc] initWithFrame:NSMakeRect(10, 14, k_Circle, k_Circle)] autorelease];
+    circle.wantsLayer = YES;
+    circle.layer.cornerRadius = k_Circle / 2;
+    circle.layer.backgroundColor = NSColor.controlAccentColor.CGColor;
+    NSImage* image = symbol(@"externaldrive.fill", 14, NSFontWeightMedium);
+    if (image != nil) {
+        NSImageView* icon = [[[NSImageView alloc] initWithFrame:NSZeroRect] autorelease];
+        icon.image = image;
+        icon.imageScaling = NSImageScaleNone;
+        icon.contentTintColor = NSColor.whiteColor;
+        [icon setFrameSize:image.size];
+        [icon setFrameOrigin:NSMakePoint(round((k_Circle - image.size.width) / 2), round((k_Circle - image.size.height) / 2))];
+        [circle addSubview:icon];
+    }
+    [tile addSubview:circle];
+
+    QString letter = state.driveLetter;
+    NSString* title = (state.driveHomeFolder ? QCoreApplication::translate("NotchBar", "Your home folder is drive %1:")
+                                             : QCoreApplication::translate("NotchBar", "This Mac is drive %1:")).arg(letter).toNSString();
+    NSString* detail = QCoreApplication::translate("NotchBar", "On %1, over the LAN").arg(QString::fromNSString(m_HostName)).toNSString();
+    CGFloat x = 10 + k_Circle + 9;
+    NSTextField* titleLabel = makeText(title, [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold], NSColor.labelColor);
+    titleLabel.frame = NSMakeRect(x, 11, width - x - 10, 17);
+    [tile addSubview:titleLabel];
+    NSTextField* detailLabel = makeText(detail, [NSFont systemFontOfSize:12], NSColor.secondaryLabelColor);
+    detailLabel.frame = NSMakeRect(x, 28, width - x - 10, 16);
+    [tile addSubview:detailLabel];
+
+    [tile setAccessibilityElement:YES];
+    [tile setAccessibilityRole:NSAccessibilityStaticTextRole];
+    [tile setAccessibilityLabel:[NSString stringWithFormat:@"%@ %@", title, detail]];
+    return tile;
 }
 
 - (void)controlHovered:(NSView*)control

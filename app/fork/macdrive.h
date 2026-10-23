@@ -29,7 +29,16 @@ public:
     // thread. Safe to call after this is gone.
     std::function<void(bool viaLan)> linkListener() const;
 
-    void handleEvent(const SDL_Event& event);
+    // True when the drive tile has something new to show (mapping())
+    bool handleEvent(const SDL_Event& event);
+
+    // Whether this Mac is a drive on the PC now, for Stream Control Center. Main thread.
+    struct Mapping {
+        bool mapped = false;
+        QString letter;
+        bool homeFolder = false;    // only the home folder could be shared
+    };
+    Mapping mapping() const;
 
     // Messages go to the sink, like LuzLunar's notch bar; without one they're only logged, and
     // Settings shows the last
@@ -40,4 +49,5 @@ public:
 private:
     std::shared_ptr<Shared> m_Shared;
     std::function<bool(const QString&)> m_MessageSink;
+    Mapping m_Mapping;
 };

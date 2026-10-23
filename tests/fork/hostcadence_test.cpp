@@ -115,6 +115,29 @@ static void testSummary()
     CHECK(summary.lowest() == 80.0);
 }
 
+static void testVerdict()
+{
+    // At 60 fps one frame the PC held, in a window of 30, scores about 94 %: uneven
+    HostCadence cadence;
+    uint32_t time = 0;
+    HostCadence::Sample sample;
+    for (uint32_t frame = 1; frame <= 31; frame++) {
+        time += frame == 20 ? 2 * k_Frame60 : k_Frame60;
+        sample = cadence.observe(frame, time);
+    }
+    CHECK(sample.valid);
+    double held = HostCadence::smoothnessPercent(sample.varianceTicksSquared);
+    CHECK(near(held, 94.2, 0.1));
+    CHECK(pacingVerdict(held, 60) == PacingVerdict::Uneven);
+
+    CHECK(pacingVerdict(100, 60) == PacingVerdict::Even);
+    CHECK(pacingVerdict(k_EvenPacingPercent, 120) == PacingVerdict::Even);
+    CHECK(pacingVerdict(96.9, 120) == PacingVerdict::Uneven);
+    // No score, or a PC that's mostly idle: no verdict
+    CHECK(pacingVerdict(std::nan(""), 60) == PacingVerdict::Unknown);
+    CHECK(pacingVerdict(50, 9.5) == PacingVerdict::Unknown);
+}
+
 int main()
 {
     testScore();
@@ -122,6 +145,7 @@ int main()
     testUneven();
     testBreaks();
     testSummary();
+    testVerdict();
 
     if (s_Failures == 0) {
         std::printf("hostcadence: all tests passed\n");

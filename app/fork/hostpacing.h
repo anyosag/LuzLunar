@@ -13,6 +13,10 @@ namespace ForkHostPacing
     // Each frame as it arrives, in order; on the decode thread
     void observe(int frameNumber, uint32_t rtpTimestamp);
 
+    // The average and lowest scores since the last call, for the notch bar (through ForkStreamStats);
+    // false without any. On the decode thread.
+    bool takeWindow(double* average, double* lowest);
+
     // Appends "Host frame pacing: 98.7 % (spread 0.8 ms)" to the stats overlay's text, once there's a score
     void appendOverlayLine(char* text, int maxLength);
 

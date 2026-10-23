@@ -194,7 +194,7 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/macdriverules_test.cpp app/fork/macdriverules.cpp -o "$RUNNER_TEMP/macdriverules_test"
           "$RUNNER_TEMP/macdriverules_test"
-          # How evenly the PC sends frames: the score, its window, and what breaks it
+          # How evenly the PC sends frames: the score, its window, what breaks it, and Even or Uneven
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/hostcadence_test.cpp -o "$RUNNER_TEMP/hostcadence_test"
           "$RUNNER_TEMP/hostcadence_test"
@@ -202,6 +202,14 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/notchmenus_test.cpp -o "$RUNNER_TEMP/notchmenus_test"
           "$RUNNER_TEMP/notchmenus_test"
+          # Stream status's latency in four parts and the last two minutes of it
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/streamhistory_test.cpp -o "$RUNNER_TEMP/streamhistory_test"
+          "$RUNNER_TEMP/streamhistory_test"
+          # Stream status's graph scale, summary, latency bar, pointer, health and the bar item's text
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/notchstatus_test.cpp -o "$RUNNER_TEMP/notchstatus_test"
+          "$RUNNER_TEMP/notchstatus_test"
           # Adaptive bitrate's controller: cuts on losses and queues, holds, the climb back, the floor
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/bitraterules_test.cpp app/fork/bitraterules.cpp -o "$RUNNER_TEMP/bitraterules_test"

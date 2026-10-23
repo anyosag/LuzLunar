@@ -156,12 +156,31 @@ static void testOutcome()
     CHECK(worthTelling(Outcome::WrongPassword));
 }
 
+static void testMapped()
+{
+    CHECK(mapped(Outcome::Added));
+    CHECK(mapped(Outcome::AddedHome));
+    CHECK(mapped(Outcome::Kept));
+    CHECK(!mapped(Outcome::Pending));
+    CHECK(!mapped(Outcome::WrongPassword));
+    CHECK(!mapped(Outcome::Refused));
+
+    List sent { "Macintosh HD", "gonzalo" };
+    CHECK(!homeFolder(Outcome::Added, reply(200, "mapped", "Macintosh HD", true), sent));
+    CHECK(homeFolder(Outcome::AddedHome, reply(200, "mapped", "gonzalo", true), sent));
+    // A drive kept from before is whichever share it was
+    CHECK(homeFolder(Outcome::Kept, reply(200, "mapped", "gonzalo", false), sent));
+    CHECK(!homeFolder(Outcome::Kept, reply(200, "mapped", "Macintosh HD", false), sent));
+    CHECK(!homeFolder(Outcome::Kept, reply(200, "mapped", "", false), sent));
+}
+
 int main()
 {
     testShares();
     testHostSupport();
     testSkip();
     testOutcome();
+    testMapped();
 
     if (s_Failures == 0) {
         std::printf("macdriverules: all tests passed\n");

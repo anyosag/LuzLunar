@@ -129,6 +129,11 @@ public:
     bool notchBar() const { return m_NotchBar; }
     void setNotchBar(bool enabled);
 
+    // The notch bar's stream stats beside the notch, or only their icon: Stream Control Center's
+    // Notch Stats switch, during a stream. No signal, as QML isn't running then.
+    bool notchBarStats() const { return m_NotchBarStats; }
+    void setNotchBarStats(bool shown);
+
     bool describeDisplay() const { return m_DescribeDisplay; }
     void setDescribeDisplay(bool enabled);
 
@@ -167,6 +172,7 @@ private:
     int m_ClipboardSyncMode;
     bool m_ClipboardFiles;
     bool m_NotchBar;
+    bool m_NotchBarStats;
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;
     bool m_MacShortcutsAll;

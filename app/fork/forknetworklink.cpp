@@ -40,7 +40,7 @@ namespace
         std::string address;    // the PC's address as Moonlight has it, maybe a name
         ForkLinkRules::Reachability reachability = ForkLinkRules::Reachability::NotChecked;
         std::shared_ptr<Monitor> monitor;
-        QString badge;
+        Current current;
     };
 
     // Never destroyed: a probing thread may still be finishing as the app exits
@@ -134,10 +134,7 @@ namespace
                 saveRemembered(hostUuid, remembered);
             }
 
-            QString text;
-            if (ForkLinkRules::shouldShow(lan, known)) {
-                text = QString::fromStdString(ForkLinkRules::badge(probe.link, !lan));
-            }
+            bool shown = ForkLinkRules::shouldShow(lan, known);
 
             if (first) {
                 std::string link = ForkLinkRules::badge(probe.link, false);
@@ -152,7 +149,7 @@ namespace
                             probe.interfaceName.empty() ? "" : ")",
                             lan ? "over the LAN" : "not over the LAN",
                             about,
-                            !refresh ? "no notch bar" : (text.isEmpty() ? "not shown in the notch bar" : "shown in the notch bar"));
+                            !refresh ? "no notch bar" : (shown ? "shown in the notch bar" : "not shown in the notch bar"));
                 if (onFirstProbe) {
                     onFirstProbe(lan);
                 }
@@ -160,9 +157,12 @@ namespace
 
             {
                 std::lock_guard<std::mutex> lock(state().mutex);
-                // A later stream's monitor owns the badge otherwise
+                // A later stream's monitor owns it otherwise
                 if (state().monitor == monitor) {
-                    state().badge = text;
+                    state().current.known = true;
+                    state().current.link = probe.link;
+                    state().current.viaLan = lan;
+                    state().current.shown = shown;
                 }
             }
 
@@ -203,7 +203,7 @@ void start(bool refresh, std::function<void(bool viaLan)> onFirstProbe)
     {
         std::lock_guard<std::mutex> lock(state().mutex);
         previous.swap(state().monitor);
-        state().badge.clear();
+        state().current = Current();
         if (!state().hostUuid.isEmpty() && !state().address.empty()) {
             state().monitor = monitor;
             hostUuid = state().hostUuid;
@@ -223,7 +223,7 @@ void stop()
     {
         std::lock_guard<std::mutex> lock(state().mutex);
         monitor.swap(state().monitor);
-        state().badge.clear();
+        state().current = Current();
         // The next stream notes its own
         state().hostUuid.clear();
         state().address.clear();
@@ -232,9 +232,9 @@ void stop()
     stopMonitor(monitor);
 }
 
-QString badge()
+Current current()
 {
     std::lock_guard<std::mutex> lock(state().mutex);
-    return state().badge;
+    return state().current;
 }
 }

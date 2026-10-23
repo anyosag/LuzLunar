@@ -58,6 +58,14 @@ private:
     // Whether the stream will hold input once the open menus close
     bool captureAfterMenus(SdlInputHandler* input) const;
 
+    // Stream status's Copy Diagnostics
+    void copyDiagnostics();
+
+    QString m_AppName;
+    int m_Width;
+    int m_Height;
+    int m_OwnBitrateKbps;
+    QString m_HostName;
     QString m_HostUuid;
     // The menus free the pointer while they're open, from MenusOpened to MenusClosed. Control
     // Center's Mouse tile chooses whether the stream holds input after (m_CaptureAfterMenus);
