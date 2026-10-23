@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include <QString>
 
@@ -12,6 +13,7 @@ class ClipboardSync;
 class MacDrive;
 class NotchBar;
 class PowerNotice;
+class SdlInputHandler;
 class NvComputer;
 class NvApp;
 class StreamingPreferences;
@@ -53,10 +55,18 @@ private:
     // Does what a notch bar menu asked for, in the event loop
     void performBarAction(NotchMenus::Action action);
 
+    // Whether the stream will hold input once the open menus close
+    bool captureAfterMenus(SdlInputHandler* input) const;
+
     QString m_HostUuid;
-    // Whether the stream holds input once the open menus close: the menus free the pointer while
-    // they're open, and Control Center's Mouse tile chooses what happens after
+    // The menus free the pointer while they're open, from MenusOpened to MenusClosed. Control
+    // Center's Mouse tile chooses whether the stream holds input after (m_CaptureAfterMenus);
+    // m_CaptureLeftByBar is what the bar left it as, so a change by other means can be told apart.
+    bool m_BarMenusOpen = false;
     bool m_CaptureAfterMenus = true;
+    bool m_CaptureLeftByBar = false;
+    // Held back while the stream isn't in front (MenusClosed)
+    std::optional<bool> m_CaptureOnFocus;
 
     bool m_ShortcutGuard;
     std::unique_ptr<ClipboardSync> m_Clipboard;

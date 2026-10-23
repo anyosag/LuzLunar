@@ -12,8 +12,8 @@ namespace NotchMenus
     // (ForkStreamExtensions), which does them between events.
     enum class Action {
         None,
-        Disconnect,                 // end the stream; the app keeps running on the PC
-        DisconnectAndQuitLuzLunar,  // end the stream and quit LuzLunar; the app keeps running on the PC
+        Disconnect,                 // end the stream; the app keeps running on the PC, unless Settings quits it after a stream
+        DisconnectAndQuitLuzLunar,  // the same, then quit LuzLunar
         QuitAppOnPc,                // end the stream and quit the app on the PC
         QuitAndSleepPc,             // end the stream, then the PC quits the app and sleeps
         ToggleMouseCapture,         // Ctrl+Option+Shift+Z

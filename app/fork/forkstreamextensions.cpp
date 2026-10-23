@@ -97,7 +97,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 NotchBar::MenuState state;
                 SdlInputHandler* input = inputHandler();
                 if (input != nullptr) {
-                    state.mouseCaptured = m_NotchBar->menuOpen() ? m_CaptureAfterMenus : input->isCaptureActive();
+                    state.mouseCaptured = captureAfterMenus(input);
                     state.systemKeysToPc = input->isSystemKeyCaptureActive();
                 }
                 // Known once the PC's menu or the app's start asked; until then it's tried, and the
@@ -212,7 +212,8 @@ void ForkStreamExtensions::toggleBarMenus()
 bool ForkStreamExtensions::handleBarMenuKey(const SDL_KeyboardEvent* event)
 {
     // Also once a menu has closed: the release of a key it took is its own too
-    return m_NotchBar && m_NotchBar->handleMenuKey(event->keysym.scancode, event->state == SDL_PRESSED);
+    return m_NotchBar && m_NotchBar->handleMenuKey(event->keysym.scancode, event->state == SDL_PRESSED,
+                                                   (event->keysym.mod & KMOD_SHIFT) != 0);
 }
 
 bool ForkStreamExtensions::barMenuOpen() const
@@ -223,6 +224,16 @@ bool ForkStreamExtensions::barMenuOpen() const
 bool ForkStreamExtensions::barOnScreen() const
 {
     return m_NotchBar && m_NotchBar->onScreen();
+}
+
+bool ForkStreamExtensions::captureAfterMenus(SdlInputHandler* input) const
+{
+    // Before the menus' opening is handled, nothing has freed the pointer yet; and Control-Option-
+    // Shift-Z pressed while a menu is open wins over what the bar would put back
+    if (!m_BarMenusOpen || input->isCaptureActive() != m_CaptureLeftByBar) {
+        return input->isCaptureActive();
+    }
+    return m_CaptureAfterMenus;
 }
 
 void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
@@ -256,9 +267,10 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
         pushQuit();
         break;
     case NotchMenus::Action::ToggleMouseCapture:
-        if (barMenuOpen()) {
+        if (m_BarMenusOpen) {
             // The menus hold the pointer free while they're open: this chooses what happens after
-            m_CaptureAfterMenus = !m_CaptureAfterMenus;
+            m_CaptureAfterMenus = !captureAfterMenus(input);
+            m_CaptureLeftByBar = input->isCaptureActive();
         }
         else {
             input->forkToggleCapture();
@@ -269,6 +281,8 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
         break;
     case NotchMenus::Action::MenusOpened:
         // The pointer has to reach the menus: out of a game's hold, and out of the picture
+        m_BarMenusOpen = true;
+        m_CaptureOnFocus.reset();
         m_CaptureAfterMenus = input->isCaptureActive();
         if (input->isCaptureActive() && SDL_GetRelativeMouseMode()) {
             input->setCaptureActive(false);
@@ -277,13 +291,26 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
         else if (input->isCaptureActive()) {
             input->forkSuspendRegionLock();
         }
+        m_CaptureLeftByBar = input->isCaptureActive();
         break;
-    case NotchMenus::Action::MenusClosed:
-        if (m_CaptureAfterMenus != input->isCaptureActive()) {
-            input->setCaptureActive(m_CaptureAfterMenus);
+    case NotchMenus::Action::MenusClosed: {
+        bool capture = captureAfterMenus(input);
+        m_BarMenusOpen = false;
+        if (capture == input->isCaptureActive()) {
+            break;
+        }
+        if (SDL_GetKeyboardFocus() != nullptr) {
+            input->setCaptureActive(capture);
             input->raiseAllKeys();
         }
+        else {
+            // They closed as another app came forward. SDL turns macOS's relative mouse mode on
+            // at once, focus or not, which would hold the pointer in that app too: wait for the
+            // stream to be in front again.
+            m_CaptureOnFocus = capture;
+        }
         break;
+    }
     case NotchMenus::Action::BarShownOrHidden:
         // Moonlight holds the pointer to the picture in fullscreen on one display; not while the bar is
         // above the picture, where the pointer has to reach it
@@ -303,6 +330,13 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (event.type == barActionEventType() && event.user.code == k_BarActionCode) {
         performBarAction(static_cast<NotchMenus::Action>(reinterpret_cast<intptr_t>(event.user.data1)));
         return;
+    }
+    if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED && m_CaptureOnFocus) {
+        SdlInputHandler* input = inputHandler();
+        if (input != nullptr && *m_CaptureOnFocus != input->isCaptureActive()) {
+            input->setCaptureActive(*m_CaptureOnFocus);
+        }
+        m_CaptureOnFocus.reset();
     }
 
     if (m_Clipboard) {

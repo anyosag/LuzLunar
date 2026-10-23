@@ -49,8 +49,9 @@ public:
     // while the bar isn't on screen. Call on the main thread.
     virtual bool toggleMenus() = 0;
 
-    // A key (SDL scancode) while a menu is open: true when the menu took it, so the PC shouldn't
-    virtual bool handleMenuKey(int scancode, bool pressed) = 0;
+    // A key (SDL scancode) while a menu is open: true when the menu took it, so the PC shouldn't.
+    // shift: Shift is held, for Shift-Tab.
+    virtual bool handleMenuKey(int scancode, bool pressed, bool shift) = 0;
 
     virtual bool menuOpen() const = 0;
 

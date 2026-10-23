@@ -126,7 +126,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName;
 - (void)setActions:(std::function<void(NotchMenus::Action)>)actions state:(std::function<NotchBar::MenuState()>)state;
 - (BOOL)toggleMenusByKeyboard;
-- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed;
+- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
 - (BOOL)menuOpen;
 - (BOOL)barOnScreen;
 - (void)refreshMenus;
@@ -334,7 +334,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_StatsItem = [[ForkBarItem alloc] initWithSymbol:nil];
     m_StatsItem.interactive = NO;
     [m_StatsItem setTitle:statsTitle(@"—")];
-    m_ControlItem = [[ForkBarItem alloc] initWithSymbol:@"switch.2"];
+    // Control Center's own icon, or sliders on a macOS without it
+    m_ControlItem = [[ForkBarItem alloc] initWithSymbol:symbolImage(@"switch.2") != nil ? @"switch.2" : @"slider.horizontal.3"];
     [m_ControlItem setTitle:[[[NSAttributedString alloc] initWithString:@""] autorelease]];
     [m_ControlItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Control Center").toNSString()];
     m_Menus = [[ForkNotchMenus alloc] initWithHost:self appName:appName hostName:hostName];
@@ -391,6 +392,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         [center addObserver:self selector:@selector(streamWindowFrameChanged:) name:name object:m_StreamWindow];
     }
     [center addObserver:self selector:@selector(stateChanged:) name:NSApplicationDidChangeScreenParametersNotification object:nil];
+    // Another app came forward (Command-Tab, a notification's click): its clicks don't reach the
+    // menus' click monitor, so a menu would stay open over it
+    [center addObserver:self selector:@selector(applicationResignedActive:) name:NSApplicationDidResignActiveNotification object:nil];
     [NSWorkspace.sharedWorkspace.notificationCenter addObserver:self
                                                        selector:@selector(stateChanged:)
                                                            name:NSWorkspaceActiveSpaceDidChangeNotification
@@ -448,6 +452,12 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     // The geometry may change under a running animation, so jump to where it was heading
     [self finishMessageAnimation];
     [self refresh];
+}
+
+- (void)applicationResignedActive:(NSNotification*)notification
+{
+    (void)notification;
+    [m_Menus close];
 }
 
 - (void)streamWindowFrameChanged:(NSNotification*)notification
@@ -615,9 +625,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return YES;
 }
 
-- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed
+- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift
 {
-    return [m_Menus handleKey:scancode pressed:pressed];
+    return [m_Menus handleKey:scancode pressed:pressed shift:shift];
 }
 
 - (BOOL)menuOpen
@@ -1431,8 +1441,10 @@ namespace
             // No listener runs after these return; queued updates hold their own reference
             ForkStreamStats::setListener(nullptr);
             ForkStreamStats::setConnectionListener(nullptr);
-            [m_Controller invalidate];
-            [m_Controller release];
+            @autoreleasepool {
+                [m_Controller invalidate];
+                [m_Controller release];
+            }
         }
 
         bool showToast(const QString& text) override
@@ -1459,10 +1471,10 @@ namespace
             }
         }
 
-        bool handleMenuKey(int scancode, bool pressed) override
+        bool handleMenuKey(int scancode, bool pressed, bool shift) override
         {
             @autoreleasepool {
-                return [m_Controller handleMenuKey:scancode pressed:pressed];
+                return [m_Controller handleMenuKey:scancode pressed:pressed shift:shift];
             }
         }
 

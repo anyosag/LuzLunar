@@ -21,7 +21,9 @@ namespace
     const CGFloat k_ScreenMargin = 6;   // between a menu and the screen's edge
 
     // Session menu
-    const CGFloat k_SessionWidth = 260;
+    const CGFloat k_SessionWidth = 260;         // at least; wider when a row needs it
+    const CGFloat k_SessionMaxWidth = 420;
+    const int k_AppNameLength = 24;             // longer app names are cut short in the menus
     const CGFloat k_SessionPadding = 5;
     const CGFloat k_HeaderHeight = 22;
     const CGFloat k_RowHeight = 24;
@@ -38,6 +40,16 @@ namespace
     NSString* tr(const char* text)
     {
         return QCoreApplication::translate("NotchBar", text).toNSString();
+    }
+
+    // The app's name, cut short so the rows that name it still show what they do
+    QString shortName(NSString* name)
+    {
+        if (name.length <= (NSUInteger)k_AppNameLength) {
+            return QString::fromNSString(name);
+        }
+        NSRange kept = [name rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, k_AppNameLength - 1)];
+        return QString::fromNSString([[name substringWithRange:kept] stringByAppendingString:@"…"]);
     }
 
     NSImage* symbol(NSString* name, CGFloat size, NSFontWeight weight)
@@ -151,6 +163,7 @@ namespace
 
     [self setAccessibilityElement:YES];
     [self setAccessibilityRole:NSAccessibilityButtonRole];
+    [self setAccessibilityExpanded:NO];
     return self;
 }
 
@@ -304,6 +317,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 
 @interface ForkNotchMenus ()
 - (void)controlHovered:(NSView*)control;
+- (void)controlUnhovered:(NSView*)control;
 - (void)controlActivated:(NSView*)control;
 @end
 
@@ -322,7 +336,11 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 }
 - (instancetype)initWithKind:(ForkMenuControlKind)kind owner:(ForkNotchMenus*)owner;
 - (void)setTitle:(NSString*)title detail:(NSString*)detail symbol:(NSString*)name;
+// The width a row or header needs for its title and shortcut
+- (CGFloat)naturalWidth;
 - (void)refreshAppearance;
+// Out of the open menu: AppKit may still send it events until its panel goes
+- (void)detach;
 @end
 
 @implementation ForkMenuControl
@@ -396,6 +414,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [self setAccessibilityRole:kind == ForkMenuControlRow ? NSAccessibilityMenuItemRole :
                                kind == ForkMenuControlToggle ? NSAccessibilityCheckBoxRole :
                                actionable ? NSAccessibilityButtonRole : NSAccessibilityStaticTextRole];
+    if (kind == ForkMenuControlToggle) {
+        [self setAccessibilitySubrole:NSAccessibilitySwitchSubrole];
+    }
     return self;
 }
 
@@ -422,14 +443,30 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         m_Icon.image = symbol(name, 14, NSFontWeightMedium);
         [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
     }
-    [self setAccessibilityLabel:title];
-    if (m_Kind == ForkMenuControlToggle) {
-        [self setAccessibilityValue:detail];
-    }
-    else if (m_Kind == ForkMenuControlRow && detail.length > 0) {
+    // A switch's state is its value (on or off), so its label carries what that means
+    [self setAccessibilityLabel:m_Kind == ForkMenuControlToggle && detail.length > 0 ?
+                                    [NSString stringWithFormat:@"%@, %@", title, detail] : title];
+    if (m_Kind == ForkMenuControlRow && detail.length > 0) {
         [self setAccessibilityHelp:detail];
     }
+    [self setAccessibilityEnabled:m_Enabled];
     self.needsLayout = YES;
+}
+
+- (void)detach
+{
+    m_Owner = nil;
+}
+
+- (CGFloat)naturalWidth
+{
+    [m_Title sizeToFit];
+    CGFloat width = 18 + NSWidth(m_Title.frame);
+    if (m_Detail != nil && m_Detail.stringValue.length > 0) {
+        [m_Detail sizeToFit];
+        width += 12 + NSWidth(m_Detail.frame);
+    }
+    return ceil(width);
 }
 
 - (void)layout
@@ -569,6 +606,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     (void)event;
     m_Hovered = NO;
     m_Pressed = NO;
+    [m_Owner controlUnhovered:self];
     [self refreshAppearance];
 }
 
@@ -660,39 +698,48 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 // Builds the open menu's controls into a new content view, and returns its size
 - (NSView*)buildContent:(NSSize*)size
 {
-    [m_Controls removeAllObjects];
+    [self dropControls];
     NotchBar::MenuState state = m_Host != nil ? [m_Host menusState] : NotchBar::MenuState();
 
     ForkFlippedView* content = [[[ForkFlippedView alloc] initWithFrame:NSZeroRect] autorelease];
 
     if (m_Open == NotchMenus::Menu::Session) {
-        CGFloat width = k_SessionWidth - 2 * k_SessionPadding;
-        CGFloat y = k_SessionPadding;
         auto add = [&](ForkMenuControlKind kind, NSString* title, NSString* detail, NotchMenus::Action action, BOOL enabled) {
             ForkMenuControl* control = [[[ForkMenuControl alloc] initWithKind:kind owner:self] autorelease];
             control->m_Action = action;
             control->m_Enabled = enabled;
             [control setTitle:title detail:detail symbol:nil];
-            CGFloat height = kind == ForkMenuControlHeader ? k_HeaderHeight :
-                             kind == ForkMenuControlSeparator ? k_SeparatorHeight : k_RowHeight;
-            control.frame = NSMakeRect(k_SessionPadding, y, width, height);
             [content addSubview:control];
             [m_Controls addObject:control];
-            y += height;
         };
+        QString app = shortName(m_AppName);
         add(ForkMenuControlHeader,
-            QCoreApplication::translate("NotchBar", "%1 on %2").arg(QString::fromNSString(m_AppName), QString::fromNSString(m_HostName)).toNSString(),
+            QCoreApplication::translate("NotchBar", "%1 on %2").arg(app, QString::fromNSString(m_HostName)).toNSString(),
             nil, NotchMenus::Action::None, NO);
         add(ForkMenuControlRow, tr("Disconnect"), @"⌃⌥⇧Q", NotchMenus::Action::Disconnect, YES);
         add(ForkMenuControlRow, tr("Disconnect and Quit LuzLunar"), nil, NotchMenus::Action::DisconnectAndQuitLuzLunar, YES);
         add(ForkMenuControlSeparator, nil, nil, NotchMenus::Action::None, NO);
-        add(ForkMenuControlRow,
-            QCoreApplication::translate("NotchBar", "Quit %1 on PC").arg(QString::fromNSString(m_AppName)).toNSString(),
+        add(ForkMenuControlRow, QCoreApplication::translate("NotchBar", "Quit %1 on PC").arg(app).toNSString(),
             nil, NotchMenus::Action::QuitAppOnPc, YES);
-        add(ForkMenuControlRow,
-            QCoreApplication::translate("NotchBar", "Quit %1 and Sleep PC").arg(QString::fromNSString(m_AppName)).toNSString(),
+        add(ForkMenuControlRow, QCoreApplication::translate("NotchBar", "Quit %1 and Sleep PC").arg(app).toNSString(),
             nil, NotchMenus::Action::QuitAndSleepPc, state.canSleepPc);
-        *size = NSMakeSize(k_SessionWidth, y + k_SessionPadding);
+
+        // As wide as its widest row, like macOS's menus, within limits
+        CGFloat width = k_SessionWidth - 2 * k_SessionPadding;
+        for (ForkMenuControl* control in m_Controls) {
+            if (control->m_Kind != ForkMenuControlSeparator) {
+                width = MAX(width, [control naturalWidth]);
+            }
+        }
+        width = MIN(width, k_SessionMaxWidth - 2 * k_SessionPadding);
+        CGFloat y = k_SessionPadding;
+        for (ForkMenuControl* control in m_Controls) {
+            CGFloat height = control->m_Kind == ForkMenuControlHeader ? k_HeaderHeight :
+                             control->m_Kind == ForkMenuControlSeparator ? k_SeparatorHeight : k_RowHeight;
+            control.frame = NSMakeRect(k_SessionPadding, y, width, height);
+            y += height;
+        }
+        *size = NSMakeSize(width + 2 * k_SessionPadding, y + k_SessionPadding);
     }
     else if (m_Open == NotchMenus::Menu::ControlCenter) {
         CGFloat width = k_CenterWidth - 2 * k_CenterPadding;
@@ -704,7 +751,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         group.layer.cornerRadius = 16;
         group.layer.backgroundColor = white(0.08);
         [content addSubview:group];
-        CGFloat groupY = 10;
+        CGFloat groupY = k_CenterPadding;
         auto addToggle = [&](NSString* title, NSString* detail, NSString* name, BOOL on, NotchMenus::Action action) {
             ForkMenuControl* control = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlToggle owner:self] autorelease];
             control->m_Action = action;
@@ -720,8 +767,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
                   @"keyboard", state.systemKeysToPc, NotchMenus::Action::ToggleSystemKeys);
         addToggle(tr("Mouse"), state.mouseCaptured ? tr("Captured · ⌃⌥⇧Z") : tr("Free · ⌃⌥⇧Z"),
                   @"cursorarrow", state.mouseCaptured, NotchMenus::Action::ToggleMouseCapture);
-        groupY += 4;
-        group.frame = NSMakeRect(k_CenterPadding, y, width, groupY - 6);
+        // The last switch's gap below it becomes the tile's padding
+        group.frame = NSMakeRect(k_CenterPadding, y, width, groupY - 6 + k_CenterPadding);
         y += NSHeight(group.frame) + k_TileGap;
 
         // The session's buttons, three across
@@ -777,24 +824,16 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 
 - (void)open:(NotchMenus::Menu)menu keyboard:(BOOL)keyboard
 {
-    if (menu == NotchMenus::Menu::None || m_Host == nil) {
+    BOOL alignRight = NO;
+    NSRect anchor = menu != NotchMenus::Menu::None && m_Host != nil ? [m_Host menusAnchorFor:menu alignRight:&alignRight] : NSZeroRect;
+    if (NSIsEmptyRect(anchor)) {
+        // Nothing to hang it from: the item isn't on screen
         [self close];
         return;
     }
-    BOOL wasOpen = m_Open != NotchMenus::Menu::None;
     [self removePanel];
     m_Open = menu;
     m_Selected = -1;
-
-    BOOL alignRight = NO;
-    NSRect anchor = [m_Host menusAnchorFor:menu alignRight:&alignRight];
-    if (NSIsEmptyRect(anchor)) {
-        m_Open = NotchMenus::Menu::None;
-        if (wasOpen) {
-            [m_Host menusChanged:NotchMenus::Menu::None];
-        }
-        return;
-    }
 
     NSSize size;
     NSView* content = [self buildContent:&size];
@@ -831,8 +870,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [effect addSubview:content];
     m_Panel.contentView = effect;
 
-    [m_Panel setAccessibilityRole:menu == NotchMenus::Menu::Session ? NSAccessibilityMenuRole : NSAccessibilityGroupRole];
-    [m_Panel setAccessibilityLabel:menu == NotchMenus::Menu::Session ? tr("Session") : tr("Stream Control Center")];
+    [effect setAccessibilityElement:YES];
+    [effect setAccessibilityRole:menu == NotchMenus::Menu::Session ? NSAccessibilityMenuRole : NSAccessibilityGroupRole];
+    [effect setAccessibilityLabel:menu == NotchMenus::Menu::Session ? tr("Session") : tr("Stream Control Center")];
 
     // Under its item, kept on the screen
     NSScreen* screen = [m_Host menusBarWindow].screen;
@@ -847,11 +887,19 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [self select:NotchMenus::nextSelectable((int)m_Controls.count, -1, 1, [self](int i) { return [self selectable:i]; }) keyboard:YES];
     }
 
-    // A click anywhere but the menu and the bar closes it, and goes no further: not to the PC
+    // A click anywhere but the menu and the bar's items closes it. On the stream it goes no further:
+    // not to the PC. The items open and close menus themselves.
     if (m_ClickMonitor == nil) {
         m_ClickMonitor = [[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown | NSEventMaskOtherMouseDown
                                                                 handler:^NSEvent*(NSEvent* event) {
-            if (m_Open == NotchMenus::Menu::None || event.window == m_Panel || event.window == [m_Host menusBarWindow]) {
+            if (m_Open == NotchMenus::Menu::None || event.window == m_Panel) {
+                return event;
+            }
+            NSWindow* bar = [m_Host menusBarWindow];
+            if (event.window != nil && event.window == bar) {
+                if (![self barItemAt:event]) {
+                    [self close];
+                }
                 return event;
             }
             [self close];
@@ -862,15 +910,37 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [m_Host menusChanged:menu];
 }
 
+// Whether a click in the bar is on one of its items
+- (BOOL)barItemAt:(NSEvent*)event
+{
+    NSView* root = event.window.contentView;
+    NSPoint point = root.superview != nil ? [root.superview convertPoint:event.locationInWindow fromView:nil] : event.locationInWindow;
+    for (NSView* view = [root hitTest:point]; view != nil; view = view.superview) {
+        if ([view isKindOfClass:[ForkBarItem class]]) {
+            return ((ForkBarItem*)view).interactive;
+        }
+    }
+    return NO;
+}
+
 // Closes the panel without telling the bar
 - (void)removePanel
 {
     [m_Panel orderOut:nil];
     [m_Panel close];
-    [m_Panel release];
+    // Not released yet: this may run inside one of its controls' mouseUp:
+    [m_Panel autorelease];
     m_Panel = nil;
-    [m_Controls removeAllObjects];
+    [self dropControls];
     m_Selected = -1;
+}
+
+- (void)dropControls
+{
+    for (ForkMenuControl* control in m_Controls) {
+        [control detach];
+    }
+    [m_Controls removeAllObjects];
 }
 
 - (void)closeQuietly
@@ -925,6 +995,15 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
 }
 
+- (void)controlUnhovered:(NSView*)control
+{
+    // The pointer left what it selected; a selection the keyboard made stays
+    NSUInteger index = [m_Controls indexOfObject:(ForkMenuControl*)control];
+    if (index != NSNotFound && (int)index == m_Selected && !m_KeyboardSelection) {
+        [self select:-1 keyboard:NO];
+    }
+}
+
 - (void)controlActivated:(NSView*)view
 {
     ForkMenuControl* control = (ForkMenuControl*)view;
@@ -940,7 +1019,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
 }
 
-- (BOOL)handleKey:(int)scancode pressed:(BOOL)pressed
+- (BOOL)handleKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift
 {
     NSNumber* key = @(scancode);
     if (!pressed) {
@@ -962,8 +1041,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [self close];
         break;
     case SDL_SCANCODE_DOWN:
-    case SDL_SCANCODE_TAB:
         [self select:NotchMenus::nextSelectable(count, m_Selected, 1, selectable) keyboard:YES];
+        break;
+    case SDL_SCANCODE_TAB:
+        [self select:NotchMenus::nextSelectable(count, m_Selected, shift ? -1 : 1, selectable) keyboard:YES];
         break;
     case SDL_SCANCODE_UP:
         [self select:NotchMenus::nextSelectable(count, m_Selected, -1, selectable) keyboard:YES];
@@ -975,9 +1056,20 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [self select:NotchMenus::nextSelectable(count, -1, -1, selectable) keyboard:YES];
         break;
     case SDL_SCANCODE_LEFT:
-    case SDL_SCANCODE_RIGHT:
-        [self open:NotchMenus::neighbour(m_Open, scancode == SDL_SCANCODE_LEFT ? -1 : 1) keyboard:YES];
+    case SDL_SCANCODE_RIGHT: {
+        // To the next menu whose item is on screen; none, and this one stays open
+        int step = scancode == SDL_SCANCODE_LEFT ? -1 : 1;
+        int menus = (int)NotchMenus::order().size();
+        for (int i = 1; i < menus; i++) {
+            NotchMenus::Menu next = NotchMenus::neighbour(m_Open, step * i);
+            BOOL alignRight = NO;
+            if (next != m_Open && !NSIsEmptyRect([m_Host menusAnchorFor:next alignRight:&alignRight])) {
+                [self open:next keyboard:YES];
+                break;
+            }
+        }
         break;
+    }
     case SDL_SCANCODE_RETURN:
     case SDL_SCANCODE_KP_ENTER:
     case SDL_SCANCODE_SPACE:

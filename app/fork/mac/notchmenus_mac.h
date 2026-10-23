@@ -45,8 +45,9 @@
 - (void)open:(NotchMenus::Menu)menu keyboard:(BOOL)keyboard;
 - (void)close;
 - (NotchMenus::Menu)openMenu;
-// An SDL scancode; YES when the menu took it. Releases of keys it took are its own too.
-- (BOOL)handleKey:(int)scancode pressed:(BOOL)pressed;
+// An SDL scancode; YES when the menu took it. Releases of keys it took are its own too. shift:
+// Shift-Tab goes up.
+- (BOOL)handleKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
 // Shows MenuState again
 - (void)refresh;
 - (void)invalidate;
