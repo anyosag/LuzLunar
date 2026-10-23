@@ -41,8 +41,10 @@ public:
     // Returns false, showing nothing, while neither is on screen. Call on the main thread.
     virtual bool showToast(const QString& text) = 0;
 
-    // The same for a Low Power Mode message: a yellow dot before it, as on the canvas, and 6 seconds
-    virtual bool showNotice(const QString& text) = 0;
+    // The same for a Low Power Mode message: a yellow dot before it, as on the canvas, and 6 seconds.
+    // With an actionTitle, a button after it does the action, and it stays 10 seconds; the corner
+    // pill of a windowed stream shows the message alone, as it takes no clicks.
+    virtual bool showNotice(const QString& text, const QString& actionTitle, NotchMenus::Action action, int value) = 0;
 
     // What the menus show, asked whenever one opens or refreshes
     struct MenuState {
@@ -65,6 +67,11 @@ public:
 
         // The bitrate: what the PC can change, adaptive bitrate, the Quality slider's range
         NotchQuality::State bitrate;
+
+        // The stream's frame rate and resolution, for Quality's reconnects
+        int streamFps = 0;
+        int streamWidth = 0;
+        int streamHeight = 0;
 
         // The Mac's battery (ForkPower) and Stream Battery Saver
         bool powerKnown = false;        // the stream reads the battery

@@ -8,6 +8,7 @@
 #include "SDL_compat.h"
 #include "notchmenus.h"
 #include "notchquality.h"
+#include "powernotice.h"
 #include "powerrules.h"
 
 class AdaptiveBitrate;
@@ -16,7 +17,6 @@ class ClipboardSync;
 class ForkPower;
 class MacDrive;
 class NotchBar;
-class PowerNotice;
 class SdlInputHandler;
 class NvComputer;
 class NvApp;
@@ -74,9 +74,10 @@ private:
     // said what it can do (BitrateState::State::settled).
     void applySaver();
 
-    // The Low Power Mode message beside the notch now (PowerRules::pill()); empty for none, nullopt
-    // while the PC hasn't said yet whether the saver can cap the bitrate
-    std::optional<QString> powerNoticeText() const;
+    // The Low Power Mode message beside the notch now (PowerRules::pill()), with "Reconnect at 60 fps"
+    // above 60 fps; empty text for none, nullopt while the PC hasn't said yet whether the saver can
+    // cap the bitrate
+    std::optional<PowerNotice::Notice> powerNotice() const;
 
     // Whether the stream will hold input once the open menus close
     bool captureAfterMenus(SdlInputHandler* input) const;

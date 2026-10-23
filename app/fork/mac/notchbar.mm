@@ -30,6 +30,9 @@ namespace
     const CGFloat k_ItemGap = 2;      // between the items right of the notch
     const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
     const int64_t k_NoticeDurationNs = 6 * NSEC_PER_SEC;   // a power notice is longer to read
+    const int64_t k_ActionNoticeDurationNs = 10 * NSEC_PER_SEC; // and longer still with a button to press
+    const CGFloat k_ButtonGap = 8;    // between a message and its button
+    const CGFloat k_ButtonHeight = 19;
 
     // The message pill in the bottom-left corner of a windowed stream
     const CGFloat k_CornerMargin = 16;      // from the window's left and bottom edges
@@ -61,6 +64,117 @@ typedef NS_ENUM(NSInteger, ForkMessageKind) {
     ForkMessageKindWarning,     // the connection warning: a yellow warning sign
     ForkMessageKindPower,       // Low Power Mode: a yellow dot, as on the canvas
 };
+
+// A message's button, in the canvas's blue capsule: "Reconnect at 60 fps". It answers the first click
+// without taking focus from the stream, as the bar's items do.
+@interface ForkPillButton : NSView
+@property (nonatomic, copy) void (^onPress)(void);
+- (void)setTitle:(NSString*)title;
+- (CGFloat)naturalWidth;
+@end
+
+@implementation ForkPillButton
+{
+    NSTextField* m_Label;
+    BOOL m_Pressed;
+}
+
+@synthesize onPress = _onPress;
+
+- (instancetype)initWithFrame:(NSRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self == nil) {
+        return nil;
+    }
+    self.wantsLayer = YES;
+    m_Label = [[NSTextField labelWithString:@""] retain];
+    m_Label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    m_Label.textColor = NSColor.whiteColor;
+    m_Label.alignment = NSTextAlignmentCenter;
+    [self addSubview:m_Label];
+    [self setAccessibilityElement:YES];
+    [self setAccessibilityRole:NSAccessibilityButtonRole];
+    [self updateLayer];
+    return self;
+}
+
+- (void)dealloc
+{
+    [_onPress release];
+    [m_Label release];
+    [super dealloc];
+}
+
+- (void)setTitle:(NSString*)title
+{
+    m_Label.stringValue = title != nil ? title : @"";
+    [m_Label sizeToFit];
+    [self setAccessibilityLabel:title];
+    self.needsLayout = YES;
+}
+
+- (CGFloat)naturalWidth
+{
+    return ceil(NSWidth(m_Label.frame) + 16);
+}
+
+- (void)layout
+{
+    [super layout];
+    NSSize size = self.bounds.size;
+    m_Label.frame = NSMakeRect(0, round((size.height - NSHeight(m_Label.frame)) / 2), size.width, NSHeight(m_Label.frame));
+    // A capsule at whatever height it's given
+    self.needsDisplay = YES;
+}
+
+- (BOOL)wantsUpdateLayer
+{
+    return YES;
+}
+
+- (void)updateLayer
+{
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    NSColor* blue = [NSColor colorWithSRGBRed:0x0a / 255.0 green:0x84 / 255.0 blue:1 alpha:1];
+    self.layer.backgroundColor = (m_Pressed ? [blue blendedColorWithFraction:0.25 ofColor:NSColor.blackColor] : blue).CGColor;
+    self.layer.cornerRadius = NSHeight(self.bounds) / 2;
+    [CATransaction commit];
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event
+{
+    (void)event;
+    return YES;
+}
+
+- (void)mouseDown:(NSEvent*)event
+{
+    (void)event;
+    m_Pressed = YES;
+    self.needsDisplay = YES;
+}
+
+- (void)mouseUp:(NSEvent*)event
+{
+    BOOL inside = NSPointInRect([self convertPoint:event.locationInWindow fromView:nil], self.bounds);
+    m_Pressed = NO;
+    self.needsDisplay = YES;
+    if (inside && _onPress != nil) {
+        _onPress();
+    }
+}
+
+- (BOOL)accessibilityPerformPress
+{
+    if (_onPress != nil) {
+        _onPress();
+        return YES;
+    }
+    return NO;
+}
+@end
 
 // Messages in the bottom-left corner of a windowed stream, in a pill like the notch bar's. It's in a
 // child window of the stream window, so it moves, resizes and changes Spaces with it.
@@ -127,6 +241,11 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     NSString* m_Warning;            // the connection warning, until the connection recovers
     NSString* m_Toast;              // a clipboard message or a power notice, shown for a few seconds
     ForkMessageKind m_ToastKind;
+    // A power notice's button (showNotice()): its title, nil for none, and what it does
+    NSString* m_ToastActionTitle;
+    NotchMenus::Action m_ToastAction;
+    int m_ToastActionValue;
+    ForkPillButton* m_MessageButton;
     unsigned m_ToastGeneration;
     unsigned m_ToastTimerGeneration;
     ForkMessageKind m_ShownKind;    // what the pill holds
@@ -162,6 +281,8 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (void)setWarning:(NSString*)text;
 - (void)showToast:(NSString*)text;
 - (void)showToast:(NSString*)text kind:(ForkMessageKind)kind;
+- (void)showNotice:(NSString*)text actionTitle:(NSString*)actionTitle action:(NotchMenus::Action)action value:(int)value;
+- (void)pressedMessageButton;
 - (BOOL)showsMessages;
 - (void)invalidate;
 @end
@@ -466,7 +587,12 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_MessageLabel = makeLabel(@"");
     m_MessageIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
     m_MessageIcon.imageScaling = NSImageScaleNone;
-    m_MessagePill = makePill(@[ m_MessageIcon, m_MessageLabel ]);
+    m_MessageButton = [[ForkPillButton alloc] initWithFrame:NSZeroRect];
+    m_MessageButton.hidden = YES;
+    m_MessageButton.onPress = ^{
+        [controller pressedMessageButton];
+    };
+    m_MessagePill = makePill(@[ m_MessageIcon, m_MessageLabel, m_MessageButton ]);
     m_MessagePill.alphaValue = 0;
 
     // A layer-hosting view, so AppKit leaves the layer's color and shape alone
@@ -537,6 +663,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_MessagePill release];
     [m_MessageIcon release];
     [m_MessageLabel release];
+    [m_MessageButton release];
+    [m_ToastActionTitle release];
     [m_Dot release];
     [m_Warning release];
     [m_Toast release];
@@ -556,6 +684,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_StatsItem.onPress = nil;
     m_QualityItem.onPress = nil;
     m_BatteryItem.onPress = nil;
+    m_MessageButton.onPress = nil;
     m_ControlItem.onPress = nil;
     m_StatusTickGeneration++;
     // Animations and timers still queued find the controller invalidated and do nothing
@@ -795,6 +924,16 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)showToast:(NSString*)text kind:(ForkMessageKind)kind
 {
+    [self showNotice:text kind:kind actionTitle:nil action:NotchMenus::Action::None value:0];
+}
+
+- (void)showNotice:(NSString*)text actionTitle:(NSString*)actionTitle action:(NotchMenus::Action)action value:(int)value
+{
+    [self showNotice:text kind:ForkMessageKindPower actionTitle:actionTitle action:action value:value];
+}
+
+- (void)showNotice:(NSString*)text kind:(ForkMessageKind)kind actionTitle:(NSString*)actionTitle action:(NotchMenus::Action)action value:(int)value
+{
     if (m_StreamWindow == nil) {
         return;
     }
@@ -802,8 +941,29 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Toast release];
     m_Toast = [text copy];
     m_ToastKind = kind;
+    [m_ToastActionTitle release];
+    m_ToastActionTitle = actionTitle.length > 0 ? [actionTitle copy] : nil;
+    m_ToastAction = action;
+    m_ToastActionValue = value;
     m_ToastGeneration++;
     [self updateMessage];
+}
+
+// The message's button: does its action, and the message goes
+- (void)pressedMessageButton
+{
+    if (m_StreamWindow == nil || m_Toast == nil || m_ToastActionTitle == nil) {
+        return;
+    }
+    NotchMenus::Action action = m_ToastAction;
+    int value = m_ToastActionValue;
+    [m_Toast release];
+    m_Toast = nil;
+    m_ToastGeneration++;
+    [self updateMessage];
+    if (m_Actions) {
+        m_Actions(action, value);
+    }
 }
 
 - (BOOL)showsMessages
@@ -1150,12 +1310,22 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkMessageKind kind = [self currentKind];
     setMessageContent(m_MessageIcon, m_MessageLabel, [self currentMessage], kind);
     m_ShownKind = kind;
+
+    // A power notice's button, on the bar's pill
+    BOOL button = m_Toast != nil && m_ToastActionTitle != nil;
+    m_MessageButton.hidden = !button;
+    if (button) {
+        [m_MessageButton setTitle:m_ToastActionTitle];
+    }
 }
 
 // The pill hugs the notch and grows away from it, up to the whole area left of the notch
 - (NSRect)messageFrame
 {
     CGFloat width = messageWidth(m_MessageIcon, m_MessageLabel);
+    if (!m_MessageButton.hidden) {
+        width += k_ButtonGap + [m_MessageButton naturalWidth];
+    }
     width = MAX(MIN(width, NSWidth(m_LeftArea) - 2 * k_Margin), m_PillHeight);
     return NSMakeRect(NSMaxX(m_LeftArea) - k_Margin - width, m_PillY, width, m_PillHeight);
 }
@@ -1175,6 +1345,15 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 - (void)layoutMessageContentForFrame:(NSRect)frame
 {
     layoutMessageContent(m_MessageIcon, m_MessageLabel, frame.size);
+    if (!m_MessageButton.hidden) {
+        // At the right end, the text giving way before it
+        CGFloat buttonWidth = [m_MessageButton naturalWidth];
+        CGFloat x = frame.size.width - k_Padding + 6 - buttonWidth;
+        m_MessageButton.frame = NSMakeRect(x, round((frame.size.height - k_ButtonHeight) / 2), buttonWidth, k_ButtonHeight);
+        NSRect label = m_MessageLabel.frame;
+        label.size.width = MAX(x - k_ButtonGap - NSMinX(label), 0);
+        m_MessageLabel.frame = label;
+    }
 }
 
 // Keeps the pill in place between animations; the animations place it themselves
@@ -1242,7 +1421,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     unsigned generation = m_ToastTimerGeneration = m_ToastGeneration;
 
     [self retain];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, m_ToastKind == ForkMessageKindPower ? k_NoticeDurationNs : k_ToastDurationNs),
+    int64_t duration = m_ToastActionTitle != nil ? k_ActionNoticeDurationNs :
+                       m_ToastKind == ForkMessageKindPower ? k_NoticeDurationNs : k_ToastDurationNs;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, duration),
                    dispatch_get_main_queue(), ^{
         if (generation == m_ToastGeneration && m_StreamWindow != nil) {
             [m_Toast release];
@@ -1264,6 +1445,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_MessagePill.alphaValue = 0;
     m_MessageIcon.alphaValue = 0;
     m_MessageLabel.alphaValue = 0;
+    m_MessageButton.alphaValue = 0;
 
     if (reduceMotion()) {
         [self expandWithGeneration:generation];
@@ -1311,6 +1493,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         m_MessagePill.frame = target;
         m_MessageIcon.alphaValue = 1;
         m_MessageLabel.alphaValue = 1;
+        m_MessageButton.alphaValue = 1;
     }
     else {
         setLayerOpacity(m_Dot.layer, 0, 0.35);
@@ -1351,6 +1534,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.1;
         m_MessageIcon.animator.alphaValue = 0;
         m_MessageLabel.animator.alphaValue = 0;
+        m_MessageButton.animator.alphaValue = 0;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self resizeWithGeneration:generation];
@@ -1401,6 +1585,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.12;
         m_MessageIcon.animator.alphaValue = 0;
         m_MessageLabel.animator.alphaValue = 0;
+        m_MessageButton.animator.alphaValue = 0;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self shrinkWithGeneration:generation];
@@ -1443,6 +1628,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.15;
         m_MessageIcon.animator.alphaValue = 1;
         m_MessageLabel.animator.alphaValue = 1;
+        m_MessageButton.animator.alphaValue = 1;
     } completionHandler:nil];
 
     // The message may have changed or ended during the animation
@@ -1481,6 +1667,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
             m_MessagePill.alphaValue = 1;
             m_MessageIcon.alphaValue = 1;
             m_MessageLabel.alphaValue = 1;
+            m_MessageButton.alphaValue = 1;
         }
         break;
     case ForkMessageCollapsing:
@@ -1785,14 +1972,15 @@ namespace
             return true;
         }
 
-        bool showNotice(const QString& text) override
+        bool showNotice(const QString& text, const QString& actionTitle, NotchMenus::Action action, int value) override
         {
             if (![m_Controller showsMessages]) {
                 return false;
             }
 
             @autoreleasepool {
-                [m_Controller showToast:text.toNSString() kind:ForkMessageKindPower];
+                [m_Controller showNotice:text.toNSString() actionTitle:actionTitle.isEmpty() ? nil : actionTitle.toNSString()
+                                  action:action value:value];
             }
             return true;
         }

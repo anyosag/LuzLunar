@@ -22,6 +22,7 @@
 #include "macdrive.h"
 #include "mac/pasteboard.h"
 #include "powernotice.h"
+#include "reconnectrules.h"
 #include "settings/streamingpreferences.h"
 #include "streamdiagnostics.h"
 #include "streamstats.h"
@@ -152,6 +153,9 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 Session* session = Session::get();
                 state.statsOverlayShown = session != nullptr && session->getOverlayManager().isOverlayEnabled(Overlay::OverlayDebug);
                 state.bitrate = bitrateState();
+                state.streamFps = m_Fps;
+                state.streamWidth = m_Width;
+                state.streamHeight = m_Height;
                 if (m_Power) {
                     state.powerKnown = true;
                     state.power = m_Power->reading();
@@ -191,8 +195,8 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         // The bar asked before there was a battery to read: the item comes now
         m_NotchBar->powerChanged();
         NotchBar* notchBar = m_NotchBar.get();
-        m_PowerNotice->setMessageSink([notchBar](const QString& text) {
-            return notchBar->showNotice(text);
+        m_PowerNotice->setMessageSink([notchBar](const PowerNotice::Notice& notice) {
+            return notchBar->showNotice(notice.text, notice.actionTitle, NotchMenus::Action::ReconnectAtFps, notice.reconnectFps);
         });
     }
 
@@ -209,7 +213,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     // The saver's cap from the start, once the PC has said what it can do
     applySaver();
     if (m_Saver && m_Saver->lowPowerMode()) {
-        m_PowerNotice->offer([this] { return powerNoticeText(); });
+        m_PowerNotice->offer([this] { return powerNotice(); });
     }
 
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
@@ -354,10 +358,11 @@ void ForkStreamExtensions::applySaver()
                 saverCapKbps() > 0 ? "caps the bitrate" : "doesn't cap the bitrate", ceiling);
 }
 
-std::optional<QString> ForkStreamExtensions::powerNoticeText() const
+std::optional<PowerNotice::Notice> ForkStreamExtensions::powerNotice() const
 {
+    PowerNotice::Notice notice;
     if (!m_Saver) {
-        return QString();
+        return notice;
     }
     if (m_BitrateClient && !m_BitrateClient->state().settled) {
         // Whether the saver can cap it isn't known yet
@@ -366,14 +371,21 @@ std::optional<QString> ForkStreamExtensions::powerNoticeText() const
     bool capped = saverCapKbps() > 0 && m_BitrateClient && m_BitrateClient->state().live;
     switch (PowerRules::pill(m_Saver->lowPowerMode(), capped, m_Fps)) {
     case PowerRules::Pill::Capped:
-        return QCoreApplication::translate("NotchBar", "Low Power Mode: bitrate capped at %1 Mb/s.")
-            .arg(QString::fromStdString(NotchQuality::mbps(PowerRules::k_SaverKbps)));
+        notice.text = QCoreApplication::translate("NotchBar", "Low Power Mode: bitrate capped at %1 Mb/s.")
+                          .arg(QString::fromStdString(NotchQuality::mbps(PowerRules::k_SaverKbps)));
+        break;
     case PowerRules::Pill::HoldsTo60:
-        return QCoreApplication::translate("NotchBar", "Low Power Mode holds the screen to 60 fps.");
+        notice.text = QCoreApplication::translate("NotchBar", "Low Power Mode holds the screen to 60 fps.");
+        break;
     case PowerRules::Pill::Hidden:
         break;
     }
-    return QString();
+    if (!notice.text.isEmpty() && m_Fps > 60) {
+        // The screen shows 60 anyway: a stream at 60 spends less on the PC, the network and the Mac
+        notice.actionTitle = QCoreApplication::translate("NotchBar", "Reconnect at 60 fps");
+        notice.reconnectFps = 60;
+    }
+    return notice;
 }
 
 NotchQuality::State ForkStreamExtensions::bitrateState() const
@@ -543,6 +555,28 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
             }
         }
         break;
+    case NotchMenus::Action::Reconnect:
+    case NotchMenus::Action::ReconnectAtFps:
+    case NotchMenus::Action::ReconnectAtResolution:
+    case NotchMenus::Action::ReconnectAtBitrate: {
+        // The stream ends, its app running on, and StreamSegue starts it again with what changed
+        ReconnectRules::Overrides overrides;
+        if (action == NotchMenus::Action::ReconnectAtFps) {
+            overrides.fps = value;
+        }
+        else if (action == NotchMenus::Action::ReconnectAtResolution) {
+            ReconnectRules::Size size = ReconnectRules::unpackSize(value);
+            overrides.width = size.width;
+            overrides.height = size.height;
+        }
+        else if (action == NotchMenus::Action::ReconnectAtBitrate) {
+            overrides.bitrateKbps = value;
+        }
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: reconnect%s", action == NotchMenus::Action::Reconnect ? "" : " with a change");
+        session->forkReconnect(overrides);
+        pushQuit();
+        break;
+    }
     case NotchMenus::Action::OpenBatterySettings:
         // The bar's own
     case NotchMenus::Action::ToggleNotchStats:
@@ -664,7 +698,7 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
                 applySaver();
             }
             if (!wasLowPower && m_Saver->lowPowerMode()) {
-                m_PowerNotice->offer([this] { return powerNoticeText(); });
+                m_PowerNotice->offer([this] { return powerNotice(); });
             }
         }
         if (m_NotchBar) {

@@ -6,8 +6,10 @@
 #include "fork/forkhostpower.h" // [fork]
 #include "fork/forklaunchargs.h" // [fork]
 #include "fork/forknetworklink.h" // [fork]
+#include "fork/forkreconnect.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
 #include "fork/forkvideoscaling.h" // [fork]
+#include "fork/streamprofiles.h" // [fork]
 #include "fork/streamstats.h" // [fork]
 
 #include <Limelight.h>
@@ -1297,9 +1299,15 @@ private:
                 !m_Session->m_UnexpectedTermination &&
                 m_Session->m_Preferences->quitAppAfter;
 
+        // [fork] A reconnect from the notch bar never quits the app, and the stream doesn't end for the UI
+        bool forkReconnect = m_Session->m_ForkReconnect.has_value() && !m_Session->m_UnexpectedTermination;
+
         // Notify the UI
         if (shouldQuit) {
             emit m_Session->quitStarting();
+        }
+        else if (forkReconnect) { // [fork]
+            emit m_Session->forkReconnectStarting();
         }
         else {
             emit m_Session->sessionFinished(m_Session->m_PortTestResults);
@@ -1677,6 +1685,12 @@ bool Session::startConnectionAsync()
                     m_ForkOwnBitrateKbps, m_StreamConfig.bitrate);
     }
 
+    // [fork] After a reconnect from the notch bar, Apollo has to have let the old stream go: it applies
+    // a new resolution to its virtual display only while no stream runs
+    if (m_ForkReconnecting) {
+        ForkReconnect::waitForHostToDrop(m_Computer);
+    }
+
     try {
         NvHTTP http(m_Computer);
         http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
@@ -1791,6 +1805,31 @@ void Session::flushWindowEvents()
 void Session::forkQuitHostAppOnEnd()
 {
     m_Preferences->quitAppAfter = true;
+}
+
+// [fork] The notch bar's reconnects: the app keeps running on the PC, for the stream that follows
+void Session::forkReconnect(const ReconnectRules::Overrides& overrides)
+{
+    if (!m_ForkReconnect) {
+        m_ForkQuitAppAfter = m_Preferences->quitAppAfter;
+    }
+    m_ForkReconnect = overrides;
+    m_Preferences->quitAppAfter = false;
+    m_ShouldExit = false;
+    m_ForkSleepHostAfter = false;
+}
+
+// [fork] After readyForDeletion(), on the GUI thread
+Session* Session::forkCreateReconnectSession()
+{
+    if (!m_ForkReconnect) {
+        return nullptr;
+    }
+    Session* next = StreamProfiles::createReconnectSession(m_Computer, m_App, m_Preferences, *m_ForkReconnect);
+    // The user's choice to quit the app after a stream holds for the stream that follows
+    next->m_Preferences->quitAppAfter = m_ForkQuitAppAfter;
+    next->m_ForkReconnecting = true;
+    return next;
 }
 
 void Session::setShouldExit(bool quitHostApp)

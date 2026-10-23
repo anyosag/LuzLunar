@@ -9,7 +9,8 @@ import SystemProperties 1.0
 Item {
     property Session session
     property string appName
-    property string stageText : isResume ? qsTr("Resuming %1...").arg(appName) :
+    property string stageText : forkReconnect ? qsTr("Reconnecting to %1...").arg(appName) : // [fork]
+                                isResume ? qsTr("Resuming %1...").arg(appName) :
                                            qsTr("Starting %1...").arg(appName)
     property bool isResume : false
     property bool quitAfter : false
@@ -17,6 +18,8 @@ Item {
     property var summary: [] // [fork] the launch screen's chips (AppView.forkStreamSummary)
     property bool forkStreamed: false // [fork] the stream began, so ending it earns a toast
     property bool forkQuitting: false // [fork] the host app is being quit after the stream
+    property bool forkReconnect: false // [fork] this stream follows a reconnect from the notch bar
+    property bool forkReconnecting: false // [fork] the stream ends to reconnect (Session.forkReconnectStarting)
 
     function stageStarting(stage)
     {
@@ -106,12 +109,43 @@ Item {
         }
     }
 
+    // [fork] The stream ends to reconnect from the notch bar: "Reconnecting" until the next one starts
+    function forkReconnectStarting()
+    {
+        forkReconnecting = true
+        stageText = qsTr("Reconnecting to %1...").arg(appName)
+        launchPanel.reconnect = true
+        launchPanel.connected = false
+        launchPanel.stagesDone = 0
+        launchPanel.visible = true
+
+        // Show the Qt window again while the old stream goes and the next one connects
+        window.visible = true
+    }
+
     function sessionReadyForDeletion()
     {
+        // [fork] Reconnecting: the next stream, with what changed, takes this one's place, as
+        // QuitSegue starts the next app once the old one quit
+        var forkNext = forkReconnecting ? session.forkCreateReconnectSession() : null
+
         // Garbage collect the Session object since it's pretty heavyweight
         // and keeps other libraries (like SDL_TTF) around until it is deleted.
         session = null
         gc()
+
+        if (forkReconnecting) { // [fork]
+            if (forkNext !== null) {
+                var component = Qt.createComponent("StreamSegue.qml")
+                var segue = component.createObject(stackView, {"appName": appName, "session": forkNext, "hostName": hostName,
+                                                               "quitAfter": quitAfter, "forkReconnect": true})
+                stackView.replace(stackView.currentItem, segue, StackView.Immediate)
+            }
+            else {
+                // Nothing to reconnect with: as if the stream had ended
+                sessionFinished(0)
+            }
+        }
     }
 
     StackView.onDeactivating: {
@@ -133,6 +167,7 @@ Item {
         session.displayLaunchError.connect(displayLaunchError)
         session.quitStarting.connect(quitStarting)
         session.sessionFinished.connect(sessionFinished)
+        session.forkReconnectStarting.connect(forkReconnectStarting) // [fork]
         session.readyForDeletion.connect(sessionReadyForDeletion)
 
         // Ensure the SystemProperties async thread is finished,
@@ -219,6 +254,7 @@ Item {
         appName: parent.appName
         hostName: parent.hostName
         isResume: parent.isResume
+        reconnect: parent.forkReconnect
         stageText: parent.stageText
         summary: parent.summary
     }

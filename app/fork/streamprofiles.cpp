@@ -8,6 +8,7 @@
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "forkaspect.h"
+#include "reconnectrules.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/session.h"
 #include "SDL_compat.h"
@@ -203,6 +204,36 @@ Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, Streami
                     keptFromCommandLine.isEmpty() ? "" : " | command line kept: ",
                     qPrintable(keptFromCommandLine.join(' ')));
     }
+
+    Session* session = new Session(computer, app, prefs);
+    prefs->setParent(session);
+    return session;
+}
+
+Session* StreamProfiles::createReconnectSession(NvComputer* computer, NvApp& app, const StreamingPreferences* from,
+                                                const ReconnectRules::Overrides& overrides)
+{
+    StreamingPreferences* prefs = new StreamingPreferences(nullptr);
+    copyPreferences(from, prefs);
+
+    ReconnectRules::Settings settings;
+    settings.width = prefs->width;
+    settings.height = prefs->height;
+    settings.fps = prefs->fps;
+    settings.bitrateKbps = prefs->bitrateKbps;
+    settings.hdr = prefs->enableHdr;
+    settings.yuv444 = prefs->enableYUV444;
+    settings = ReconnectRules::apply(settings, overrides);
+    prefs->width = settings.width;
+    prefs->height = settings.height;
+    prefs->fps = settings.fps;
+    prefs->bitrateKbps = settings.bitrateKbps;
+    prefs->enableHdr = settings.hdr;
+    prefs->enableYUV444 = settings.yuv444;
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Reconnecting \"%s\" at %dx%d, %d fps, %d kbps%s%s",
+                qPrintable(app.name), prefs->width, prefs->height, prefs->fps, prefs->bitrateKbps,
+                prefs->enableHdr ? ", HDR" : "", prefs->enableYUV444 ? ", 4:4:4" : "");
 
     Session* session = new Session(computer, app, prefs);
     prefs->setParent(session);
