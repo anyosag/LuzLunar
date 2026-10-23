@@ -303,33 +303,13 @@ bool SdlInputHandler::isMouseInVideoRegion(int mouseX, int mouseY, int windowWid
            (mouseY >= dst.y && mouseY <= dst.y + dst.h);
 }
 
-// [fork] The notch bar's top-edge push and open menus (input.h)
+// [fork] The notch bar's menus (input.h)
 void SdlInputHandler::forkSuspendRegionLock()
 {
     if (!m_ForkRegionLockSuspended) {
         m_ForkRegionLockSuspended = true;
         updatePointerRegionLock();
     }
-}
-
-bool SdlInputHandler::forkRevealArmed(SDL_Rect* videoRegion)
-{
-    if (!m_AbsoluteMouseMode || SDL_GetRelativeMouseMode() || !isCaptureActive() ||
-            !m_PointerRegionLockActive || m_ForkRegionLockSuspended) {
-        return false;
-    }
-
-    SDL_Rect src, dst;
-    src.x = src.y = 0;
-    src.w = m_StreamWidth;
-    src.h = m_StreamHeight;
-    dst.x = dst.y = 0;
-    SDL_GetWindowSize(m_Window, &dst.w, &dst.h);
-    StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
-    if (videoRegion != nullptr) {
-        *videoRegion = dst;
-    }
-    return true;
 }
 
 void SdlInputHandler::updatePointerRegionLock()
@@ -347,6 +327,13 @@ void SdlInputHandler::updatePointerRegionLock()
         Uint32 fullscreenFlags = SDL_GetWindowFlags(m_Window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
         m_PointerRegionLockActive = (fullscreenFlags == SDL_WINDOW_FULLSCREEN) ||
                                     (fullscreenFlags != 0 && SDL_GetNumVideoDisplays() == 1);
+
+        // [fork] Not while the notch bar is beside the notch: it's above the picture, outside the stream
+        // window, and the pointer has to reach it. In a fullscreen Space SDL hides macOS's menu bar and
+        // Dock, so nothing else appears at the screen's edges.
+        if (ForkStreamExtensions::active() != nullptr && ForkStreamExtensions::active()->barOnScreen()) {
+            m_PointerRegionLockActive = false;
+        }
     }
 
     // If region lock is enabled, grab the cursor so it can't accidentally leave our window.

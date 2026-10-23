@@ -45,6 +45,10 @@ public:
     bool handleBarMenuKey(const SDL_KeyboardEvent* event);
     bool barMenuOpen() const;
 
+    // The bar is beside the notch, above the picture: Moonlight's pointer region lock stays off then,
+    // so the pointer can reach it (SdlInputHandler::updatePointerRegionLock())
+    bool barOnScreen() const;
+
 private:
     // Does what a notch bar menu asked for, in the event loop
     void performBarAction(NotchMenus::Action action);

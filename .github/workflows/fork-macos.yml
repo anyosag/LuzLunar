@@ -198,7 +198,7 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/hostcadence_test.cpp -o "$RUNNER_TEMP/hostcadence_test"
           "$RUNNER_TEMP/hostcadence_test"
-          # The notch bar's menus: keyboard movement, the items right of the notch, the push up into the bar
+          # The notch bar's menus: keyboard movement and the items right of the notch
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/notchmenus_test.cpp -o "$RUNNER_TEMP/notchmenus_test"
           "$RUNNER_TEMP/notchmenus_test"

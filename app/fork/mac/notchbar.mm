@@ -96,9 +96,6 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     std::function<void(NotchMenus::Action)> m_Actions;
     std::function<NotchBar::MenuState()> m_State;
     NSRect m_StripFrame;            // the strip beside the notch on screen, from the last layout
-    // Pushing the pointer up against the top of the picture lets it up into the bar
-    id m_MoveMonitor;
-    NotchMenus::RevealGesture m_Reveal;
 
     // Messages beside the notch, in a pill that grows out of a blinking red dot
     NSView* m_MessagePill;
@@ -131,6 +128,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (BOOL)toggleMenusByKeyboard;
 - (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed;
 - (BOOL)menuOpen;
+- (BOOL)barOnScreen;
 - (void)refreshMenus;
 - (void)setStatsText:(NSString*)text;
 - (void)setWarning:(NSString*)text;
@@ -398,12 +396,6 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
                                                            name:NSWorkspaceActiveSpaceDidChangeNotification
                                                          object:nil];
 
-    // Released in invalidate, which ends the cycle through the block
-    m_MoveMonitor = [[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskMouseMoved handler:^NSEvent*(NSEvent* event) {
-        [controller pointerMoved:event];
-        return event;
-    }] retain];
-
     [self refresh];
     return self;
 }
@@ -432,11 +424,6 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
-    if (m_MoveMonitor != nil) {
-        [NSEvent removeMonitor:m_MoveMonitor];
-        [m_MoveMonitor release];
-        m_MoveMonitor = nil;
-    }
     // Quietly: the stream is ending, and its event loop with it
     m_Actions = nullptr;
     [m_Menus invalidate];
@@ -590,6 +577,15 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     m_Actions = std::move(actions);
     m_State = std::move(state);
+    if (m_BarOnScreen && m_Actions) {
+        // Already up: the pointer mustn't be held to the picture
+        m_Actions(NotchMenus::Action::BarShownOrHidden);
+    }
+}
+
+- (BOOL)barOnScreen
+{
+    return m_BarOnScreen;
 }
 
 - (void)pressedItemForMenu:(NotchMenus::Menu)menu
@@ -675,25 +671,6 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_Panel;
 }
 
-// Pushing the pointer against the top of the picture while it's held to the picture: macOS reports
-// the push even though the pointer can't move, and enough of it lets the pointer up into the bar
-- (void)pointerMoved:(NSEvent*)event
-{
-    if (m_StreamWindow == nil || !m_BarOnScreen || event.window != m_StreamWindow || !m_State || !m_Actions) {
-        return;
-    }
-    NotchBar::MenuState state = m_State();
-    if (!state.revealArmed) {
-        m_Reveal.reset();
-        return;
-    }
-    CGFloat fromTop = NSHeight(m_StreamWindow.contentView.bounds) - event.locationInWindow.y;
-    // deltaY grows downwards
-    if (m_Reveal.push(-event.deltaY, fromTop <= state.revealTop + 2, event.timestamp)) {
-        m_Actions(NotchMenus::Action::RevealPointer);
-    }
-}
-
 // The Session item at the left edge of the area left of the notch; the stats and Control Center
 // from the right edge of the area right of it, the stats giving way when they don't fit
 - (void)layoutItemsLeft:(NSRect)leftArea right:(NSRect)rightArea height:(CGFloat)height y:(CGFloat)y
@@ -741,7 +718,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, covers ? "[fork] Stream window covers the screen" : "[fork] Stream window no longer covers the screen");
     }
     m_CoversScreen = covers;
-    if (show != m_BarOnScreen) {
+    BOOL barChanged = show != m_BarOnScreen;
+    if (barChanged) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, show ? "[fork] Notch bar shown" : "[fork] Notch bar hidden");
     }
     if (corner != m_CornerOnScreen) {
@@ -774,6 +752,11 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
     if (changed) {
         [self takeConnectionWarning:showsMessages];
+    }
+
+    // The pointer is held to the picture only while there's no bar above it to reach
+    if (barChanged && m_Actions) {
+        m_Actions(NotchMenus::Action::BarShownOrHidden);
     }
 
     // Shows a message that arrived while neither was on screen, or moves one between them
@@ -1486,6 +1469,11 @@ namespace
         bool menuOpen() const override
         {
             return [m_Controller menuOpen];
+        }
+
+        bool onScreen() const override
+        {
+            return [m_Controller barOnScreen];
         }
 
         void refreshMenus() override

@@ -156,13 +156,10 @@ public:
     void forkToggleCapture() { performSpecialKeyCombo(KeyComboUngrabInput); }
     void forkToggleSystemKeys() { performSpecialKeyCombo(KeyComboToggleKeyboardGrab); }
 
-    // [fork] Lets the pointer out of the picture until it moves back into it, so it can reach the notch
-    // bar above the picture (a push against the top edge, or an open menu)
+    // [fork] Lets the pointer out of the picture until it moves back into it with no notch bar menu
+    // open, so it can reach a menu opened with Control-Option-Shift-N while the user holds it to the
+    // picture (Control-Option-Shift-L)
     void forkSuspendRegionLock();
-
-    // [fork] Whether a push against the top of the picture should let the pointer out: remote desktop
-    // mouse, input held, and the pointer held to the picture. videoRegion: the picture, in window points.
-    bool forkRevealArmed(SDL_Rect* videoRegion);
 
     static
     QString getUnmappedGamepads();

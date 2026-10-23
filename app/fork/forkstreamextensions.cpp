@@ -99,9 +99,6 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 if (input != nullptr) {
                     state.mouseCaptured = m_NotchBar->menuOpen() ? m_CaptureAfterMenus : input->isCaptureActive();
                     state.systemKeysToPc = input->isSystemKeyCaptureActive();
-                    SDL_Rect picture = {};
-                    state.revealArmed = input->forkRevealArmed(&picture);
-                    state.revealTop = picture.y;
                 }
                 // Known once the PC's menu or the app's start asked; until then it's tried, and the
                 // toast after the stream says how it went
@@ -223,6 +220,11 @@ bool ForkStreamExtensions::barMenuOpen() const
     return m_NotchBar && m_NotchBar->menuOpen();
 }
 
+bool ForkStreamExtensions::barOnScreen() const
+{
+    return m_NotchBar && m_NotchBar->onScreen();
+}
+
 void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
 {
     Session* session = Session::get();
@@ -282,9 +284,10 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
             input->raiseAllKeys();
         }
         break;
-    case NotchMenus::Action::RevealPointer:
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: the pointer goes up into the bar");
-        input->forkSuspendRegionLock();
+    case NotchMenus::Action::BarShownOrHidden:
+        // Moonlight holds the pointer to the picture in fullscreen on one display; not while the bar is
+        // above the picture, where the pointer has to reach it
+        input->updatePointerRegionLock();
         break;
     case NotchMenus::Action::None:
         break;

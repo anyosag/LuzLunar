@@ -1,6 +1,5 @@
-// Tests for app/fork/notchmenus.h: the notch bar menus' keyboard movement, the layout of the items
-// right of the notch, and the push that lets the pointer up into the bar. A standalone program for
-// the fork's CI:
+// Tests for app/fork/notchmenus.h: the notch bar menus' keyboard movement and the layout of the
+// items right of the notch. A standalone program for the fork's CI:
 //   clang++ -std=c++17 -Wall -Wextra -Iapp tests/fork/notchmenus_test.cpp
 
 #include "fork/notchmenus.h"
@@ -81,41 +80,11 @@ static void testLayoutRight()
     CHECK(placed[0].width == 0 && placed[1].width == 40);
 }
 
-static void testRevealGesture()
-{
-    RevealGesture gesture(24, 0.4);
-    // Pushing up at the top edge, 8 points at a time
-    CHECK(!gesture.push(8, true, 0.00));
-    CHECK(!gesture.push(8, true, 0.05));
-    CHECK(gesture.push(8, true, 0.10));
-    // It starts over once it fires
-    CHECK(!gesture.push(8, true, 0.15));
-
-    // Too slow: the window starts again
-    gesture.reset();
-    CHECK(!gesture.push(10, true, 0.0));
-    CHECK(!gesture.push(10, true, 0.5));
-    CHECK(!gesture.push(10, true, 0.6));
-    CHECK(gesture.push(10, true, 0.7));
-
-    // Leaving the edge or moving down starts over
-    gesture.reset();
-    CHECK(!gesture.push(20, true, 0.0));
-    CHECK(!gesture.push(-1, true, 0.05));
-    CHECK(!gesture.push(20, true, 0.1));
-    CHECK(!gesture.push(20, false, 0.15));
-    CHECK(!gesture.push(20, true, 0.2));
-    // A pause without movement keeps it
-    CHECK(!gesture.push(0, true, 0.25));
-    CHECK(gesture.push(5, true, 0.3));
-}
-
 int main()
 {
     testNeighbour();
     testNextSelectable();
     testLayoutRight();
-    testRevealGesture();
 
     if (s_Failures == 0) {
         std::printf("notchmenus: all tests passed\n");

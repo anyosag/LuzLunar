@@ -34,14 +34,11 @@ public:
     // Returns false, showing nothing, while neither is on screen. Call on the main thread.
     virtual bool showToast(const QString& text) = 0;
 
-    // What the menus show, asked whenever one opens or refreshes, and on pointer moves for the push
-    // against the top of the picture
+    // What the menus show, asked whenever one opens or refreshes
     struct MenuState {
         bool mouseCaptured = true;      // input held by the stream; while a menu is open, whether it will be once it closes
         bool systemKeysToPc = false;    // Mac shortcuts (Command-Tab, ...) go to the PC
         bool canSleepPc = true;         // the PC's Apollo can sleep, and this Mac may ask it to
-        bool revealArmed = false;       // a push against the top of the picture lets the pointer up into the bar
-        double revealTop = 0;           // the top of the picture, in window points from the top
     };
 
     // actions: what the user chose in a menu, on the main thread inside AppKit's event handling; hand
@@ -56,6 +53,9 @@ public:
     virtual bool handleMenuKey(int scancode, bool pressed) = 0;
 
     virtual bool menuOpen() const = 0;
+
+    // The bar is beside the notch now, where the pointer must be able to reach it
+    virtual bool onScreen() const = 0;
 
     // An open menu shows MenuState again, after an action changed it
     virtual void refreshMenus() = 0;

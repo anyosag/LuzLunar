@@ -1,13 +1,11 @@
 #pragma once
 
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
 // [fork] The notch bar's menus without AppKit (mac/notchmenus_mac.mm draws them), so tests can build
-// it alone: what the menus can do, how the keyboard moves through them, how the bar's items share
-// the strip beside the notch, and the push against the top of the picture that lets the pointer up
-// into the bar.
+// it alone: what the menus can do, how the keyboard moves through them, and how the bar's items share
+// the strip beside the notch.
 namespace NotchMenus
 {
     // What a menu row or tile does. The bar hands these to the stream's event loop
@@ -22,7 +20,7 @@ namespace NotchMenus
         ToggleSystemKeys,           // Ctrl+Option+Shift+K: Mac shortcuts go to the PC, or stay on the Mac
         MenusOpened,                // a menu opened: the pointer stays free while one is open
         MenusClosed,                // the last menu closed: the pointer goes back if opening freed it
-        RevealPointer,              // the pointer pushed against the top of the picture: let it up
+        BarShownOrHidden,           // the bar came on screen or went: the pointer is held to the picture only without it
     };
 
     // The bar's menus, left to right as their items sit on the bar
@@ -129,51 +127,4 @@ namespace NotchMenus
         }
         return placed;
     }
-
-    // Pushing the pointer up against the top of the picture, while it's held to the picture, lets it
-    // up into the bar, as macOS shows the menu bar of a fullscreen app. The push must add up to
-    // `distance` points within `window` seconds, so passing the edge on the way elsewhere doesn't.
-    class RevealGesture
-    {
-    public:
-        explicit RevealGesture(double distance = 24, double window = 0.4)
-            : m_Distance(distance), m_Window(window)
-        {
-        }
-
-        // dyUp: how far the pointer tried to move up (points; down is negative) at time t (seconds),
-        // atTopEdge: whether it's at the top of the picture. True once the push is enough; it starts
-        // over after that.
-        bool push(double dyUp, bool atTopEdge, double t)
-        {
-            if (!atTopEdge || dyUp <= 0) {
-                if (!atTopEdge || dyUp < 0) {
-                    reset();
-                }
-                return false;
-            }
-            if (m_Pushed <= 0 || t - m_Start > m_Window) {
-                m_Start = t;
-                m_Pushed = 0;
-            }
-            m_Pushed += dyUp;
-            if (m_Pushed >= m_Distance) {
-                reset();
-                return true;
-            }
-            return false;
-        }
-
-        void reset()
-        {
-            m_Pushed = 0;
-            m_Start = 0;
-        }
-
-    private:
-        double m_Distance;
-        double m_Window;
-        double m_Pushed = 0;
-        double m_Start = 0;
-    };
 }
