@@ -31,7 +31,8 @@ namespace
     const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
     const int64_t k_NoticeDurationNs = 6 * NSEC_PER_SEC;   // a power notice is longer to read
     const int64_t k_ActionNoticeDurationNs = 10 * NSEC_PER_SEC; // and longer still with a button to press
-    const CGFloat k_ButtonGap = 8;    // between a message and its button
+    const CGFloat k_ButtonGap = 9;    // between a message and its button
+    const CGFloat k_ButtonInset = 11; // between a message's button and the pill's end
     const CGFloat k_ButtonHeight = 19;
 
     // The message pill in the bottom-left corner of a windowed stream
@@ -1324,7 +1325,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     CGFloat width = messageWidth(m_MessageIcon, m_MessageLabel);
     if (!m_MessageButton.hidden) {
-        width += k_ButtonGap + [m_MessageButton naturalWidth];
+        // In place of the text's own padding at the end
+        width += k_ButtonGap + [m_MessageButton naturalWidth] + k_ButtonInset - k_Padding;
     }
     width = MAX(MIN(width, NSWidth(m_LeftArea) - 2 * k_Margin), m_PillHeight);
     return NSMakeRect(NSMaxX(m_LeftArea) - k_Margin - width, m_PillY, width, m_PillHeight);
@@ -1348,7 +1350,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     if (!m_MessageButton.hidden) {
         // At the right end, the text giving way before it
         CGFloat buttonWidth = [m_MessageButton naturalWidth];
-        CGFloat x = frame.size.width - k_Padding + 6 - buttonWidth;
+        CGFloat x = frame.size.width - k_ButtonInset - buttonWidth;
         m_MessageButton.frame = NSMakeRect(x, round((frame.size.height - k_ButtonHeight) / 2), buttonWidth, k_ButtonHeight);
         NSRect label = m_MessageLabel.frame;
         label.size.width = MAX(x - k_ButtonGap - NSMinX(label), 0);
