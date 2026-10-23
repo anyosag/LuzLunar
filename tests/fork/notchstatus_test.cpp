@@ -145,10 +145,9 @@ static void testHealth()
 
 static void testBarText()
 {
-    CHECK(barText("5 GHz", 119.6, 8, 18.24, 0) == "5 GHz · 120 fps · 8 ms · 18.2 Mb/s");
-    CHECK(barText("", 60, 12, 9.96, 0) == "60 fps · 12 ms · 10.0 Mb/s");
-    CHECK(barText("", 60, 0, 10, 0) == "60 fps · — ms · 10.0 Mb/s");
-    CHECK(barText("6 GHz", 90, 3, 14.6, 15) == "6 GHz · 90 fps · 3 ms · 14.6 Mb/s ↓15");
+    CHECK(barText("5 GHz", 119.6, 8) == "5 GHz · 120 fps · 8 ms");
+    CHECK(barText("", 60, 12) == "60 fps · 12 ms");
+    CHECK(barText("", 60, 0) == "60 fps · — ms");
 }
 
 int main()

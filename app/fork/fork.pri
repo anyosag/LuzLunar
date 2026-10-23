@@ -51,6 +51,7 @@ SOURCES += \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
     $$PWD/adaptivebitrate.cpp \
+    $$PWD/bitrateclient.cpp \
     $$PWD/bitraterules.cpp \
     $$PWD/hostpacing.cpp \
     $$PWD/macdrive.cpp \
@@ -96,10 +97,13 @@ HEADERS += \
     $$PWD/hostpacing.h \
     $$PWD/luztouchpad.h \
     $$PWD/adaptivebitrate.h \
+    $$PWD/bitrateclient.h \
     $$PWD/bitraterules.h \
+    $$PWD/bitratestate.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
     $$PWD/notchmenus.h \
+    $$PWD/notchquality.h \
     $$PWD/notchstatus.h \
     $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \

@@ -42,10 +42,33 @@ namespace BitrateRules
         bool poor = false;      // moonlight-common-c calls the connection poor
     };
 
+    // Why the controller last changed the bitrate, for the notch bar's Quality menu
+    enum class Reason {
+        None,
+        Loss,       // frames lost, or moonlight-common-c called the connection poor
+        RoundTrip,  // a queue building on the way
+        Climb,      // back up towards the user's bitrate
+    };
+
+    struct Change {
+        Reason reason = Reason::None;
+        double seconds = 0;     // the sample's
+        int fromKbps = 0;
+        int toKbps = 0;
+        uint32_t rttMs = 0;     // the round-trip time then, and the stream's own
+        uint32_t baseRttMs = 0;
+        double dropPercent = 0;
+        bool poor = false;      // moonlight-common-c called the connection poor
+    };
+
     class Controller
     {
     public:
         Controller(int chosenKbps, bool hdr);
+
+        // Turned on partway through a stream running at startKbps (set by hand, say): it starts there,
+        // between the floor and the user's bitrate, and climbs back from it
+        Controller(int chosenKbps, bool hdr, int startKbps);
 
         // The bitrate to ask for now, or 0 to stay at currentKbps()
         int tick(const Sample& sample);
@@ -63,8 +86,11 @@ namespace BitrateRules
         // The round-trip time the stream counts as its own, without a queue; 0 while unknown
         uint32_t baseRttMs() const { return m_BaseRttMs; }
 
+        // The last change tick() asked for; Reason::None before any
+        const Change& lastChange() const { return m_LastChange; }
+
     private:
-        int changeTo(int kbps, double now, double hold);
+        int changeTo(int kbps, double now, double hold, Reason reason, const Sample& sample);
 
         int m_ChosenKbps;
         int m_FloorKbps;
@@ -84,5 +110,7 @@ namespace BitrateRules
         uint32_t m_FlatRttLevelMs = 0;
         // The cuts since then that left it there
         int m_FlatRttCuts = 0;
+
+        Change m_LastChange;
     };
 }

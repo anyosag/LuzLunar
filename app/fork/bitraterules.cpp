@@ -57,15 +57,28 @@ int launchKbps(int chosenKbps)
 }
 
 Controller::Controller(int chosenKbps, bool hdr)
+    : Controller(chosenKbps, hdr, chosenKbps)
+{
+}
+
+Controller::Controller(int chosenKbps, bool hdr, int startKbps)
     : m_ChosenKbps(chosenKbps),
       m_FloorKbps(BitrateRules::floorKbps(chosenKbps, hdr)),
-      m_CurrentKbps(chosenKbps),
+      m_CurrentKbps(std::max(m_FloorKbps, std::min(startKbps, chosenKbps))),
       m_HoldUntil(k_StartSettle)
 {
 }
 
-int Controller::changeTo(int kbps, double now, double hold)
+int Controller::changeTo(int kbps, double now, double hold, Reason reason, const Sample& sample)
 {
+    m_LastChange.reason = reason;
+    m_LastChange.seconds = now;
+    m_LastChange.fromKbps = m_CurrentKbps;
+    m_LastChange.toKbps = kbps;
+    m_LastChange.rttMs = sample.rttMs;
+    m_LastChange.baseRttMs = m_BaseRttMs;
+    m_LastChange.dropPercent = sample.dropPercent;
+    m_LastChange.poor = sample.poor;
     m_CurrentKbps = kbps;
     m_HoldUntil = now + hold;
     m_RttHighSeconds = 0;
@@ -146,7 +159,7 @@ int Controller::tick(const Sample& sample)
             return 0;
         }
         m_LastLossKbps = m_CurrentKbps;
-        return changeTo(target, now, k_CutHold);
+        return changeTo(target, now, k_CutHold, lossy ? Reason::Loss : Reason::RoundTrip, sample);
     }
 
     if (m_CurrentKbps >= m_ChosenKbps || now < m_NextClimbAt) {
@@ -165,6 +178,6 @@ int Controller::tick(const Sample& sample)
     }
     // The next climb waits as long, but a cut only the usual 5 s
     m_NextClimbAt = now + clean;
-    return changeTo(target, now, k_ClimbClean);
+    return changeTo(target, now, k_ClimbClean, Reason::Climb, sample);
 }
 }

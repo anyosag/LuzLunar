@@ -21,14 +21,16 @@ static int s_Failures = 0;
 
 static void testNeighbour()
 {
-    // Left to right as on the bar: Session left of the notch, the stats and Control Center right of it
-    CHECK(order().size() == 3);
+    // Left to right as on the bar: Session left of the notch; the stats, the bitrate and Control
+    // Center right of it
+    CHECK(order().size() == 4);
     CHECK(neighbour(Menu::Session, 1) == Menu::Status);
-    CHECK(neighbour(Menu::Status, 1) == Menu::ControlCenter);
+    CHECK(neighbour(Menu::Status, 1) == Menu::Quality);
+    CHECK(neighbour(Menu::Quality, 1) == Menu::ControlCenter);
     CHECK(neighbour(Menu::ControlCenter, 1) == Menu::Session);
     CHECK(neighbour(Menu::Session, -1) == Menu::ControlCenter);
-    CHECK(neighbour(Menu::Status, 2) == Menu::Session);
-    CHECK(neighbour(Menu::ControlCenter, -3) == Menu::ControlCenter);
+    CHECK(neighbour(Menu::Status, 3) == Menu::Session);
+    CHECK(neighbour(Menu::ControlCenter, -4) == Menu::ControlCenter);
     CHECK(neighbour(Menu::None, 1) == Menu::None);
 }
 

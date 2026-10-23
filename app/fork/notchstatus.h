@@ -191,11 +191,11 @@ namespace NotchStatus
         return Health::Smooth;
     }
 
-    // The bar item: "5 GHz · 120 fps · 8 ms · 18.2 Mb/s ↓15". band is empty when it isn't shown;
-    // an RTT of 0 wasn't measured. The bitrate goes to the Quality item once the bar has one.
-    inline std::string barText(const std::string& band, double fps, uint32_t rttMs, double mbps, double capMbps)
+    // The stats item: "5 GHz · 120 fps · 8 ms". band is empty when it isn't shown; an RTT of 0
+    // wasn't measured. The bitrate is the Quality item's.
+    inline std::string barText(const std::string& band, double fps, uint32_t rttMs)
     {
-        char text[96];
+        char text[64];
         char rtt[16];
         if (rttMs > 0) {
             std::snprintf(rtt, sizeof(rtt), "%u ms", rttMs);
@@ -203,12 +203,7 @@ namespace NotchStatus
         else {
             std::snprintf(rtt, sizeof(rtt), "— ms");
         }
-        char cap[16] = "";
-        if (capMbps > 0) {
-            std::snprintf(cap, sizeof(cap), " ↓%.0f", capMbps);
-        }
-        std::snprintf(text, sizeof(text), "%s%s%.0f fps · %s · %.1f Mb/s%s",
-                      band.c_str(), band.empty() ? "" : " · ", fps, rtt, mbps, cap);
+        std::snprintf(text, sizeof(text), "%s%s%.0f fps · %s", band.c_str(), band.empty() ? "" : " · ", fps, rtt);
         return text;
     }
 }

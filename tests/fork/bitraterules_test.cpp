@@ -332,6 +332,41 @@ static void testLaunchKbps()
     CHECK(launchKbps(0) == 0);
 }
 
+static void testStartAndReasons()
+{
+    // Turned on at 12 Mb/s, set by hand: it starts there and climbs back to the user's 20
+    Controller c(20000, false, 12000);
+    CHECK(c.currentKbps() == 12000 && c.lowered());
+    CHECK(c.lastChange().reason == Reason::None);
+    std::vector<int> climbs = run(c, 0, 12);
+    CHECK((climbs == std::vector<int> { 13000, 14000 }));
+    CHECK(c.lastChange().reason == Reason::Climb);
+    CHECK(c.lastChange().fromKbps == 13000 && c.lastChange().toKbps == 14000 && c.lastChange().seconds == 10);
+
+    // A start above the user's bitrate or under the floor is held to them
+    CHECK(Controller(20000, false, 25000).currentKbps() == 20000);
+    CHECK(Controller(20000, false, 1000).currentKbps() == 4000);
+
+    // A loss cut says so, with what was lost
+    Controller loss(20000, false);
+    run(loss, 0, 5);
+    CHECK(loss.tick(second(6, 5.0)) == 14000);
+    CHECK(loss.lastChange().reason == Reason::Loss);
+    CHECK(loss.lastChange().dropPercent == 5.0 && loss.lastChange().seconds == 6 && !loss.lastChange().poor);
+    Controller poor(20000, false);
+    run(poor, 0, 5);
+    CHECK(poor.tick(second(6, 0, 20, true)) == 14000);
+    CHECK(poor.lastChange().reason == Reason::Loss && poor.lastChange().poor);
+
+    // A queue's cut, with the round-trip time against the stream's own
+    Controller queue(20000, false);
+    run(queue, 0, 5);
+    std::vector<int> cuts = run(queue, 6, 8, 0, 80);
+    CHECK(cuts.size() == 1 && cuts.front() == 18000);
+    CHECK(queue.lastChange().reason == Reason::RoundTrip);
+    CHECK(queue.lastChange().rttMs == 80 && queue.lastChange().baseRttMs == 20);
+}
+
 int main()
 {
     testFloor();
@@ -343,6 +378,7 @@ int main()
     testRoundTripBase();
     testSmallBitrates();
     testLaunchKbps();
+    testStartAndReasons();
 
     if (s_Failures == 0) {
         std::printf("bitraterules: all tests passed\n");

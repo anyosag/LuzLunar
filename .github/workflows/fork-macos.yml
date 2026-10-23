@@ -210,10 +210,19 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/notchstatus_test.cpp -o "$RUNNER_TEMP/notchstatus_test"
           "$RUNNER_TEMP/notchstatus_test"
-          # Adaptive bitrate's controller: cuts on losses and queues, holds, the climb back, the floor
+          # Adaptive bitrate's controller: cuts on losses and queues, holds, the climb back, the floor,
+          # turned on below the user's bitrate, and why it last changed it
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/bitraterules_test.cpp app/fork/bitraterules.cpp -o "$RUNNER_TEMP/bitraterules_test"
           "$RUNNER_TEMP/bitraterules_test"
+          # What the PC's answers say about changing the bitrate during the stream
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/bitratestate_test.cpp -o "$RUNNER_TEMP/bitratestate_test"
+          "$RUNNER_TEMP/bitratestate_test"
+          # The notch bar's Quality menu: its line, caption, "ago" and the slider's range and steps
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/notchquality_test.cpp -o "$RUNNER_TEMP/notchquality_test"
+          "$RUNNER_TEMP/notchquality_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"

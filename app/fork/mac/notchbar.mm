@@ -91,17 +91,20 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     ForkNotchPanel* m_Panel;
     ForkBarItem* m_SessionItem;     // the app and the PC, left of the notch: the Session menu
     ForkBarItem* m_StatsItem;       // the stream's stats, right of the notch: Stream status
+    ForkBarItem* m_QualityItem;     // the bitrate, after the stats: Quality
     ForkBarItem* m_ControlItem;     // Stream Control Center, at the right edge
     NSString* m_AppName;
     NSString* m_HostName;
     int m_VideoWidth;
     int m_VideoHeight;
     BOOL m_NotchStatsShown;         // the stats' text beside their icon (Control Center's Notch Stats)
-    unsigned m_StatusTickGeneration; // the tick that keeps an open Stream status current
+    unsigned m_StatusTickGeneration; // the tick that keeps an open Stream status or Quality current
+    int m_QualityKbps;              // what the Quality item shows
+    BOOL m_QualityLowered;
 
     // The menus under the items, and what they do (MacNotchBar::setActions())
     ForkNotchMenus* m_Menus;
-    std::function<void(NotchMenus::Action)> m_Actions;
+    std::function<void(NotchMenus::Action, int)> m_Actions;
     std::function<NotchBar::MenuState()> m_State;
     NSRect m_StripFrame;            // the strip beside the notch on screen, from the last layout
 
@@ -133,12 +136,13 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 }
 - (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName
                           videoWidth:(int)videoWidth videoHeight:(int)videoHeight;
-- (void)setActions:(std::function<void(NotchMenus::Action)>)actions state:(std::function<NotchBar::MenuState()>)state;
+- (void)setActions:(std::function<void(NotchMenus::Action, int)>)actions state:(std::function<NotchBar::MenuState()>)state;
 - (BOOL)toggleMenusByKeyboard;
 - (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
 - (BOOL)menuOpen;
 - (BOOL)barOnScreen;
 - (void)refreshMenus;
+- (void)updateQualityItem;
 - (void)statsArrived;
 - (void)setWarning:(NSString*)text;
 - (void)showToast:(NSString*)text;
@@ -360,6 +364,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_StatsItem = [[ForkBarItem alloc] initWithSymbol:@"network"];
     [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? @"—" : @"")];
     [m_StatsItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Stream status").toNSString()];
+    // Its arrow and bitrate come with the menus' state (updateQualityItem)
+    m_QualityItem = [[ForkBarItem alloc] initWithSymbol:nil];
+    [m_QualityItem setTitle:statsTitle(@"—")];
+    [m_QualityItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Bitrate").toNSString()];
     // Control Center's own icon, or sliders on a macOS without it
     m_ControlItem = [[ForkBarItem alloc] initWithSymbol:symbolImage(@"switch.2") != nil ? @"switch.2" : @"slider.horizontal.3"];
     [m_ControlItem setTitle:[[[NSAttributedString alloc] initWithString:@""] autorelease]];
@@ -372,6 +380,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     };
     m_StatsItem.onPress = ^{
         [controller pressedItemForMenu:NotchMenus::Menu::Status];
+    };
+    m_QualityItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Quality];
     };
     m_ControlItem.onPress = ^{
         [controller pressedItemForMenu:NotchMenus::Menu::ControlCenter];
@@ -397,6 +408,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
     [m_Panel.contentView addSubview:m_SessionItem];
     [m_Panel.contentView addSubview:m_StatsItem];
+    [m_Panel.contentView addSubview:m_QualityItem];
     [m_Panel.contentView addSubview:m_ControlItem];
     // The dot sits under the pill that grows out of it
     [m_Panel.contentView addSubview:m_Dot];
@@ -439,6 +451,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Panel release];
     [m_SessionItem release];
     [m_StatsItem release];
+    [m_QualityItem release];
     [m_ControlItem release];
     [m_AppName release];
     [m_HostName release];
@@ -459,9 +472,11 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
     // Quietly: the stream is ending, and its event loop with it
     m_Actions = nullptr;
+    m_State = nullptr;
     [m_Menus invalidate];
     m_SessionItem.onPress = nil;
     m_StatsItem.onPress = nil;
+    m_QualityItem.onPress = nil;
     m_ControlItem.onPress = nil;
     m_StatusTickGeneration++;
     // Animations and timers still queued find the controller invalidated and do nothing
@@ -525,7 +540,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNotchPanel* panel = makeNotchPanel();
     [panel setFrame:m_Panel.frame display:NO];
     // In their order in the old panel, so the dot stays under the message pill
-    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_ControlItem, m_Dot, m_MessagePill ]) {
+    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_ControlItem, m_Dot, m_MessagePill ]) {
         [panel.contentView addSubview:view];
     }
 
@@ -588,22 +603,57 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNetworkLink::Current link = ForkNetworkLink::current();
     BOOL wifi = link.known && link.link.kind == ForkLinkRules::Kind::WiFi;
     std::string band = wifi && link.shown ? ForkLinkRules::bandText(link.link.bandGHz) : std::string();
-    NSString* text = [NSString stringWithUTF8String:NotchStatus::barText(band, stats.fps, stats.rttMs, stats.mbps,
-                                                                         stats.bitrateCapMbps).c_str()];
+    NSString* text = [NSString stringWithUTF8String:NotchStatus::barText(band, stats.fps, stats.rttMs).c_str()];
     [m_StatsItem setSymbol:wifi ? @"wifi" : @"network"];
     [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? text : @"")];
     [m_StatsItem setAccessibilityValue:text];
+    [self updateQualityItem];
     [self refresh];
     [m_Menus statusChanged];
 }
 
-// While Stream status is open, once a second, so it moves on even when no frames come (a still desktop)
-- (void)tickStatus:(unsigned)generation
+// "18 Mb/s", after an orange arrow while that's below the user's bitrate
+- (void)updateQualityItem
 {
-    if (generation != m_StatusTickGeneration || m_StreamWindow == nil || [m_Menus openMenu] != NotchMenus::Menu::Status) {
+    if (m_StreamWindow == nil || !m_State) {
         return;
     }
-    [m_Menus statusChanged];
+    NotchQuality::State state = m_State().bitrate;
+    int kbps = NotchQuality::shownKbps(state);
+    BOOL lowered = NotchQuality::lowered(state);
+    if (kbps == m_QualityKbps && lowered == m_QualityLowered) {
+        return;
+    }
+    m_QualityKbps = kbps;
+    m_QualityLowered = lowered;
+
+    QString mbps = QString::fromStdString(NotchQuality::mbps(kbps));
+    [m_QualityItem setSymbol:lowered ? @"arrow.down" : nil
+                        tint:[NSColor colorWithSRGBRed:1 green:0x9f / 255.0 blue:0x0a / 255.0 alpha:1]];
+    [m_QualityItem setTitle:statsTitle(QCoreApplication::translate("NotchBar", "%1 Mb/s").arg(mbps).toNSString())];
+    QString label = QCoreApplication::translate("NotchBar", "Bitrate: %1 megabits per second").arg(mbps);
+    if (lowered) {
+        label = QCoreApplication::translate("NotchBar", "%1, below your %2").arg(label, QString::fromStdString(NotchQuality::mbps(state.ownKbps)));
+    }
+    [m_QualityItem setAccessibilityLabel:label.toNSString()];
+    [self refresh];
+}
+
+// While Stream status or Quality is open, once a second, so it moves on even when no frames come (a
+// still desktop): the graph, and how long ago the bitrate changed
+- (void)tickStatus:(unsigned)generation
+{
+    NotchMenus::Menu open = [m_Menus openMenu];
+    if (generation != m_StatusTickGeneration || m_StreamWindow == nil ||
+            (open != NotchMenus::Menu::Status && open != NotchMenus::Menu::Quality)) {
+        return;
+    }
+    if (open == NotchMenus::Menu::Status) {
+        [m_Menus statusChanged];
+    }
+    else {
+        [m_Menus qualityChanged];
+    }
     [self retain];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self tickStatus:generation];
@@ -641,13 +691,14 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 // Menus
 
-- (void)setActions:(std::function<void(NotchMenus::Action)>)actions state:(std::function<NotchBar::MenuState()>)state
+- (void)setActions:(std::function<void(NotchMenus::Action, int)>)actions state:(std::function<NotchBar::MenuState()>)state
 {
     m_Actions = std::move(actions);
     m_State = std::move(state);
+    [self updateQualityItem];
     if (m_BarOnScreen && m_Actions) {
         // Already up: the pointer mustn't be held to the picture
-        m_Actions(NotchMenus::Action::BarShownOrHidden);
+        m_Actions(NotchMenus::Action::BarShownOrHidden, 0);
     }
 }
 
@@ -695,6 +746,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)refreshMenus
 {
+    [self updateQualityItem];
     [m_Menus refresh];
 }
 
@@ -710,8 +762,13 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         [m_Menus refresh];
         return;
     }
+    [self menusPerform:action value:0];
+}
+
+- (void)menusPerform:(NotchMenus::Action)action value:(int)value
+{
     if (m_Actions) {
-        m_Actions(action);
+        m_Actions(action, value);
     }
 }
 
@@ -767,6 +824,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     ForkBarItem* item = menu == NotchMenus::Menu::Session ? m_SessionItem :
                         menu == NotchMenus::Menu::Status ? m_StatsItem :
+                        menu == NotchMenus::Menu::Quality ? m_QualityItem :
                         menu == NotchMenus::Menu::ControlCenter ? m_ControlItem : nil;
     if (item == nil || item.hidden || !m_BarOnScreen) {
         return NSZeroRect;
@@ -780,17 +838,19 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)menusChanged:(NotchMenus::Menu)menu
 {
-    BOOL wasOpen = m_SessionItem.open || m_StatsItem.open || m_ControlItem.open;
-    BOOL statusWasOpen = m_StatsItem.open;
+    BOOL wasOpen = m_SessionItem.open || m_StatsItem.open || m_QualityItem.open || m_ControlItem.open;
+    BOOL tickedOpen = m_StatsItem.open || m_QualityItem.open;
     m_SessionItem.open = menu == NotchMenus::Menu::Session;
     m_StatsItem.open = menu == NotchMenus::Menu::Status;
+    m_QualityItem.open = menu == NotchMenus::Menu::Quality;
     m_ControlItem.open = menu == NotchMenus::Menu::ControlCenter;
-    if (m_StatsItem.open && !statusWasOpen) {
+    if ((m_StatsItem.open || m_QualityItem.open) && !tickedOpen) {
+        // From Stream status to Quality, the tick goes on
         [self tickStatus:++m_StatusTickGeneration];
     }
     BOOL isOpen = menu != NotchMenus::Menu::None;
     if (isOpen != wasOpen && m_Actions) {
-        m_Actions(isOpen ? NotchMenus::Action::MenusOpened : NotchMenus::Action::MenusClosed);
+        m_Actions(isOpen ? NotchMenus::Action::MenusOpened : NotchMenus::Action::MenusClosed, 0);
     }
 }
 
@@ -799,8 +859,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_Panel;
 }
 
-// The Session item at the left edge of the area left of the notch; the stats and Control Center
-// from the right edge of the area right of it, the stats giving way when they don't fit
+// The Session item at the left edge of the area left of the notch; the stats, the bitrate and Control
+// Center from the right edge of the area right of it, the stats giving way when they don't fit
 - (void)layoutItemsLeft:(NSRect)leftArea right:(NSRect)rightArea height:(CGFloat)height y:(CGFloat)y
 {
     CGFloat sessionWidth = MIN([m_SessionItem naturalWidth], MAX(NSWidth(leftArea) - 2 * k_Margin, 0));
@@ -809,9 +869,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
     // The stats shrink, down to their icon alone
     std::vector<NotchMenus::Placed> placed = NotchMenus::layoutRight(NSWidth(rightArea), k_Margin, k_ItemGap,
-                                                                     { [m_StatsItem naturalWidth], [m_ControlItem naturalWidth] }, 0,
-                                                                     [m_StatsItem iconOnlyWidth]);
-    NSArray<ForkBarItem*>* items = @[ m_StatsItem, m_ControlItem ];
+                                                                     { [m_StatsItem naturalWidth], [m_QualityItem naturalWidth],
+                                                                       [m_ControlItem naturalWidth] },
+                                                                     0, [m_StatsItem iconOnlyWidth]);
+    NSArray<ForkBarItem*>* items = @[ m_StatsItem, m_QualityItem, m_ControlItem ];
     for (NSUInteger i = 0; i < items.count; i++) {
         ForkBarItem* item = items[i];
         item.hidden = placed[i].width <= 0;
@@ -886,7 +947,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
     // The pointer is held to the picture only while there's no bar above it to reach
     if (barChanged && m_Actions) {
-        m_Actions(NotchMenus::Action::BarShownOrHidden);
+        m_Actions(NotchMenus::Action::BarShownOrHidden, 0);
     }
 
     // Shows a message that arrived while neither was on screen, or moves one between them
@@ -1571,7 +1632,7 @@ namespace
             return true;
         }
 
-        void setActions(std::function<void(NotchMenus::Action)> actions, std::function<MenuState()> state) override
+        void setActions(std::function<void(NotchMenus::Action, int)> actions, std::function<MenuState()> state) override
         {
             [m_Controller setActions:std::move(actions) state:std::move(state)];
         }

@@ -13,6 +13,7 @@ namespace ForkStreamDiagnostics
         int width = 0;
         int height = 0;
         int ownBitrateKbps = 0;     // the bitrate the user chose
+        QString bitrate;            // like "adaptive, target 18 of 20 Mb/s, lowered 61 s ago (…)"
         QString clipboard;          // like "automatic" or "off in Settings"
         QString drive;              // like "M: (the whole disk)"; empty for none
     };

@@ -7,8 +7,10 @@
 
 #include "SDL_compat.h"
 #include "notchmenus.h"
+#include "notchquality.h"
 
 class AdaptiveBitrate;
+class BitrateClient;
 class ClipboardSync;
 class MacDrive;
 class NotchBar;
@@ -53,7 +55,10 @@ public:
 
 private:
     // Does what a notch bar menu asked for, in the event loop
-    void performBarAction(NotchMenus::Action action);
+    void performBarAction(NotchMenus::Action action, int value);
+
+    // The Quality item and menu's state
+    NotchQuality::State bitrateState() const;
 
     // Whether the stream will hold input once the open menus close
     bool captureAfterMenus(SdlInputHandler* input) const;
@@ -65,6 +70,7 @@ private:
     int m_Width;
     int m_Height;
     int m_OwnBitrateKbps;
+    bool m_Hdr;
     QString m_HostName;
     QString m_HostUuid;
     // The menus free the pointer while they're open, from MenusOpened to MenusClosed. Control
@@ -81,5 +87,7 @@ private:
     std::unique_ptr<NotchBar> m_NotchBar;
     std::unique_ptr<MacDrive> m_MacDrive;
     std::unique_ptr<PowerNotice> m_PowerNotice;
+    // Shared with adaptive bitrate, which goes first
+    std::shared_ptr<BitrateClient> m_BitrateClient;
     std::unique_ptr<AdaptiveBitrate> m_AdaptiveBitrate;
 };

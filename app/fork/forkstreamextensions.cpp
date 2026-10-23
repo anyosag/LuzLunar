@@ -4,6 +4,7 @@
 #include <QReadLocker>
 
 #include "adaptivebitrate.h"
+#include "bitrateclient.h"
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
@@ -78,6 +79,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
       m_Width(prefs.width),
       m_Height(prefs.height),
       m_OwnBitrateKbps(bitrateKbps),
+      m_Hdr(prefs.enableHdr),
       m_ShortcutGuard(false)
 {
     ForkPreferences* forkPrefs = ForkPreferences::get();
@@ -85,6 +87,8 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     // A new stream's numbers, before anything (the notch bar's listener) starts publishing them
     ForkStreamStats::resetHistory();
     ForkHostPacing::reset();
+    // The last stream may have ended on a poor connection, which moonlight-common-c doesn't take back
+    ForkStreamStats::resetConnectionStatus();
 
     // When Command sends something other than the Windows key, Command shortcuts are meant
     // for the host, so keep the app menu from quitting or hiding Moonlight on Cmd+Q / Cmd+H.
@@ -111,11 +115,12 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         // Its menus' choices run in the event loop, between events
         barActionEventType();
         m_NotchBar->setActions(
-            [](NotchMenus::Action action) {
+            [](NotchMenus::Action action, int value) {
                 SDL_Event event = {};
                 event.type = barActionEventType();
                 event.user.code = k_BarActionCode;
                 event.user.data1 = reinterpret_cast<void*>(static_cast<intptr_t>(action));
+                event.user.data2 = reinterpret_cast<void*>(static_cast<intptr_t>(value));
                 SDL_PushEvent(&event);
             },
             [this]() {
@@ -144,6 +149,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 }
                 Session* session = Session::get();
                 state.statsOverlayShown = session != nullptr && session->getOverlayManager().isOverlayEnabled(Overlay::OverlayDebug);
+                state.bitrate = bitrateState();
                 return state;
             });
     }
@@ -169,9 +175,14 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         });
     }
 
-    // A lower bitrate while the network struggles, and the stream's own back when it recovers
+    // The stream's bitrate changed on the PC while it runs: by adaptive bitrate, which lowers it while
+    // the network struggles and gives the stream's own back when it recovers, and by the notch bar's
+    // Quality menu
+    if (forkPrefs->adaptiveBitrate() || m_NotchBar) {
+        m_BitrateClient = std::make_shared<BitrateClient>(computer, bitrateKbps);
+    }
     if (forkPrefs->adaptiveBitrate()) {
-        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(computer, bitrateKbps, prefs.enableHdr);
+        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateKbps, prefs.enableHdr, bitrateKbps);
     }
 
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
@@ -271,7 +282,39 @@ bool ForkStreamExtensions::captureAfterMenus(SdlInputHandler* input) const
     return m_CaptureAfterMenus;
 }
 
-void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
+NotchQuality::State ForkStreamExtensions::bitrateState() const
+{
+    NotchQuality::State state;
+    state.ownKbps = m_OwnBitrateKbps;
+    if (!m_BitrateClient) {
+        state.known = true;
+        state.live = false;
+        state.why = NotchQuality::Why::Apollo;
+        return state;
+    }
+    BitrateState::State client = m_BitrateClient->state();
+    state.known = client.known;
+    state.live = client.live;
+    state.why = client.live ? NotchQuality::Why::None :
+                client.why == BitrateState::Why::Encoder   ? NotchQuality::Why::Encoder :
+                client.why == BitrateState::Why::NotApollo ? NotchQuality::Why::NotApollo : NotchQuality::Why::Apollo;
+    state.targetKbps = client.targetKbps;
+    state.minKbps = client.minKbps;
+    state.maxKbps = client.maxKbps;
+    state.adapting = m_AdaptiveBitrate != nullptr && client.live;
+    if (state.adapting) {
+        AdaptiveBitrate::State adaptive = m_AdaptiveBitrate->state();
+        state.changeReason = adaptive.lastChange.reason;
+        state.changeAgoSeconds = adaptive.changeAgoSeconds;
+        state.changeRttMs = adaptive.lastChange.rttMs;
+        state.changeBaseRttMs = adaptive.lastChange.baseRttMs;
+        state.changeDropPercent = adaptive.lastChange.dropPercent;
+        state.changePoor = adaptive.lastChange.poor;
+    }
+    return state;
+}
+
+void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value)
 {
     Session* session = Session::get();
     SdlInputHandler* input = inputHandler();
@@ -365,6 +408,25 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
             m_Clipboard->setAutomatic(!m_Clipboard->automatic());
         }
         break;
+    case NotchMenus::Action::ToggleAdaptiveBitrate:
+        if (m_AdaptiveBitrate) {
+            // The bitrate stays where it got to
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate off, holding %d kbps",
+                        m_BitrateClient->targetKbps());
+            m_AdaptiveBitrate.reset();
+        }
+        else if (m_BitrateClient && m_BitrateClient->state().live) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate on");
+            m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, m_OwnBitrateKbps, m_Hdr, m_BitrateClient->targetKbps());
+        }
+        break;
+    case NotchMenus::Action::SetBitrate:
+        // By hand only while adaptive bitrate is off; the slider is greyed otherwise
+        if (m_BitrateClient && !m_AdaptiveBitrate && value > 0) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: bitrate set to %d kbps", value);
+            m_BitrateClient->request(value);
+        }
+        break;
     case NotchMenus::Action::ToggleNotchStats:
         // The bar's own
     case NotchMenus::Action::None:
@@ -384,6 +446,30 @@ void ForkStreamExtensions::copyDiagnostics()
     context.width = m_Width;
     context.height = m_Height;
     context.ownBitrateKbps = m_OwnBitrateKbps;
+    {
+        NotchQuality::State bitrate = bitrateState();
+        QString target = QStringLiteral("target %1 of %2 Mb/s")
+                             .arg(QString::fromStdString(NotchQuality::mbps(NotchQuality::shownKbps(bitrate))),
+                                  QString::fromStdString(NotchQuality::mbps(bitrate.ownKbps)));
+        if (!bitrate.live) {
+            static const char* why[] = { "", "its encoder can't", "its Apollo can't", "it isn't Apollo" };
+            context.bitrate = QStringLiteral("fixed, %1; the PC can't change it during the stream (%2)")
+                                  .arg(target, QString::fromLatin1(why[static_cast<int>(bitrate.why)]));
+        }
+        else if (bitrate.adapting) {
+            static const char* reasons[] = { "no change yet", "frames lost", "round trip", "climbing" };
+            context.bitrate = QStringLiteral("adaptive, %1, last change %2 s ago (%3; round trip %4 ms, usually %5 ms, %6% of frames lost)")
+                                  .arg(target)
+                                  .arg(static_cast<int>(bitrate.changeAgoSeconds))
+                                  .arg(QString::fromLatin1(reasons[static_cast<int>(bitrate.changeReason)]))
+                                  .arg(bitrate.changeRttMs)
+                                  .arg(bitrate.changeBaseRttMs)
+                                  .arg(bitrate.changeDropPercent, 0, 'f', 1);
+        }
+        else {
+            context.bitrate = QStringLiteral("fixed, %1%2").arg(target, bitrate.known ? QString() : QStringLiteral(", not known yet whether the PC can change it"));
+        }
+    }
     if (!m_Clipboard) {
         context.clipboard = QStringLiteral("off in Settings");
     }
@@ -420,7 +506,15 @@ void ForkStreamExtensions::copyDiagnostics()
 void ForkStreamExtensions::handleEvent(const SDL_Event& event)
 {
     if (event.type == barActionEventType() && event.user.code == k_BarActionCode) {
-        performBarAction(static_cast<NotchMenus::Action>(reinterpret_cast<intptr_t>(event.user.data1)));
+        performBarAction(static_cast<NotchMenus::Action>(reinterpret_cast<intptr_t>(event.user.data1)),
+                         static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2)));
+        return;
+    }
+    if (BitrateClient::isStateEvent(event)) {
+        // What the PC can do with the bitrate, or what it runs at, changed
+        if (m_NotchBar) {
+            m_NotchBar->refreshMenus();
+        }
         return;
     }
     if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED && m_CaptureOnFocus) {

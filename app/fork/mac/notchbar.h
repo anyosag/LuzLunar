@@ -7,6 +7,7 @@
 #include <QtGlobal>
 
 #include "fork/notchmenus.h"
+#include "fork/notchquality.h"
 
 struct SDL_Window;
 
@@ -21,9 +22,9 @@ struct SDL_Window;
 //
 // The bar's items open menus under it, like macOS's menu bar: the app's name opens the Session menu
 // (disconnect, quit the app on the PC, sleep the PC), the stats open Stream status (latency, its
-// last two minutes, the connection), and the Control Center icon opens Stream Control Center
-// (clipboard sync, the pointer, Mac shortcuts). Their panels never take focus from the stream
-// (notchmenus_mac.mm).
+// last two minutes, the connection), the bitrate opens Quality (adaptive bitrate, a slider for the
+// bitrate), and the Control Center icon opens Stream Control Center (clipboard sync, the pointer, Mac
+// shortcuts). Their panels never take focus from the stream (notchmenus_mac.mm).
 class NotchBar
 {
 public:
@@ -56,11 +57,15 @@ public:
 
         bool statsOverlayShown = false; // Moonlight's stats overlay, Control-Option-Shift-S
         bool notchStatsShown = true;    // the bar's stats text; the bar fills this in itself
+
+        // The bitrate: what the PC can change, adaptive bitrate, the Quality slider's range
+        NotchQuality::State bitrate;
     };
 
-    // actions: what the user chose in a menu, on the main thread inside AppKit's event handling; hand
-    // it to the stream's event loop. state: MenuState now. Call on the main thread.
-    virtual void setActions(std::function<void(NotchMenus::Action)> actions, std::function<MenuState()> state) = 0;
+    // actions: what the user chose in a menu, with a value for those that take one (SetBitrate's
+    // kbps), on the main thread inside AppKit's event handling; hand it to the stream's event loop.
+    // state: MenuState now. Call on the main thread.
+    virtual void setActions(std::function<void(NotchMenus::Action, int value)> actions, std::function<MenuState()> state) = 0;
 
     // Control-Option-Shift-N: opens the Session menu for the keyboard, or closes the open menu. False
     // while the bar isn't on screen. Call on the main thread.
@@ -75,7 +80,7 @@ public:
     // The bar is beside the notch now, where the pointer must be able to reach it
     virtual bool onScreen() const = 0;
 
-    // An open menu shows MenuState again, after an action changed it
+    // An open menu and the Quality item show MenuState again, after an action or the bitrate changed it
     virtual void refreshMenus() = 0;
 
 protected:

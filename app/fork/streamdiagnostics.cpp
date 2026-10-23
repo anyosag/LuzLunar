@@ -43,16 +43,13 @@ QString text(const Context& context)
     bool haveLatest = ForkStreamStats::latest(&latest);
     QString video = QStringLiteral("Video: %1×%2").arg(context.width).arg(context.height);
     if (haveLatest) {
-        video += QStringLiteral(" · %1 · %2 fps · %3 Mb/s of %4 Mb/s")
+        video += QStringLiteral(" · %1 · %2 fps · %3 Mb/s received")
                      .arg(latest.codec)
                      .arg(latest.fps, 0, 'f', 0)
-                     .arg(latest.mbps, 0, 'f', 1)
-                     .arg(context.ownBitrateKbps / 1000.0, 0, 'f', 1);
-        if (latest.bitrateCapMbps > 0) {
-            video += QStringLiteral(", lowered to %1 Mb/s by adaptive bitrate").arg(latest.bitrateCapMbps, 0, 'f', 0);
-        }
+                     .arg(latest.mbps, 0, 'f', 1);
     }
     lines << video;
+    lines << QStringLiteral("Bitrate: %1").arg(context.bitrate);
 
     ForkNetworkLink::Current link = ForkNetworkLink::current();
     if (link.known) {

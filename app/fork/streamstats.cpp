@@ -19,7 +19,8 @@ namespace
     std::mutex s_ListenerMutex;
     std::function<void(const Snapshot&)> s_Listener;
     std::function<void(const Snapshot&)> s_BitrateListener;
-    std::atomic<double> s_BitrateCapMbps { 0 };
+    std::atomic<double> s_TargetMbps { 0 };
+    std::atomic<double> s_OwnMbps { 0 };
 
     std::mutex s_ConnectionListenerMutex;
     std::function<bool(bool, bool)> s_ConnectionListener;
@@ -57,9 +58,10 @@ void setBitrateListener(std::function<void(const Snapshot&)> listener)
     s_Wanted = s_Listener || s_BitrateListener;
 }
 
-void setBitrateCap(double mbps)
+void setBitrate(double targetMbps, double ownMbps)
 {
-    s_BitrateCapMbps = mbps;
+    s_TargetMbps = targetMbps;
+    s_OwnMbps = ownMbps;
 }
 
 void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
@@ -75,7 +77,8 @@ void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
     snapshot.droppedFrames = stats.networkDroppedFrames;
     snapshot.totalFrames = stats.totalFrames;
     snapshot.jitterDropPercent = stats.decodedFrames != 0 ? 100.0 * stats.pacerDroppedFrames / stats.decodedFrames : 0.0;
-    snapshot.bitrateCapMbps = s_BitrateCapMbps;
+    snapshot.targetMbps = s_TargetMbps;
+    snapshot.ownMbps = s_OwnMbps;
 
     StreamHistory::Totals totals;
     totals.totalHostProcessingLatency = stats.totalHostProcessingLatency;
@@ -101,7 +104,7 @@ void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps)
         sample.parts = snapshot.latencyMs;
         sample.fps = snapshot.fps;
         sample.dropPercent = snapshot.dropPercent;
-        sample.capMbps = snapshot.bitrateCapMbps;
+        sample.targetMbps = snapshot.targetMbps;
         sample.pacingLowest = snapshot.pacingLowest;
         sample.pacingAverage = snapshot.pacingAverage;
 

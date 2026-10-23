@@ -25,7 +25,8 @@ namespace ForkStreamStats
         uint32_t droppedFrames = 0; // how many, of
         uint32_t totalFrames = 0;   // the frames the percentage is over
         double jitterDropPercent = 0;   // frames dropped as they arrived too unevenly to show
-        double bitrateCapMbps = 0;  // what adaptive bitrate lowered the stream to; 0 while it isn't lowered
+        double targetMbps = 0;      // the bitrate the PC runs the stream at, as it confirmed (BitrateClient); 0 while unknown
+        double ownMbps = 0;         // the user's own, which targetMbps is below while lowered
         StreamHistory::Parts latencyMs = StreamHistory::unknownParts();    // from a click to the picture
         double pacingLowest = StreamHistory::unknown();     // the PC's frame pacing since the last snapshot
         double pacingAverage = StreamHistory::unknown();
@@ -41,9 +42,8 @@ namespace ForkStreamStats
     // A second listener, for adaptive bitrate (adaptivebitrate.*); the same rules
     void setBitrateListener(std::function<void(const Snapshot&)> listener);
 
-    // What adaptive bitrate lowered the stream to, for the snapshots; 0 while it isn't lowered.
-    // Any thread.
-    void setBitrateCap(double mbps);
+    // The bitrate the PC confirmed for the stream, and the user's own, for the snapshots. Any thread.
+    void setBitrate(double targetMbps, double ownMbps);
 
     // Also adds the snapshot to the stream's history, before the listeners hear it
     void publish(const VIDEO_STATS& stats, int videoFormat, double averageMbps);
