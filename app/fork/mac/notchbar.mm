@@ -274,11 +274,24 @@ static NSAttributedString* sessionTitle(NSString* appName, NSString* hostName)
     return title;
 }
 
+// The stats' text, with its "·" separators dimmed as on the canvas
 static NSAttributedString* statsTitle(NSString* text)
 {
-    return [[[NSAttributedString alloc] initWithString:text
-                                            attributes:@{ NSFontAttributeName: [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
-                                                          NSForegroundColorAttributeName: NSColor.labelColor }] autorelease];
+    NSMutableAttributedString* title =
+        [[[NSMutableAttributedString alloc] initWithString:text
+                                                attributes:@{ NSFontAttributeName: [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
+                                                              NSForegroundColorAttributeName: NSColor.labelColor }] autorelease];
+    NSColor* dimmed = [NSColor colorWithSRGBRed:0x6e / 255.0 green:0x6e / 255.0 blue:0x75 / 255.0 alpha:1];
+    NSRange search = NSMakeRange(0, text.length);
+    for (;;) {
+        NSRange dot = [text rangeOfString:@"·" options:0 range:search];
+        if (dot.location == NSNotFound) {
+            break;
+        }
+        [title addAttribute:NSForegroundColorAttributeName value:dimmed range:dot];
+        search = NSMakeRange(NSMaxRange(dot), text.length - NSMaxRange(dot));
+    }
+    return title;
 }
 
 // Puts a message in a pill's icon and label: a yellow warning sign for the connection warning, a
@@ -713,8 +726,15 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     model->now = ForkStreamStats::nowSeconds();
     model->samples = ForkStreamStats::history();
+    ForkStreamStats::Snapshot stats;
+    model->haveLatest = ForkStreamStats::latest(&stats);
+    if (model->haveLatest) {
+        model->latest.seconds = stats.seconds;
+        model->latest.parts = stats.latencyMs;
+    }
     bool suggestLowerBitrate;
-    model->health = NotchStatus::health(ForkStreamStats::connectionPoor(&suggestLowerBitrate), model->samples, model->now);
+    model->health = NotchStatus::health(model->haveLatest, ForkStreamStats::connectionPoor(&suggestLowerBitrate),
+                                        model->samples, model->now);
 
     ForkNetworkLink::Current link = ForkNetworkLink::current();
     if (link.known) {
@@ -723,8 +743,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     }
 
     QString resolution = QStringLiteral("%1×%2").arg(m_VideoWidth).arg(m_VideoHeight);
-    ForkStreamStats::Snapshot stats;
-    if (ForkStreamStats::latest(&stats)) {
+    if (model->haveLatest) {
         model->frameRate = QCoreApplication::translate("NotchBar", "%1 fps").arg(stats.fps, 0, 'f', 0);
         switch (pacingVerdict(stats.pacingLowest, stats.fps)) {
         case PacingVerdict::Even:

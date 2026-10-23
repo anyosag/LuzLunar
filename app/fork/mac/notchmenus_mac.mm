@@ -937,7 +937,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     effect.blendingMode = NSVisualEffectBlendingModeBehindWindow;
     effect.state = NSVisualEffectStateActive;
     effect.wantsLayer = YES;
-    effect.layer.cornerRadius = menu == NotchMenus::Menu::ControlCenter ? 22 : 12;
+    effect.layer.cornerRadius = menu == NotchMenus::Menu::ControlCenter ? 22 : menu == NotchMenus::Menu::Status ? 14 : 12;
     effect.layer.masksToBounds = YES;
     effect.layer.borderWidth = 1;
     effect.layer.borderColor = white(0.10);
@@ -1077,6 +1077,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     ForkStatusModel model;
     [m_Host menusStatus:&model];
     [m_StatusView update:model];
+
+    // Control-Option-Shift-S reaches the stream while the menu is open, so the row follows it
+    for (ForkMenuControl* control in m_Controls) {
+        if (control->m_Action == NotchMenus::Action::ToggleStatsOverlay) {
+            [control setTitle:[m_Host menusState].statsOverlayShown ? tr("Hide Stats Overlay") : tr("Show Stats Overlay")
+                       detail:@"⌃⌥⇧S" symbol:nil];
+        }
+    }
 }
 
 // "This Mac is drive M:", "On GAMING-PC, over the LAN": shows only

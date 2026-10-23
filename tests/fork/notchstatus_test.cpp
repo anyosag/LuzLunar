@@ -131,14 +131,16 @@ static void testPointer()
 
 static void testHealth()
 {
-    CHECK(health(false, {}, 10) == Health::Waiting);
-    CHECK(health(true, {}, 10) == Health::Waiting);
+    CHECK(health(false, false, {}, 10) == Health::Waiting);
+    CHECK(health(false, true, {}, 10) == Health::Waiting);
+    // No frames for over two minutes on a still desktop is still video
+    CHECK(health(true, false, {}, 500) == Health::Smooth);
 
     std::vector<Sample> samples { sample(1, 20, 5), sample(8, 20), sample(9, 20, 1.9) };
-    CHECK(health(false, samples, 9.5) == Health::Smooth);   // the loss was 8.5 s ago
-    CHECK(health(true, samples, 9.5) == Health::Poor);
+    CHECK(health(true, false, samples, 9.5) == Health::Smooth);   // the loss was 8.5 s ago
+    CHECK(health(true, true, samples, 9.5) == Health::Poor);
     samples.push_back(sample(10, 20, k_PoorLossPercent));
-    CHECK(health(false, samples, 10.2) == Health::Poor);
+    CHECK(health(true, false, samples, 10.2) == Health::Poor);
 }
 
 static void testBarText()

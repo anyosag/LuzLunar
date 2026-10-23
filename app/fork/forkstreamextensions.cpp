@@ -402,6 +402,9 @@ void ForkStreamExtensions::copyDiagnostics()
     long count = MacPasteboard::write({ clipbundle::item { "text/plain", std::string(text.constData(), static_cast<size_t>(text.size())) } }, false);
     if (count == 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: couldn't copy the diagnostics");
+        if (m_NotchBar) {
+            m_NotchBar->showToast(QCoreApplication::translate("NotchBar", "Couldn't copy the diagnostics"));
+        }
         return;
     }
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: diagnostics copied");

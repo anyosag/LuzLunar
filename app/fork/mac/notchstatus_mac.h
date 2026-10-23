@@ -16,7 +16,9 @@
 // What the panel shows, gathered by the bar (notchbar.mm) on the main thread
 struct ForkStatusModel {
     double now = 0;     // ForkStreamStats::nowSeconds()
-    std::vector<StreamHistory::Sample> samples;
+    std::vector<StreamHistory::Sample> samples;     // the last two minutes
+    bool haveLatest = false;                        // a snapshot arrived this stream, maybe longer ago
+    StreamHistory::Sample latest;
     NotchStatus::Health health = NotchStatus::Health::Waiting;
     // The rows, formatted; empty ones show "—"
     QString connection;

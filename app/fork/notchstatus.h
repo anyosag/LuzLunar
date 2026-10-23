@@ -166,16 +166,18 @@ namespace NotchStatus
         return std::max(0, static_cast<int>(std::lround(ageSeconds)));
     }
 
-    // The header's dot: no video yet, or Moonlight's poor connection warning or frames lost lately
+    // The header's dot: no video yet, or Moonlight's poor connection warning or frames lost lately.
+    // haveVideo: any snapshot this stream, even one older than the history (a still desktop sends
+    // no frames, which isn't a fault).
     enum class Health {
         Waiting,
         Smooth,
         Poor,
     };
 
-    inline Health health(bool poorReported, const std::vector<Sample>& samples, double now)
+    inline Health health(bool haveVideo, bool poorReported, const std::vector<Sample>& samples, double now)
     {
-        if (samples.empty()) {
+        if (!haveVideo) {
             return Health::Waiting;
         }
         if (poorReported) {

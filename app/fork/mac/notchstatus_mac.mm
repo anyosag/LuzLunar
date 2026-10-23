@@ -108,6 +108,7 @@ namespace
 @public
     ForkStatusView* m_Owner;    // not retained: it holds this view
     int m_Part;
+    BOOL m_Hovered;
     NSTrackingArea* m_Tracking;
 }
 @end
@@ -142,12 +143,14 @@ namespace
 - (void)mouseEntered:(NSEvent*)event
 {
     (void)event;
+    m_Hovered = YES;
     [m_Owner partHovered:m_Part];
 }
 
 - (void)mouseExited:(NSEvent*)event
 {
     (void)event;
+    m_Hovered = NO;
     [m_Owner partHovered:-1];
 }
 
@@ -268,7 +271,8 @@ namespace
         [line lineToPoint:NSMakePoint(width, y)];
         line.lineWidth = 1;
         [line stroke];
-        [[NSString stringWithFormat:@"%.0f ms", ms] drawAtPoint:NSMakePoint(1, y - 11.5) withAttributes:gridLabel];
+        // Above its line, or under it where the line is too near the top
+        [[NSString stringWithFormat:@"%.0f ms", ms] drawAtPoint:NSMakePoint(1, y - 11.5 >= 0 ? y - 11.5 : y + 1) withAttributes:gridLabel];
     }
     [[NSColor colorWithWhite:1 alpha:0.18] setStroke];
     NSBezierPath* baseline = [NSBezierPath bezierPath];
@@ -554,9 +558,16 @@ namespace
     // The connection
     NSString* names[6] = { tr("Connection"), tr("Link speed"), tr("Frame rate"), tr("PC frame pacing"), tr("Frames lost"), tr("Video") };
     for (int i = 0; i < 6; i++) {
-        [self addLabel:names[i] font:body color:secondaryText() frame:NSMakeRect(k_Inset, y + 3, 110, 17)];
-        m_RowValues[i] = [self addLabel:@"—" font:numbers color:primaryText() frame:NSMakeRect(k_Inset + 110, y + 3, inner - 110, 17)];
+        // Each value gets what its own label leaves, 16 points from it, as the canvas's grid does:
+        // "VPN over Wi-Fi · not via LAN" and "HEVC · 4:4:4 · HDR · 3840×2160" are long
+        NSTextField* name = [self addLabel:names[i] font:body color:secondaryText() frame:NSMakeRect(k_Inset, y + 3, inner, 17)];
+        [name sizeToFit];
+        CGFloat nameWidth = ceil(NSWidth(name.frame));
+        name.frame = NSMakeRect(k_Inset, y + 3, nameWidth, 17);
+        m_RowValues[i] = [self addLabel:@"—" font:numbers color:primaryText()
+                                  frame:NSMakeRect(k_Inset + nameWidth + 16, y + 3, inner - nameWidth - 16, 17)];
         m_RowValues[i].alignment = NSTextAlignmentRight;
+        m_RowValues[i].lineBreakMode = NSLineBreakByTruncatingMiddle;
         y += k_ValueRowHeight;
     }
     y += 4;
@@ -602,6 +613,10 @@ namespace
     const std::vector<StreamHistory::Sample>& samples = m_Model.samples;
     double now = m_Model.now;
 
+    // Changes show at once, not faded in
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+
     // The header's dot and words
     NSColor* dot;
     NSString* health;
@@ -627,23 +642,30 @@ namespace
     m_HealthText.frame = NSMakeRect(right - healthWidth, NSMinY(m_HealthText.frame), healthWidth, NSHeight(m_HealthText.frame));
     [m_HealthDot setFrameOrigin:NSMakePoint(right - healthWidth - 6 - 7, NSMinY(m_HealthDot.frame))];
 
-    // The moment the latency block shows: under the pointer, or the newest
+    // The moment the latency block shows: under the pointer, or the newest, even from before the
+    // two minutes when frames stopped coming
     int shown = -1;
     double age = 0;
+    StreamHistory::Parts parts = StreamHistory::unknownParts();
+    bool any = false;
     if (!std::isnan(m_CursorAge)) {
         shown = NotchStatus::nearest(samples, now, m_CursorAge);
         age = shown >= 0 ? now - samples[(std::size_t)shown].seconds : m_CursorAge;
+        if (shown >= 0) {
+            parts = samples[(std::size_t)shown].parts;
+        }
+        any = true;
     }
-    else if (!samples.empty()) {
-        shown = (int)samples.size() - 1;
-        age = now - samples.back().seconds;
+    else if (m_Model.haveLatest) {
+        parts = m_Model.latest.parts;
+        age = now - m_Model.latest.seconds;
         if (age < k_FreshSeconds) {
             age = 0;
         }
+        any = true;
     }
-    StreamHistory::Parts parts = shown >= 0 ? samples[(std::size_t)shown].parts : StreamHistory::unknownParts();
     double total = StreamHistory::total(parts);
-    m_When.stringValue = samples.empty() ? @"" : agoText(NotchStatus::secondsAgo(age));
+    m_When.stringValue = any ? agoText(NotchStatus::secondsAgo(age)) : @"";
 
     m_Headline.stringValue = msText(total, 0);
     [m_Headline sizeToFit];
@@ -653,15 +675,17 @@ namespace
     m_Subline.frame = NSMakeRect(NSMaxX(headline) + 7, round(baseline - m_Subline.font.ascender), m_Width - k_Inset - NSMaxX(headline) - 7,
                                  NSHeight(m_Subline.frame));
 
-    // The bar: each part's share, the others dimmed while one is pointed at
+    // The bar: each part's share, the others dimmed while one is pointed at. A part that's gone
+    // gets no mouseExited, so it stops being pointed at here.
     std::array<double, StreamHistory::PartCount> widths = NotchStatus::segmentWidths(parts, NSWidth(m_Bar.bounds));
-    int first = -1;
     int last = -1;
     for (int part = 0; part < StreamHistory::PartCount; part++) {
         if (widths[(std::size_t)part] > 0) {
-            first = first < 0 ? part : first;
             last = part;
         }
+    }
+    if (m_HoveredPart >= 0 && widths[(std::size_t)m_HoveredPart] <= 0 && !m_LegendRows[m_HoveredPart]->m_Hovered) {
+        m_HoveredPart = -1;
     }
     CGFloat x = 0;
     NSMutableArray<NSString*>* described = [NSMutableArray array];
@@ -672,15 +696,9 @@ namespace
         if (width > 0) {
             segment.frame = NSMakeRect(x, 0, width, k_BarHeight);
             x += width + NotchStatus::k_SegmentGap;
-            CACornerMask corners = 0;
-            if (part == first) {
-                corners |= kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
-            }
-            if (part == last) {
-                corners |= kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
-            }
-            segment.layer.cornerRadius = corners != 0 ? 4 : 0;
-            segment.layer.maskedCorners = corners;
+            // Only the right end is rounded, as on the canvas
+            segment.layer.cornerRadius = part == last ? 4 : 0;
+            segment.layer.maskedCorners = kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
         }
         segment.alphaValue = m_HoveredPart >= 0 && m_HoveredPart != part ? 0.35 : 1;
         m_LegendRows[part].layer.backgroundColor = m_HoveredPart == part ? white(0.08) : CGColorGetConstantColor(kCGColorClear);
@@ -718,6 +736,9 @@ namespace
                                  &m_Model.pacing, &m_Model.framesLost, &m_Model.video };
     for (int i = 0; i < 6; i++) {
         m_RowValues[i].stringValue = orDash(*values[i]);
+        [m_RowValues[i] setToolTip:values[i]->isEmpty() ? nil : values[i]->toNSString()];
     }
+
+    [CATransaction commit];
 }
 @end
