@@ -1,9 +1,6 @@
 #include "powernotice.h"
 
-#include <QCoreApplication>
-
 #include "forkevents.h"
-#include "mac/macintegration.h"
 
 namespace
 {
@@ -21,26 +18,9 @@ namespace
     }
 }
 
-PowerNotice::PowerNotice(int streamFps)
+PowerNotice::PowerNotice()
 {
     eventType();
-    if (streamFps <= 60 || !MacIntegration::lowPowerModeEnabled()) {
-        return;
-    }
-
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                "[fork] Low Power Mode is on: macOS shows about 60 fps of this %d fps stream", streamFps);
-    m_Message = QCoreApplication::translate("PowerNotice", "Low Power Mode holds this Mac to 60 fps. Turn it off for %1 fps.")
-                    .arg(streamFps);
-    m_Timer = SDL_AddTimer(k_RetryMs,
-                           [](Uint32 interval, void*) -> Uint32 {
-                               SDL_Event event = {};
-                               event.type = eventType();
-                               event.user.code = k_EventCode;
-                               SDL_PushEvent(&event);
-                               return interval;
-                           },
-                           nullptr);
 }
 
 PowerNotice::~PowerNotice()
@@ -53,19 +33,33 @@ void PowerNotice::setMessageSink(std::function<bool(const QString&)> sink)
     m_MessageSink = std::move(sink);
 }
 
+void PowerNotice::offer(std::function<QString()> text)
+{
+    m_Text = std::move(text);
+    m_Attempts = 0;
+    if (m_Timer != 0 || !m_Text) {
+        return;
+    }
+    m_Timer = SDL_AddTimer(k_RetryMs,
+                           [](Uint32 interval, void*) -> Uint32 {
+                               SDL_Event event = {};
+                               event.type = eventType();
+                               event.user.code = k_EventCode;
+                               SDL_PushEvent(&event);
+                               return interval;
+                           },
+                           nullptr);
+}
+
 void PowerNotice::handleEvent(const SDL_Event& event)
 {
-    if (event.type != eventType() || event.user.code != k_EventCode || m_Message.isEmpty()) {
+    if (event.type != eventType() || event.user.code != k_EventCode || !m_Text) {
         return;
     }
-    if (m_MessageSink && m_MessageSink(m_Message)) {
-        m_Message.clear();
-        stop();
-        return;
-    }
-    if (++m_Attempts >= k_MaxAttempts) {
-        // The bar never came up (a windowed stream without one, say): the log has it
-        m_Message.clear();
+    QString text = m_Text();
+    if (text.isEmpty() || (m_MessageSink && m_MessageSink(text)) || ++m_Attempts >= k_MaxAttempts) {
+        // Nothing to say by now, said, or the bar never came up (a windowed stream without one, say)
+        m_Text = nullptr;
         stop();
     }
 }

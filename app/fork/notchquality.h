@@ -7,6 +7,7 @@
 #include <string>
 
 #include "bitraterules.h"
+#include "powerrules.h"
 
 // [fork] The notch bar's Quality item and menu without AppKit (mac/notchmenus_mac.mm draws them), so
 // tests can build it alone (tests/fork/notchquality_test.cpp): which reason line and caption show,
@@ -39,7 +40,30 @@ namespace NotchQuality
         uint32_t changeBaseRttMs = 0;
         double changeDropPercent = 0;
         bool changePoor = false;
+
+        bool saver = false;     // Stream Battery Saver is on (powerrules.h)
     };
+
+    // Stream Battery Saver holds the stream at its cap or below: on, and the PC changes the bitrate live
+    inline bool saverCaps(const State& state)
+    {
+        return state.saver && state.live;
+    }
+
+    // The yellow note under Quality's title
+    enum class SaverNote {
+        None,
+        Caps,               // "Stream Battery Saver caps the bitrate at 10 Mb/s."
+        NeedsReconnect,     // "On this PC, Stream Battery Saver needs a reconnect to cap the bitrate."
+    };
+
+    inline SaverNote saverNote(const State& state)
+    {
+        if (!state.saver) {
+            return SaverNote::None;
+        }
+        return state.live ? SaverNote::Caps : SaverNote::NeedsReconnect;
+    }
 
     // The bitrate the stream runs at, as far as known
     inline int shownKbps(const State& state)
@@ -109,6 +133,10 @@ namespace NotchQuality
         if (!lowered(state)) {
             return Line::None;
         }
+        if (saverCaps(state) && shownKbps(state) >= std::min(state.ownKbps, PowerRules::k_SaverKbps)) {
+            // At Stream Battery Saver's cap, which its note says
+            return Line::None;
+        }
         switch (state.changeReason) {
         case BitrateRules::Reason::Loss:
             // Called poor with few frames lost: the losses weren't why
@@ -159,7 +187,8 @@ namespace NotchQuality
     }
 
     // The slider: from 3 Mb/s (or the user's bitrate, if lower) to the most the PC takes, which is
-    // the bitrate the stream launched with, in steps of half a megabit, its top a stop of its own
+    // the bitrate the stream launched with (Stream Battery Saver's cap while it's on), in steps of
+    // half a megabit, its top a stop of its own
     struct Range {
         int minKbps = 3000;
         int maxKbps = 3000;
@@ -171,7 +200,12 @@ namespace NotchQuality
         Range result;
         int own = state.ownKbps > 0 ? state.ownKbps : 3000;
         result.minKbps = std::max(std::min(3000, own), state.minKbps);
-        result.maxKbps = std::max(state.maxKbps > 0 ? state.maxKbps : own, result.minKbps);
+        int top = state.maxKbps > 0 ? state.maxKbps : own;
+        if (saverCaps(state)) {
+            // Up to the saver's cap while it's on
+            top = std::min(top, PowerRules::k_SaverKbps);
+        }
+        result.maxKbps = std::max(top, result.minKbps);
         return result;
     }
 

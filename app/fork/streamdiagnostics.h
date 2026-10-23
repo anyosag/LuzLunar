@@ -14,6 +14,7 @@ namespace ForkStreamDiagnostics
         int height = 0;
         int ownBitrateKbps = 0;     // the bitrate the user chose
         QString bitrate;            // like "adaptive, target 18 of 20 Mb/s, lowered 61 s ago (…)"
+        QString power;              // like "76% on battery, 8.0 W, Low Power Mode off, Stream Battery Saver off"; empty without the bar
         QString clipboard;          // like "automatic" or "off in Settings"
         QString drive;              // like "M: (the whole disk)"; empty for none
     };

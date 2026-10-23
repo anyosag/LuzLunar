@@ -9,6 +9,7 @@
 
 #include "fork/notchmenus.h"
 #include "notchbar.h"
+#include "notchbattery_mac.h"
 #include "notchstatus_mac.h"
 
 // An item on the bar: an SF Symbol and a title, lit while the pointer is over it or its menu is open.
@@ -19,6 +20,8 @@
 - (void)setSymbol:(NSString*)symbol;
 // In a color of its own; nil for the title's
 - (void)setSymbol:(NSString*)symbol tint:(NSColor*)tint;
+// An image after the title, as the battery's; nil for none
+- (void)setTrailingImage:(NSImage*)image;
 // Called on mouse down, as macOS's menu bar opens its menus
 @property (nonatomic, copy) void (^onPress)(void);
 // False for an item that only shows something (the stats)
@@ -68,6 +71,8 @@
 // The bitrate changed: Quality and Control Center's bitrate show it in place, if one is open, so a
 // click in Control Center isn't lost to a rebuild
 - (void)bitrateChanged;
+// The battery, Low Power Mode or the saver changed: Battery shows it in place, if it's open
+- (void)powerChanged;
 - (void)invalidate;
 @end
 

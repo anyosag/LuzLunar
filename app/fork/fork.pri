@@ -50,6 +50,7 @@ SOURCES += \
     $$PWD/forkupdater.cpp \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
+    $$PWD/forkpower.cpp \
     $$PWD/adaptivebitrate.cpp \
     $$PWD/bitrateclient.cpp \
     $$PWD/bitraterules.cpp \
@@ -104,6 +105,8 @@ HEADERS += \
     $$PWD/macdriverules.h \
     $$PWD/notchmenus.h \
     $$PWD/notchquality.h \
+    $$PWD/forkpower.h \
+    $$PWD/powerrules.h \
     $$PWD/notchstatus.h \
     $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \
@@ -118,6 +121,7 @@ HEADERS += \
     $$PWD/mac/macintegration.h \
     $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
+    $$PWD/mac/notchbattery_mac.h \
     $$PWD/mac/notchmenus_mac.h \
     $$PWD/mac/notchstatus_mac.h \
     $$PWD/mac/pasteboard.h \
@@ -135,9 +139,11 @@ macx {
         $$PWD/mac/macintegration.mm \
         $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
+        $$PWD/mac/notchbattery_mac.mm \
         $$PWD/mac/notchmenus_mac.mm \
         $$PWD/mac/notchstatus_mac.mm \
         $$PWD/mac/pasteboard_mac.mm \
+        $$PWD/mac/power_mac.mm \
         $$PWD/mac/selfupdate_mac.mm \
         $$PWD/mac/sfsymbolprovider.mm \
         $$PWD/mac/trackpadcapture_mac.mm \
@@ -157,6 +163,9 @@ macx {
 
     # The Mac drive: the account and File Sharing's shares from the local directory (mac/macdrivesetup_mac.mm)
     LIBS += -framework OpenDirectory
+
+    # The notch bar's battery: the power sources and the battery's registry entry (mac/power_mac.mm)
+    LIBS += -framework IOKit
     DEFINES += CLIPBUNDLE_WITH_ZLIB
 }
 

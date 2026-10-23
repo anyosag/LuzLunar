@@ -29,6 +29,7 @@ namespace
     const CGFloat k_DotSize = 8;
     const CGFloat k_ItemGap = 2;      // between the items right of the notch
     const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
+    const int64_t k_NoticeDurationNs = 6 * NSEC_PER_SEC;   // a power notice is longer to read
 
     // The message pill in the bottom-left corner of a windowed stream
     const CGFloat k_CornerMargin = 16;      // from the window's left and bottom edges
@@ -54,6 +55,13 @@ namespace
 }
 @end
 
+// What a message is, which picks its icon
+typedef NS_ENUM(NSInteger, ForkMessageKind) {
+    ForkMessageKindClipboard,   // a clipboard message: a clipboard
+    ForkMessageKindWarning,     // the connection warning: a yellow warning sign
+    ForkMessageKindPower,       // Low Power Mode: a yellow dot, as on the canvas
+};
+
 // Messages in the bottom-left corner of a windowed stream, in a pill like the notch bar's. It's in a
 // child window of the stream window, so it moves, resizes and changes Spaces with it.
 @interface ForkCornerMessage : NSObject
@@ -64,12 +72,12 @@ namespace
     NSImageView* m_Icon;
     NSTextField* m_Label;
     NSString* m_Text;           // the message shown or appearing; nil while hidden or hiding
-    BOOL m_Warning;
+    ForkMessageKind m_Kind;
     unsigned m_Generation;      // completion handlers of older animations do nothing
 }
 - (instancetype)initWithStreamWindow:(NSWindow*)window;
 // Shows the message, or another one in its place, or hides it for nil
-- (void)showMessage:(NSString*)text warning:(BOOL)warning;
+- (void)showMessage:(NSString*)text kind:(ForkMessageKind)kind;
 - (void)hideNow;
 // Follows the stream window's size
 - (void)layout;
@@ -92,6 +100,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     ForkBarItem* m_SessionItem;     // the app and the PC, left of the notch: the Session menu
     ForkBarItem* m_StatsItem;       // the stream's stats, right of the notch: Stream status
     ForkBarItem* m_QualityItem;     // the bitrate, after the stats: Quality
+    ForkBarItem* m_BatteryItem;     // the Mac's battery, after the bitrate: Battery
     ForkBarItem* m_ControlItem;     // Stream Control Center, at the right edge
     NSString* m_AppName;
     NSString* m_HostName;
@@ -101,6 +110,8 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     unsigned m_StatusTickGeneration; // the tick that keeps an open Stream status or Quality current
     int m_QualityKbps;              // what the Quality item shows
     BOOL m_QualityLowered;
+    BOOL m_HasBattery;              // the Battery item is on the bar
+    NSString* m_BatteryShown;       // what the Battery item shows, to tell when it changes
 
     // The menus under the items, and what they do (MacNotchBar::setActions())
     ForkNotchMenus* m_Menus;
@@ -114,10 +125,11 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     NSTextField* m_MessageLabel;
     NSView* m_Dot;
     NSString* m_Warning;            // the connection warning, until the connection recovers
-    NSString* m_Toast;              // a clipboard message, shown for a few seconds
+    NSString* m_Toast;              // a clipboard message or a power notice, shown for a few seconds
+    ForkMessageKind m_ToastKind;
     unsigned m_ToastGeneration;
     unsigned m_ToastTimerGeneration;
-    BOOL m_ShowsWarning;            // the pill holds the warning rather than a clipboard message
+    ForkMessageKind m_ShownKind;    // what the pill holds
     ForkMessageState m_MessageState;
     unsigned m_AnimationGeneration; // completion handlers of older animations do nothing
     ForkCornerMessage* m_Corner;    // shows the messages instead while the stream is windowed
@@ -143,10 +155,13 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (BOOL)barOnScreen;
 - (void)refreshMenus;
 - (void)bitrateChanged;
+- (void)powerChanged;
 - (void)updateQualityItem;
+- (void)updateBatteryItem;
 - (void)statsArrived;
 - (void)setWarning:(NSString*)text;
 - (void)showToast:(NSString*)text;
+- (void)showToast:(NSString*)text kind:(ForkMessageKind)kind;
 - (BOOL)showsMessages;
 - (void)invalidate;
 @end
@@ -279,6 +294,46 @@ static NSAttributedString* sessionTitle(NSString* appName, NSString* hostName)
     return title;
 }
 
+// The battery as macOS's menu bar draws it, from the canvas: 27 by 13, filled by the level, yellow in
+// Low Power Mode, red at 10% or less on battery, with a bolt on a power adapter
+static NSImage* batteryImage(const PowerRules::Glyph& glyph)
+{
+    NSColor* fill = glyph.fill == PowerRules::Fill::Yellow ? [NSColor colorWithSRGBRed:1 green:0xd6 / 255.0 blue:0x0a / 255.0 alpha:1] :
+                    glyph.fill == PowerRules::Fill::Red    ? [NSColor colorWithSRGBRed:1 green:0x45 / 255.0 blue:0x3a / 255.0 alpha:1] :
+                                                             NSColor.whiteColor;
+    CGFloat fillWidth = glyph.fillWidth;
+    BOOL bolt = glyph.bolt;
+    return [NSImage imageWithSize:NSMakeSize(27, 13) flipped:YES drawingHandler:^BOOL(NSRect rect) {
+        (void)rect;
+        NSColor* outline = [NSColor colorWithWhite:1 alpha:0.45];
+        NSBezierPath* body = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0.75, 0.75, 22, 11.5) xRadius:3.6 yRadius:3.6];
+        body.lineWidth = 1;
+        [outline setStroke];
+        [body stroke];
+        [fill setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(2.4, 2.4, fillWidth, 8.2) xRadius:2 yRadius:2] fill];
+        [outline setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(23.9, 4.3, 1.7, 4.4) xRadius:0.85 yRadius:0.85] fill];
+        if (bolt) {
+            NSBezierPath* path = [NSBezierPath bezierPath];
+            [path moveToPoint:NSMakePoint(12.6, 1.6)];
+            [path lineToPoint:NSMakePoint(8.4, 7.2)];
+            [path lineToPoint:NSMakePoint(11.4, 7.2)];
+            [path lineToPoint:NSMakePoint(10.3, 11.6)];
+            [path lineToPoint:NSMakePoint(14.6, 5.9)];
+            [path lineToPoint:NSMakePoint(11.5, 5.9)];
+            [path closePath];
+            [NSColor.whiteColor setFill];
+            [path fill];
+            path.lineWidth = 0.8;
+            path.lineJoinStyle = NSLineJoinStyleRound;
+            [NSColor.blackColor setStroke];
+            [path stroke];
+        }
+        return YES;
+    }];
+}
+
 // The stats' text, with its "·" separators dimmed as on the canvas
 static NSAttributedString* statsTitle(NSString* text)
 {
@@ -299,13 +354,25 @@ static NSAttributedString* statsTitle(NSString* text)
     return title;
 }
 
+// The canvas's 7 pt yellow dot, for Low Power Mode
+static NSImage* yellowDot()
+{
+    static NSImage* dot = [[NSImage imageWithSize:NSMakeSize(7, 7) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+        [[NSColor colorWithSRGBRed:1 green:0xd6 / 255.0 blue:0x0a / 255.0 alpha:1] setFill];
+        [[NSBezierPath bezierPathWithOvalInRect:rect] fill];
+        return YES;
+    }] retain];
+    return dot;
+}
+
 // Puts a message in a pill's icon and label: a yellow warning sign for the connection warning, a
-// clipboard for clipboard messages
-static void setMessageContent(NSImageView* icon, NSTextField* label, NSString* text, BOOL warning)
+// clipboard for clipboard messages, a yellow dot for Low Power Mode
+static void setMessageContent(NSImageView* icon, NSTextField* label, NSString* text, ForkMessageKind kind)
 {
     label.stringValue = text != nil ? text : @"";
-    icon.image = symbolImage(warning ? @"wifi.exclamationmark" : @"doc.on.clipboard");
-    icon.contentTintColor = warning ? NSColor.systemYellowColor : NSColor.labelColor;
+    icon.image = kind == ForkMessageKindPower   ? yellowDot() :
+                 kind == ForkMessageKindWarning ? symbolImage(@"wifi.exclamationmark") : symbolImage(@"doc.on.clipboard");
+    icon.contentTintColor = kind == ForkMessageKindWarning ? NSColor.systemYellowColor : NSColor.labelColor;
     [icon setFrameSize:icon.image != nil ? icon.image.size : NSZeroSize];
 }
 
@@ -369,6 +436,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_QualityItem = [[ForkBarItem alloc] initWithSymbol:nil];
     [m_QualityItem setTitle:statsTitle(@"—")];
     [m_QualityItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Bitrate").toNSString()];
+    // Its level and glyph too (updateBatteryItem); off the bar until a battery turns up
+    m_BatteryItem = [[ForkBarItem alloc] initWithSymbol:nil];
+    [m_BatteryItem setTitle:statsTitle(@"")];
+    [m_BatteryItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Battery").toNSString()];
     // Control Center's own icon, or sliders on a macOS without it
     m_ControlItem = [[ForkBarItem alloc] initWithSymbol:symbolImage(@"switch.2") != nil ? @"switch.2" : @"slider.horizontal.3"];
     [m_ControlItem setTitle:[[[NSAttributedString alloc] initWithString:@""] autorelease]];
@@ -384,6 +455,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     };
     m_QualityItem.onPress = ^{
         [controller pressedItemForMenu:NotchMenus::Menu::Quality];
+    };
+    m_BatteryItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Battery];
     };
     m_ControlItem.onPress = ^{
         [controller pressedItemForMenu:NotchMenus::Menu::ControlCenter];
@@ -410,6 +484,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Panel.contentView addSubview:m_SessionItem];
     [m_Panel.contentView addSubview:m_StatsItem];
     [m_Panel.contentView addSubview:m_QualityItem];
+    [m_Panel.contentView addSubview:m_BatteryItem];
     [m_Panel.contentView addSubview:m_ControlItem];
     // The dot sits under the pill that grows out of it
     [m_Panel.contentView addSubview:m_Dot];
@@ -453,6 +528,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_SessionItem release];
     [m_StatsItem release];
     [m_QualityItem release];
+    [m_BatteryItem release];
+    [m_BatteryShown release];
     [m_ControlItem release];
     [m_AppName release];
     [m_HostName release];
@@ -478,6 +555,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_SessionItem.onPress = nil;
     m_StatsItem.onPress = nil;
     m_QualityItem.onPress = nil;
+    m_BatteryItem.onPress = nil;
     m_ControlItem.onPress = nil;
     m_StatusTickGeneration++;
     // Animations and timers still queued find the controller invalidated and do nothing
@@ -541,7 +619,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNotchPanel* panel = makeNotchPanel();
     [panel setFrame:m_Panel.frame display:NO];
     // In their order in the old panel, so the dot stays under the message pill
-    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_ControlItem, m_Dot, m_MessagePill ]) {
+    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_Dot, m_MessagePill ]) {
         [panel.contentView addSubview:view];
     }
 
@@ -640,20 +718,57 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [self refresh];
 }
 
-// While Stream status or Quality is open, once a second, so it moves on even when no frames come (a
-// still desktop): the graph, and how long ago the bitrate changed
+// "76%" and the glyph, as macOS's menu bar shows the battery
+- (void)updateBatteryItem
+{
+    if (m_StreamWindow == nil || !m_State) {
+        return;
+    }
+    NotchBar::MenuState state = m_State();
+    BOOL hasBattery = state.powerKnown && state.power.present;
+    const PowerRules::Reading& power = state.power;
+    PowerRules::Glyph glyph = PowerRules::glyph(power, state.lowPowerMode);
+    NSString* shown = [NSString stringWithFormat:@"%d %d %d %d %d %.1f", hasBattery, power.level, (int)glyph.fill, glyph.bolt,
+                                                 power.charging, glyph.fillWidth];
+    if (hasBattery == m_HasBattery && [shown isEqualToString:m_BatteryShown]) {
+        return;
+    }
+    m_HasBattery = hasBattery;
+    [m_BatteryShown release];
+    m_BatteryShown = [shown copy];
+
+    if (hasBattery) {
+        [m_BatteryItem setTitle:statsTitle([NSString stringWithFormat:@"%d%%", power.level])];
+        [m_BatteryItem setTrailingImage:batteryImage(glyph)];
+        QString label = QCoreApplication::translate("NotchBar", "Battery %1%").arg(power.level);
+        if (power.charging) {
+            label += QCoreApplication::translate("NotchBar", ", charging");
+        }
+        if (state.lowPowerMode) {
+            label += QCoreApplication::translate("NotchBar", ", Low Power Mode on");
+        }
+        [m_BatteryItem setAccessibilityLabel:label.toNSString()];
+    }
+    [self refresh];
+}
+
+// While Stream status, Quality or Battery is open, once a second, so it moves on even when no frames
+// come (a still desktop): the graph, how long ago the bitrate changed, how long the stream has run
 - (void)tickStatus:(unsigned)generation
 {
     NotchMenus::Menu open = [m_Menus openMenu];
     if (generation != m_StatusTickGeneration || m_StreamWindow == nil ||
-            (open != NotchMenus::Menu::Status && open != NotchMenus::Menu::Quality)) {
+            (open != NotchMenus::Menu::Status && open != NotchMenus::Menu::Quality && open != NotchMenus::Menu::Battery)) {
         return;
     }
     if (open == NotchMenus::Menu::Status) {
         [m_Menus statusChanged];
     }
-    else {
+    else if (open == NotchMenus::Menu::Quality) {
         [m_Menus qualityChanged];
+    }
+    else {
+        [m_Menus powerChanged];
     }
     [self retain];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -675,12 +790,18 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)showToast:(NSString*)text
 {
+    [self showToast:text kind:ForkMessageKindClipboard];
+}
+
+- (void)showToast:(NSString*)text kind:(ForkMessageKind)kind
+{
     if (m_StreamWindow == nil) {
         return;
     }
 
     [m_Toast release];
     m_Toast = [text copy];
+    m_ToastKind = kind;
     m_ToastGeneration++;
     [self updateMessage];
 }
@@ -697,6 +818,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_Actions = std::move(actions);
     m_State = std::move(state);
     [self updateQualityItem];
+    [self updateBatteryItem];
     if (m_BarOnScreen && m_Actions) {
         // Already up: the pointer mustn't be held to the picture
         m_Actions(NotchMenus::Action::BarShownOrHidden, 0);
@@ -757,8 +879,22 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Menus bitrateChanged];
 }
 
+- (void)powerChanged
+{
+    [self updateBatteryItem];
+    [m_Menus powerChanged];
+}
+
 - (void)menusPerform:(NotchMenus::Action)action
 {
+    if (action == NotchMenus::Action::OpenBatterySettings) {
+        // The bar's own: System Settings comes forward, and the stream loses focus as with Command-Tab
+        NSURL* url = [NSURL URLWithString:@"x-apple.systempreferences:com.apple.Battery-Settings.extension"];
+        if (![NSWorkspace.sharedWorkspace openURL:url]) {
+            [NSWorkspace.sharedWorkspace openURL:[NSURL fileURLWithPath:@"/System/Library/PreferencePanes/Battery.prefPane"]];
+        }
+        return;
+    }
     if (action == NotchMenus::Action::ToggleNotchStats) {
         // The bar's own, and remembered
         m_NotchStatsShown = !m_NotchStatsShown;
@@ -832,6 +968,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkBarItem* item = menu == NotchMenus::Menu::Session ? m_SessionItem :
                         menu == NotchMenus::Menu::Status ? m_StatsItem :
                         menu == NotchMenus::Menu::Quality ? m_QualityItem :
+                        menu == NotchMenus::Menu::Battery ? m_BatteryItem :
                         menu == NotchMenus::Menu::ControlCenter ? m_ControlItem : nil;
     if (item == nil || item.hidden || !m_BarOnScreen) {
         return NSZeroRect;
@@ -845,14 +982,15 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)menusChanged:(NotchMenus::Menu)menu
 {
-    BOOL wasOpen = m_SessionItem.open || m_StatsItem.open || m_QualityItem.open || m_ControlItem.open;
-    BOOL tickedOpen = m_StatsItem.open || m_QualityItem.open;
+    BOOL wasOpen = m_SessionItem.open || m_StatsItem.open || m_QualityItem.open || m_BatteryItem.open || m_ControlItem.open;
+    BOOL tickedOpen = m_StatsItem.open || m_QualityItem.open || m_BatteryItem.open;
     m_SessionItem.open = menu == NotchMenus::Menu::Session;
     m_StatsItem.open = menu == NotchMenus::Menu::Status;
     m_QualityItem.open = menu == NotchMenus::Menu::Quality;
+    m_BatteryItem.open = menu == NotchMenus::Menu::Battery;
     m_ControlItem.open = menu == NotchMenus::Menu::ControlCenter;
-    if ((m_StatsItem.open || m_QualityItem.open) && !tickedOpen) {
-        // From Stream status to Quality, the tick goes on
+    if ((m_StatsItem.open || m_QualityItem.open || m_BatteryItem.open) && !tickedOpen) {
+        // From one of them to another, the tick goes on
         [self tickStatus:++m_StatusTickGeneration];
     }
     BOOL isOpen = menu != NotchMenus::Menu::None;
@@ -866,8 +1004,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_Panel;
 }
 
-// The Session item at the left edge of the area left of the notch; the stats, the bitrate and Control
-// Center from the right edge of the area right of it, the stats giving way when they don't fit
+// The Session item at the left edge of the area left of the notch; the stats, the bitrate, the battery
+// and Control Center from the right edge of the area right of it, the stats giving way when they don't fit
 - (void)layoutItemsLeft:(NSRect)leftArea right:(NSRect)rightArea height:(CGFloat)height y:(CGFloat)y
 {
     CGFloat sessionWidth = MIN([m_SessionItem naturalWidth], MAX(NSWidth(leftArea) - 2 * k_Margin, 0));
@@ -877,9 +1015,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     // The stats shrink, down to their icon alone
     std::vector<NotchMenus::Placed> placed = NotchMenus::layoutRight(NSWidth(rightArea), k_Margin, k_ItemGap,
                                                                      { [m_StatsItem naturalWidth], [m_QualityItem naturalWidth],
+                                                                       m_HasBattery ? [m_BatteryItem naturalWidth] : 0,
                                                                        [m_ControlItem naturalWidth] },
                                                                      0, [m_StatsItem iconOnlyWidth]);
-    NSArray<ForkBarItem*>* items = @[ m_StatsItem, m_QualityItem, m_ControlItem ];
+    NSArray<ForkBarItem*>* items = @[ m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem ];
     for (NSUInteger i = 0; i < items.count; i++) {
         ForkBarItem* item = items[i];
         item.hidden = placed[i].width <= 0;
@@ -993,18 +1132,24 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_Toast != nil ? m_Toast : m_Warning;
 }
 
+- (ForkMessageKind)currentKind
+{
+    return m_Toast != nil ? m_ToastKind : ForkMessageKindWarning;
+}
+
 - (BOOL)pillShowsCurrentMessage
 {
     NSString* message = [self currentMessage];
-    return message != nil && m_ShowsWarning == (m_Toast == nil) && [message isEqualToString:m_MessageLabel.stringValue];
+    return message != nil && m_ShownKind == [self currentKind] && [message isEqualToString:m_MessageLabel.stringValue];
 }
 
-// Puts the current message in the pill: the clipboard message if there is one, else the warning
+// Puts the current message in the pill: the clipboard message or power notice if there is one, else
+// the warning
 - (void)applyMessageContent
 {
-    BOOL warning = m_Toast == nil;
-    setMessageContent(m_MessageIcon, m_MessageLabel, [self currentMessage], warning);
-    m_ShowsWarning = warning;
+    ForkMessageKind kind = [self currentKind];
+    setMessageContent(m_MessageIcon, m_MessageLabel, [self currentMessage], kind);
+    m_ShownKind = kind;
 }
 
 // The pill hugs the notch and grows away from it, up to the whole area left of the notch
@@ -1058,7 +1203,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
     // While the stream is windowed, the corner pill shows the message instead of the bar
     if (m_CornerOnScreen) {
-        [m_Corner showMessage:message warning:m_Toast == nil];
+        [m_Corner showMessage:message kind:[self currentKind]];
         if (m_Toast != nil) {
             // The clipboard message is on screen, so its time starts now
             [self startToastTimer];
@@ -1097,7 +1242,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     unsigned generation = m_ToastTimerGeneration = m_ToastGeneration;
 
     [self retain];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, k_ToastDurationNs), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, m_ToastKind == ForkMessageKindPower ? k_NoticeDurationNs : k_ToastDurationNs),
+                   dispatch_get_main_queue(), ^{
         if (generation == m_ToastGeneration && m_StreamWindow != nil) {
             [m_Toast release];
             m_Toast = nil;
@@ -1408,7 +1554,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return NSMakeRect(0, k_CornerRise, width, k_CornerHeight);
 }
 
-- (void)showMessage:(NSString*)text warning:(BOOL)warning
+- (void)showMessage:(NSString*)text kind:(ForkMessageKind)kind
 {
     if (m_StreamWindow == nil) {
         return;
@@ -1417,14 +1563,14 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         [self hide];
         return;
     }
-    if (m_Text != nil && warning == m_Warning && [text isEqualToString:m_Text]) {
+    if (m_Text != nil && kind == m_Kind && [text isEqualToString:m_Text]) {
         return;
     }
 
     BOOL replacing = m_Text != nil;
     [m_Text release];
     m_Text = [text copy];
-    m_Warning = warning;
+    m_Kind = kind;
     if (replacing) {
         [self change];
     }
@@ -1438,7 +1584,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     ++m_Generation;
 
-    setMessageContent(m_Icon, m_Label, m_Text, m_Warning);
+    setMessageContent(m_Icon, m_Label, m_Text, m_Kind);
     m_Icon.alphaValue = 1;
     m_Label.alphaValue = 1;
     [self layoutPanel];
@@ -1487,7 +1633,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)resizeWithGeneration:(unsigned)generation
 {
-    setMessageContent(m_Icon, m_Label, m_Text, m_Warning);
+    setMessageContent(m_Icon, m_Label, m_Text, m_Kind);
     NSRect target = [self pillFrame];
     layoutMessageContent(m_Icon, m_Label, target.size);
 
@@ -1639,6 +1785,18 @@ namespace
             return true;
         }
 
+        bool showNotice(const QString& text) override
+        {
+            if (![m_Controller showsMessages]) {
+                return false;
+            }
+
+            @autoreleasepool {
+                [m_Controller showToast:text.toNSString() kind:ForkMessageKindPower];
+            }
+            return true;
+        }
+
         void setActions(std::function<void(NotchMenus::Action, int)> actions, std::function<MenuState()> state) override
         {
             [m_Controller setActions:std::move(actions) state:std::move(state)];
@@ -1679,6 +1837,13 @@ namespace
         {
             @autoreleasepool {
                 [m_Controller bitrateChanged];
+            }
+        }
+
+        void powerChanged() override
+        {
+            @autoreleasepool {
+                [m_Controller powerChanged];
             }
         }
 

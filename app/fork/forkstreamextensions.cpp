@@ -10,6 +10,7 @@
 #include "clipboardsync.h"
 #include "forkevents.h"
 #include "forkhostpower.h"
+#include "forkpower.h"
 #include "forknetworklink.h"
 #include "forkpreferences.h"
 #include "forksystemshortcuts.h"
@@ -80,6 +81,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
       m_Height(prefs.height),
       m_OwnBitrateKbps(bitrateKbps),
       m_Hdr(prefs.enableHdr),
+      m_Fps(prefs.fps),
       m_ShortcutGuard(false)
 {
     ForkPreferences* forkPrefs = ForkPreferences::get();
@@ -150,6 +152,14 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 Session* session = Session::get();
                 state.statsOverlayShown = session != nullptr && session->getOverlayManager().isOverlayEnabled(Overlay::OverlayDebug);
                 state.bitrate = bitrateState();
+                if (m_Power) {
+                    state.powerKnown = true;
+                    state.power = m_Power->reading();
+                    state.lowPowerMode = m_Power->lowPowerMode();
+                    state.powerStartLevel = m_Power->startLevel();
+                    state.powerMinutes = m_Power->minutesSinceStart();
+                    state.saverOn = m_Saver && m_Saver->on();
+                }
                 return state;
             });
     }
@@ -166,23 +176,39 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         }
     }
 
-    // A stream above 60 fps while Low Power Mode holds the screen to 60: said beside the notch
-    m_PowerNotice = std::make_unique<PowerNotice>(prefs.fps);
+    // Low Power Mode holds the screen to about 60 fps
+    if (prefs.fps > 60 && MacIntegration::lowPowerModeEnabled()) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] Low Power Mode is on: macOS shows about 60 fps of this %d fps stream", prefs.fps);
+    }
+
+    // The battery for the bar's Battery menu, and Stream Battery Saver, which follows Low Power Mode
+    // and caps the bitrate (PowerRules::Saver)
+    m_PowerNotice = std::make_unique<PowerNotice>();
     if (m_NotchBar) {
+        m_Power = std::make_unique<ForkPower>();
+        m_Saver = std::make_unique<PowerRules::Saver>(m_Power->lowPowerMode());
         NotchBar* notchBar = m_NotchBar.get();
         m_PowerNotice->setMessageSink([notchBar](const QString& text) {
-            return notchBar->showToast(text);
+            return notchBar->showNotice(text);
         });
     }
 
     // The stream's bitrate changed on the PC while it runs: by adaptive bitrate, which lowers it while
-    // the network struggles and gives the stream's own back when it recovers, and by the notch bar's
-    // Quality menu
+    // the network struggles and gives the stream's own back when it recovers, by the notch bar's
+    // Quality menu, and by Stream Battery Saver
     if (forkPrefs->adaptiveBitrate() || m_NotchBar) {
         m_BitrateClient = std::make_shared<BitrateClient>(computer, bitrateKbps);
     }
     if (forkPrefs->adaptiveBitrate()) {
-        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateKbps, prefs.enableHdr, bitrateKbps);
+        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateCeiling(), prefs.enableHdr, bitrateKbps);
+    }
+    else if (bitrateCeiling() < bitrateKbps) {
+        // The saver's cap from the start
+        applySaver();
+    }
+    if (m_Saver && m_Saver->lowPowerMode()) {
+        m_PowerNotice->offer([this] { return powerNoticeText(); });
     }
 
     // Which connection the stream uses, for the notch bar; also remembers a network it goes over
@@ -282,6 +308,50 @@ bool ForkStreamExtensions::captureAfterMenus(SdlInputHandler* input) const
     return m_CaptureAfterMenus;
 }
 
+int ForkStreamExtensions::bitrateCeiling() const
+{
+    return m_Saver && m_Saver->on() ? std::min(m_OwnBitrateKbps, PowerRules::k_SaverKbps) : m_OwnBitrateKbps;
+}
+
+void ForkStreamExtensions::applySaver()
+{
+    if (!m_BitrateClient || !m_BitrateClient->state().live) {
+        // Nothing to cap live: Quality says a reconnect would
+        return;
+    }
+    int ceiling = bitrateCeiling();
+    if (m_AdaptiveBitrate) {
+        // From where the stream is going: above the ceiling, it's asked down to it at once
+        int start = m_BitrateClient->latestKbps();
+        m_AdaptiveBitrate.reset();
+        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, ceiling, m_Hdr, start);
+    }
+    else {
+        int wanted = m_ManualKbps > 0 ? m_ManualKbps : m_OwnBitrateKbps;
+        m_BitrateClient->request(std::min(wanted, ceiling));
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Stream Battery Saver %s: the bitrate goes up to %d kbps",
+                m_Saver && m_Saver->on() ? "on" : "off", ceiling);
+}
+
+QString ForkStreamExtensions::powerNoticeText() const
+{
+    if (!m_Saver) {
+        return QString();
+    }
+    bool capped = m_Saver->on() && m_BitrateClient && m_BitrateClient->state().live && bitrateCeiling() < m_OwnBitrateKbps;
+    switch (PowerRules::pill(m_Saver->lowPowerMode(), capped, m_Fps)) {
+    case PowerRules::Pill::Capped:
+        return QCoreApplication::translate("NotchBar", "Low Power Mode: bitrate capped at %1 Mb/s.")
+            .arg(QString::fromStdString(NotchQuality::mbps(PowerRules::k_SaverKbps)));
+    case PowerRules::Pill::HoldsTo60:
+        return QCoreApplication::translate("NotchBar", "Low Power Mode holds the screen to 60 fps.");
+    case PowerRules::Pill::Hidden:
+        break;
+    }
+    return QString();
+}
+
 NotchQuality::State ForkStreamExtensions::bitrateState() const
 {
     NotchQuality::State state;
@@ -302,6 +372,7 @@ NotchQuality::State ForkStreamExtensions::bitrateState() const
     state.minKbps = client.minKbps;
     state.maxKbps = client.maxKbps;
     state.adapting = m_AdaptiveBitrate != nullptr && client.live;
+    state.saver = m_Saver && m_Saver->on();
     if (state.adapting) {
         AdaptiveBitrate::State adaptive = m_AdaptiveBitrate->state();
         state.changeReason = adaptive.lastChange.reason;
@@ -411,23 +482,35 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
     case NotchMenus::Action::ToggleAdaptiveBitrate:
         if (m_AdaptiveBitrate) {
             // The bitrate stays where it got to
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate off, holding %d kbps",
-                        m_BitrateClient->latestKbps());
+            m_ManualKbps = m_BitrateClient->latestKbps();
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate off, holding %d kbps", m_ManualKbps);
             m_AdaptiveBitrate.reset();
         }
         else if (m_BitrateClient && m_BitrateClient->state().live) {
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate on");
             // From where the stream is going, a slider's request still on its way included
-            m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, m_OwnBitrateKbps, m_Hdr, m_BitrateClient->latestKbps());
+            m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateCeiling(), m_Hdr, m_BitrateClient->latestKbps());
         }
         break;
     case NotchMenus::Action::SetBitrate:
         // By hand only while adaptive bitrate is off; the slider is greyed otherwise
         if (m_BitrateClient && !m_AdaptiveBitrate && value > 0) {
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: bitrate set to %d kbps", value);
-            m_BitrateClient->request(value);
+            m_ManualKbps = value;
+            m_BitrateClient->request(std::min(value, bitrateCeiling()));
         }
         break;
+    case NotchMenus::Action::ToggleBatterySaver:
+        if (m_Saver) {
+            m_Saver->toggle();
+            applySaver();
+            if (m_NotchBar) {
+                m_NotchBar->powerChanged();
+            }
+        }
+        break;
+    case NotchMenus::Action::OpenBatterySettings:
+        // The bar's own
     case NotchMenus::Action::ToggleNotchStats:
         // The bar's own
     case NotchMenus::Action::None:
@@ -470,6 +553,23 @@ void ForkStreamExtensions::copyDiagnostics()
         else {
             context.bitrate = QStringLiteral("fixed, %1%2").arg(target, bitrate.known ? QString() : QStringLiteral(", not known yet whether the PC can change it"));
         }
+    }
+    if (m_Power) {
+        PowerRules::Reading power = m_Power->reading();
+        if (!power.present) {
+            context.power = QStringLiteral("no battery");
+        }
+        else {
+            context.power = QStringLiteral("%1% %2%3, since the stream started %4")
+                                .arg(power.level)
+                                .arg(power.onAC ? (power.charging ? QStringLiteral("charging") : QStringLiteral("on a power adapter")) : QStringLiteral("on battery"))
+                                .arg(PowerRules::known(power.watts) ? QStringLiteral(", %1").arg(QString::fromStdString(PowerRules::wattsText(power.watts))) : QString())
+                                .arg(m_Power->startLevel() >= 0 ? QString::fromStdString(PowerRules::sinceStart(m_Power->startLevel(), power.level, m_Power->minutesSinceStart()))
+                                                                : QStringLiteral("unknown"));
+        }
+        context.power += QStringLiteral(", Low Power Mode %1, Stream Battery Saver %2")
+                             .arg(m_Power->lowPowerMode() ? QStringLiteral("on") : QStringLiteral("off"),
+                                  m_Saver && m_Saver->on() ? QStringLiteral("on") : QStringLiteral("off"));
     }
     if (!m_Clipboard) {
         context.clipboard = QStringLiteral("off in Settings");
@@ -514,6 +614,24 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (BitrateClient::isStateEvent(event)) {
         // What the PC can do with the bitrate, or what it runs at, changed
         if (m_NotchBar) {
+            m_NotchBar->bitrateChanged();
+        }
+        return;
+    }
+    if (ForkPower::isChangeEvent(event)) {
+        // The battery or Low Power Mode changed. The saver follows Low Power Mode, and turning it on
+        // is said beside the notch.
+        if (m_Power && m_Saver) {
+            bool wasLowPower = m_Saver->lowPowerMode();
+            if (m_Saver->setLowPowerMode(m_Power->lowPowerMode())) {
+                applySaver();
+            }
+            if (!wasLowPower && m_Saver->lowPowerMode()) {
+                m_PowerNotice->offer([this] { return powerNoticeText(); });
+            }
+        }
+        if (m_NotchBar) {
+            m_NotchBar->powerChanged();
             m_NotchBar->bitrateChanged();
         }
         return;

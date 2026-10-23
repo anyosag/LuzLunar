@@ -8,6 +8,7 @@
 
 #include "fork/notchmenus.h"
 #include "fork/notchquality.h"
+#include "fork/powerrules.h"
 
 struct SDL_Window;
 
@@ -23,8 +24,9 @@ struct SDL_Window;
 // The bar's items open menus under it, like macOS's menu bar: the app's name opens the Session menu
 // (disconnect, quit the app on the PC, sleep the PC), the stats open Stream status (latency, its
 // last two minutes, the connection), the bitrate opens Quality (adaptive bitrate, a slider for the
-// bitrate), and the Control Center icon opens Stream Control Center (clipboard sync, the pointer, Mac
-// shortcuts). Their panels never take focus from the stream (notchmenus_mac.mm).
+// bitrate), the battery opens Battery (what the stream draws, Stream Battery Saver), and the Control
+// Center icon opens Stream Control Center (clipboard sync, the pointer, Mac shortcuts). Their panels
+// never take focus from the stream (notchmenus_mac.mm).
 class NotchBar
 {
 public:
@@ -38,6 +40,9 @@ public:
     // Shows a message beside the notch, or in the corner of a windowed stream, for a few seconds.
     // Returns false, showing nothing, while neither is on screen. Call on the main thread.
     virtual bool showToast(const QString& text) = 0;
+
+    // The same for a Low Power Mode message: a yellow dot before it, as on the canvas, and 6 seconds
+    virtual bool showNotice(const QString& text) = 0;
 
     // What the menus show, asked whenever one opens or refreshes
     struct MenuState {
@@ -60,6 +65,14 @@ public:
 
         // The bitrate: what the PC can change, adaptive bitrate, the Quality slider's range
         NotchQuality::State bitrate;
+
+        // The Mac's battery (ForkPower) and Stream Battery Saver
+        bool powerKnown = false;        // the stream reads the battery
+        PowerRules::Reading power;
+        bool lowPowerMode = false;
+        int powerStartLevel = -1;       // the battery's level when the stream started
+        double powerMinutes = 0;        // since then
+        bool saverOn = false;
     };
 
     // actions: what the user chose in a menu, with a value for those that take one (SetBitrate's
@@ -86,6 +99,10 @@ public:
     // The bitrate, or what the PC can do with it, changed: the Quality item, and Quality or Control
     // Center if open, show it in place
     virtual void bitrateChanged() = 0;
+
+    // The battery, Low Power Mode or Stream Battery Saver changed: the Battery item, and Battery if
+    // open, show it
+    virtual void powerChanged() = 0;
 
 protected:
     NotchBar() = default;

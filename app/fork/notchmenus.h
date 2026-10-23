@@ -27,6 +27,8 @@ namespace NotchMenus
         ToggleNotchStats,           // the bar's stats text, or just its icon (the bar does this itself)
         ToggleAdaptiveBitrate,      // adaptive bitrate on or off for the rest of the stream
         SetBitrate,                 // the Quality slider's bitrate, in kbps (the action's value)
+        ToggleBatterySaver,         // Stream Battery Saver on or off until Low Power Mode changes
+        OpenBatterySettings,        // System Settings' Battery pane (the bar does this itself)
     };
 
     // The bar's menus, left to right as their items sit on the bar
@@ -35,13 +37,14 @@ namespace NotchMenus
         Session,
         Status,         // the stats right of the notch
         Quality,        // the bitrate
+        Battery,        // the Mac's battery
         ControlCenter,
     };
 
     // The menus in the bar's order, for Left and Right between them
     inline const std::vector<Menu>& order()
     {
-        static const std::vector<Menu> menus = { Menu::Session, Menu::Status, Menu::Quality, Menu::ControlCenter };
+        static const std::vector<Menu> menus = { Menu::Session, Menu::Status, Menu::Quality, Menu::Battery, Menu::ControlCenter };
         return menus;
     }
 

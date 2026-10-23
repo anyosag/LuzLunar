@@ -50,6 +50,9 @@ QString text(const Context& context)
     }
     lines << video;
     lines << QStringLiteral("Bitrate: %1").arg(context.bitrate);
+    if (!context.power.isEmpty()) {
+        lines << QStringLiteral("Power: %1").arg(context.power);
+    }
 
     ForkNetworkLink::Current link = ForkNetworkLink::current();
     if (link.known) {
