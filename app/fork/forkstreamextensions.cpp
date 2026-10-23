@@ -1,5 +1,6 @@
 #include "forkstreamextensions.h"
 
+#include <QCoreApplication>
 #include <QReadLocker>
 
 #include "adaptivebitrate.h"
@@ -17,8 +18,11 @@
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
 #include "macdrive.h"
+#include "mac/pasteboard.h"
 #include "powernotice.h"
 #include "settings/streamingpreferences.h"
+#include "streamdiagnostics.h"
+#include "streamstats.h"
 #include "streaming/input/input.h"
 #include "streaming/session.h"
 
@@ -49,13 +53,38 @@ namespace
         Session* session = Session::get();
         return session != nullptr ? session->forkInputHandler() : nullptr;
     }
+
+    // For Stream Control Center's Clipboard Sync switch
+    NotchBar::MenuState::Clipboard clipboardState(ClipboardSync::Availability availability)
+    {
+        using Clipboard = NotchBar::MenuState::Clipboard;
+        switch (availability) {
+        case ClipboardSync::Availability::Available:
+            return Clipboard::Available;
+        case ClipboardSync::Availability::NeedsApollo:
+            return Clipboard::NeedsApollo;
+        case ClipboardSync::Availability::NotAllowed:
+            return Clipboard::NotAllowed;
+        case ClipboardSync::Availability::Unknown:
+            break;
+        }
+        return Clipboard::Unknown;
+    }
 }
 
 ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
                                            const StreamingPreferences& prefs, int bitrateKbps)
-    : m_ShortcutGuard(false)
+    : m_AppName(app.name),
+      m_Width(prefs.width),
+      m_Height(prefs.height),
+      m_OwnBitrateKbps(bitrateKbps),
+      m_ShortcutGuard(false)
 {
     ForkPreferences* forkPrefs = ForkPreferences::get();
+
+    // A new stream's numbers, before anything (the notch bar's listener) starts publishing them
+    ForkStreamStats::resetHistory();
+    ForkHostPacing::reset();
 
     // When Command sends something other than the Windows key, Command shortcuts are meant
     // for the host, so keep the app menu from quitting or hiding Moonlight on Cmd+Q / Cmd+H.
@@ -71,15 +100,11 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     {
         QReadLocker lock(&computer->lock);
         m_HostUuid = computer->uuid;
+        m_HostName = computer->name;
     }
 
     if (forkPrefs->notchBar()) {
-        QString hostName;
-        {
-            QReadLocker lock(&computer->lock);
-            hostName = computer->name;
-        }
-        m_NotchBar = NotchBar::create(window, app.name, hostName);
+        m_NotchBar = NotchBar::create(window, app.name, m_HostName, prefs.width, prefs.height);
     }
 
     if (m_NotchBar) {
@@ -107,6 +132,18 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                     state.canSleepPc = power.value(QStringLiteral("supported")).toBool() &&
                                        power.value(QStringLiteral("permitted")).toBool();
                 }
+                if (m_Clipboard) {
+                    state.clipboard = clipboardState(m_Clipboard->availability());
+                    state.clipboardAutomatic = m_Clipboard->automatic();
+                }
+                if (m_MacDrive) {
+                    MacDrive::Mapping mapping = m_MacDrive->mapping();
+                    state.driveMapped = mapping.mapped;
+                    state.driveLetter = mapping.letter;
+                    state.driveHomeFolder = mapping.homeFolder;
+                }
+                Session* session = Session::get();
+                state.statsOverlayShown = session != nullptr && session->getOverlayManager().isOverlayEnabled(Overlay::OverlayDebug);
                 return state;
             });
     }
@@ -131,9 +168,6 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
             return notchBar->showToast(text);
         });
     }
-
-    // How evenly the PC sends this stream's frames, for the stats overlay and the log
-    ForkHostPacing::reset();
 
     // A lower bitrate while the network struggles, and the stream's own back when it recovers
     if (forkPrefs->adaptiveBitrate()) {
@@ -181,7 +215,7 @@ ForkStreamExtensions::~ForkStreamExtensions()
 
     s_Active = nullptr;
 
-    // The notch bar goes away before the clipboard sync
+    // The notch bar goes away first: its menus ask about the clipboard sync and the Mac drive
     if (m_Clipboard) {
         m_Clipboard->setMessageSink(nullptr);
     }
@@ -189,6 +223,7 @@ ForkStreamExtensions::~ForkStreamExtensions()
         m_MacDrive->setMessageSink(nullptr);
     }
     m_PowerNotice->setMessageSink(nullptr);
+    m_NotchBar.reset();
 
     ForkHostPacing::logSummary();
 
@@ -316,12 +351,66 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action)
         // above the picture, where the pointer has to reach it
         input->updatePointerRegionLock();
         break;
+    case NotchMenus::Action::ToggleStatsOverlay: {
+        // As Control-Option-Shift-S does (SdlInputHandler::performSpecialKeyCombo())
+        Overlay::OverlayManager& overlays = session->getOverlayManager();
+        overlays.setOverlayState(Overlay::OverlayDebug, !overlays.isOverlayEnabled(Overlay::OverlayDebug));
+        break;
+    }
+    case NotchMenus::Action::CopyDiagnostics:
+        copyDiagnostics();
+        break;
+    case NotchMenus::Action::ToggleClipboardSync:
+        if (m_Clipboard) {
+            m_Clipboard->setAutomatic(!m_Clipboard->automatic());
+        }
+        break;
+    case NotchMenus::Action::ToggleNotchStats:
+        // The bar's own
     case NotchMenus::Action::None:
         break;
     }
 
     if (m_NotchBar) {
         m_NotchBar->refreshMenus();
+    }
+}
+
+void ForkStreamExtensions::copyDiagnostics()
+{
+    ForkStreamDiagnostics::Context context;
+    context.appName = m_AppName;
+    context.hostName = m_HostName;
+    context.width = m_Width;
+    context.height = m_Height;
+    context.ownBitrateKbps = m_OwnBitrateKbps;
+    if (!m_Clipboard) {
+        context.clipboard = QStringLiteral("off in Settings");
+    }
+    else {
+        static const char* availability[] = { "permissions not known yet", "allowed", "the PC isn't Apollo", "not allowed in Apollo" };
+        context.clipboard = QStringLiteral("%1, %2").arg(m_Clipboard->automatic() ? QStringLiteral("automatic") : QStringLiteral("by shortcut"),
+                                                         QString::fromLatin1(availability[static_cast<int>(m_Clipboard->availability())]));
+    }
+    if (m_MacDrive && m_MacDrive->mapping().mapped) {
+        MacDrive::Mapping mapping = m_MacDrive->mapping();
+        context.drive = QStringLiteral("%1: (%2)").arg(mapping.letter, mapping.homeFolder ? QStringLiteral("the home folder") : QStringLiteral("the whole disk"));
+    }
+
+    QByteArray text = ForkStreamDiagnostics::text(context).toUtf8();
+    // Plain text, not concealed: it's meant to be pasted, on the Mac or the PC
+    long count = MacPasteboard::write({ clipbundle::item { "text/plain", std::string(text.constData(), static_cast<size_t>(text.size())) } }, false);
+    if (count == 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: couldn't copy the diagnostics");
+        return;
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: diagnostics copied");
+    if (m_Clipboard) {
+        // Automatic sync sends it now, so fetching on focus loss can't replace it with the PC's
+        m_Clipboard->localClipboardChanged();
+    }
+    if (m_NotchBar) {
+        m_NotchBar->showToast(QCoreApplication::translate("NotchBar", "Diagnostics copied"));
     }
 }
 
@@ -342,8 +431,9 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (m_Clipboard) {
         m_Clipboard->handleEvent(event);
     }
-    if (m_MacDrive) {
-        m_MacDrive->handleEvent(event);
+    if (m_MacDrive && m_MacDrive->handleEvent(event) && m_NotchBar) {
+        // The drive tile appears in an open Control Center
+        m_NotchBar->refreshMenus();
     }
     m_PowerNotice->handleEvent(event);
 

@@ -120,4 +120,18 @@ bool worthTelling(Outcome outcome)
 {
     return outcome != Outcome::Pending && outcome != Outcome::Kept;
 }
+
+bool mapped(Outcome outcome)
+{
+    return outcome == Outcome::Added || outcome == Outcome::AddedHome || outcome == Outcome::Kept;
+}
+
+bool homeFolder(Outcome outcome, const Reply& reply, const std::vector<std::string>& sent)
+{
+    if (outcome == Outcome::AddedHome) {
+        return true;
+    }
+    // A drive kept from an earlier stream is whichever share that stream got
+    return outcome == Outcome::Kept && !reply.share.empty() && !sent.empty() && reply.share != sent.front();
+}
 }

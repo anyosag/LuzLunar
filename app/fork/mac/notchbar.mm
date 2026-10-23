@@ -1,8 +1,12 @@
 #include "notchbar.h"
 #include "notchmenus_mac.h"
 
+#include "fork/forklinkrules.h"
 #include "fork/forknetworklink.h"
 #include "fork/forkpolicy.h"
+#include "fork/forkpreferences.h"
+#include "fork/hostcadence.h"
+#include "fork/notchstatus.h"
 #include "fork/streamstats.h"
 #include "SDL_compat.h"
 
@@ -86,10 +90,14 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     NSWindow* m_StreamWindow;   // retained: SDL destroys the window before the stream's fork extensions go away
     ForkNotchPanel* m_Panel;
     ForkBarItem* m_SessionItem;     // the app and the PC, left of the notch: the Session menu
-    ForkBarItem* m_StatsItem;       // the stream's stats, right of the notch
+    ForkBarItem* m_StatsItem;       // the stream's stats, right of the notch: Stream status
     ForkBarItem* m_ControlItem;     // Stream Control Center, at the right edge
     NSString* m_AppName;
     NSString* m_HostName;
+    int m_VideoWidth;
+    int m_VideoHeight;
+    BOOL m_NotchStatsShown;         // the stats' text beside their icon (Control Center's Notch Stats)
+    unsigned m_StatusTickGeneration; // the tick that keeps an open Stream status current
 
     // The menus under the items, and what they do (MacNotchBar::setActions())
     ForkNotchMenus* m_Menus;
@@ -123,14 +131,15 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     CGFloat m_PillHeight;
     CGFloat m_PillY;
 }
-- (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName;
+- (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName
+                          videoWidth:(int)videoWidth videoHeight:(int)videoHeight;
 - (void)setActions:(std::function<void(NotchMenus::Action)>)actions state:(std::function<NotchBar::MenuState()>)state;
 - (BOOL)toggleMenusByKeyboard;
 - (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
 - (BOOL)menuOpen;
 - (BOOL)barOnScreen;
 - (void)refreshMenus;
-- (void)setStatsText:(NSString*)text;
+- (void)statsArrived;
 - (void)setWarning:(NSString*)text;
 - (void)showToast:(NSString*)text;
 - (BOOL)showsMessages;
@@ -315,6 +324,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 }
 
 - (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName
+                          videoWidth:(int)videoWidth videoHeight:(int)videoHeight
 {
     self = [super init];
     if (self == nil) {
@@ -326,14 +336,17 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_Corner = [[ForkCornerMessage alloc] initWithStreamWindow:window];
     m_AppName = [appName copy];
     m_HostName = [hostName copy];
+    m_VideoWidth = videoWidth;
+    m_VideoHeight = videoHeight;
+    m_NotchStatsShown = ForkPreferences::get()->notchBarStats();
 
     m_SessionItem = [[ForkBarItem alloc] initWithSymbol:@"moon"];
     [m_SessionItem setTitle:sessionTitle(appName, hostName)];
     [m_SessionItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Session menu: %1 on %2")
                                              .arg(QString::fromNSString(appName), QString::fromNSString(hostName)).toNSString()];
-    m_StatsItem = [[ForkBarItem alloc] initWithSymbol:nil];
-    m_StatsItem.interactive = NO;
-    [m_StatsItem setTitle:statsTitle(@"—")];
+    m_StatsItem = [[ForkBarItem alloc] initWithSymbol:@"network"];
+    [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? @"—" : @"")];
+    [m_StatsItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Stream status").toNSString()];
     // Control Center's own icon, or sliders on a macOS without it
     m_ControlItem = [[ForkBarItem alloc] initWithSymbol:symbolImage(@"switch.2") != nil ? @"switch.2" : @"slider.horizontal.3"];
     [m_ControlItem setTitle:[[[NSAttributedString alloc] initWithString:@""] autorelease]];
@@ -343,6 +356,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     __block ForkNotchBarController* controller = self;
     m_SessionItem.onPress = ^{
         [controller pressedItemForMenu:NotchMenus::Menu::Session];
+    };
+    m_StatsItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Status];
     };
     m_ControlItem.onPress = ^{
         [controller pressedItemForMenu:NotchMenus::Menu::ControlCenter];
@@ -432,7 +448,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_Actions = nullptr;
     [m_Menus invalidate];
     m_SessionItem.onPress = nil;
+    m_StatsItem.onPress = nil;
     m_ControlItem.onPress = nil;
+    m_StatusTickGeneration++;
     // Animations and timers still queued find the controller invalidated and do nothing
     m_AnimationGeneration++;
     m_ShowsMessages = false;
@@ -542,15 +560,42 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkStreamStats::setConnectionWarningInOverlay(!take);
 }
 
-- (void)setStatsText:(NSString*)text
+// A new snapshot: the stats item's text, and an open Stream status
+- (void)statsArrived
 {
     if (m_StreamWindow == nil) {
         return;
     }
 
-    [m_StatsItem setTitle:statsTitle(text)];
-    [m_StatsItem setAccessibilityLabel:text];
+    ForkStreamStats::Snapshot stats;
+    if (!ForkStreamStats::latest(&stats)) {
+        return;
+    }
+    // The Wi-Fi band where the bar shows the link (ForkLinkRules::shouldShow())
+    ForkNetworkLink::Current link = ForkNetworkLink::current();
+    BOOL wifi = link.known && link.link.kind == ForkLinkRules::Kind::WiFi;
+    std::string band = wifi && link.shown ? ForkLinkRules::bandText(link.link.bandGHz) : std::string();
+    NSString* text = [NSString stringWithUTF8String:NotchStatus::barText(band, stats.fps, stats.rttMs, stats.mbps,
+                                                                         stats.bitrateCapMbps).c_str()];
+    [m_StatsItem setSymbol:wifi ? @"wifi" : @"network"];
+    [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? text : @"")];
+    [m_StatsItem setAccessibilityValue:text];
     [self refresh];
+    [m_Menus statusChanged];
+}
+
+// While Stream status is open, once a second, so it moves on even when no frames come (a still desktop)
+- (void)tickStatus:(unsigned)generation
+{
+    if (generation != m_StatusTickGeneration || m_StreamWindow == nil || [m_Menus openMenu] != NotchMenus::Menu::Status) {
+        return;
+    }
+    [m_Menus statusChanged];
+    [self retain];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self tickStatus:generation];
+        [self release];
+    });
 }
 
 - (void)setWarning:(NSString*)text
@@ -642,6 +687,16 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)menusPerform:(NotchMenus::Action)action
 {
+    if (action == NotchMenus::Action::ToggleNotchStats) {
+        // The bar's own, and remembered
+        m_NotchStatsShown = !m_NotchStatsShown;
+        ForkPreferences::get()->setNotchBarStats(m_NotchStatsShown);
+        NSString* text = m_StatsItem.accessibilityValue;
+        [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? (text.length > 0 ? text : @"—") : @"")];
+        [self refresh];
+        [m_Menus refresh];
+        return;
+    }
     if (m_Actions) {
         m_Actions(action);
     }
@@ -649,17 +704,56 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (NotchBar::MenuState)menusState
 {
-    return m_State ? m_State() : NotchBar::MenuState();
+    NotchBar::MenuState state = m_State ? m_State() : NotchBar::MenuState();
+    state.notchStatsShown = m_NotchStatsShown;
+    return state;
+}
+
+- (void)menusStatus:(ForkStatusModel*)model
+{
+    model->now = ForkStreamStats::nowSeconds();
+    model->samples = ForkStreamStats::history();
+    bool suggestLowerBitrate;
+    model->health = NotchStatus::health(ForkStreamStats::connectionPoor(&suggestLowerBitrate), model->samples, model->now);
+
+    ForkNetworkLink::Current link = ForkNetworkLink::current();
+    if (link.known) {
+        model->connection = QString::fromStdString(ForkLinkRules::connectionText(link.link, link.viaLan));
+        model->linkSpeed = QString::fromStdString(ForkLinkRules::speedText(link.link.mbps));
+    }
+
+    QString resolution = QStringLiteral("%1×%2").arg(m_VideoWidth).arg(m_VideoHeight);
+    ForkStreamStats::Snapshot stats;
+    if (ForkStreamStats::latest(&stats)) {
+        model->frameRate = QCoreApplication::translate("NotchBar", "%1 fps").arg(stats.fps, 0, 'f', 0);
+        switch (pacingVerdict(stats.pacingLowest, stats.fps)) {
+        case PacingVerdict::Even:
+            model->pacing = QCoreApplication::translate("NotchBar", "Even");
+            break;
+        case PacingVerdict::Uneven:
+            model->pacing = QCoreApplication::translate("NotchBar", "Uneven");
+            break;
+        case PacingVerdict::Unknown:
+            break;
+        }
+        model->framesLost = QStringLiteral("%1%").arg(stats.dropPercent, 0, 'f', 1);
+        model->video = stats.codec + QStringLiteral(" · ") + resolution;
+    }
+    else {
+        model->video = resolution;
+    }
 }
 
 - (NSRect)menusAnchorFor:(NotchMenus::Menu)menu alignRight:(BOOL*)alignRight
 {
     ForkBarItem* item = menu == NotchMenus::Menu::Session ? m_SessionItem :
+                        menu == NotchMenus::Menu::Status ? m_StatsItem :
                         menu == NotchMenus::Menu::ControlCenter ? m_ControlItem : nil;
     if (item == nil || item.hidden || !m_BarOnScreen) {
         return NSZeroRect;
     }
-    *alignRight = item == m_ControlItem;
+    // Right of the notch, menus line up with their item's right edge, which stays put as the stats change
+    *alignRight = item != m_SessionItem;
     // The item's left and right edges, and the bottom of the strip, so the menu hangs below the bar
     NSRect frame = [m_Panel convertRectToScreen:[item convertRect:item.bounds toView:nil]];
     return NSMakeRect(NSMinX(frame), NSMinY(m_StripFrame), NSWidth(frame), NSHeight(m_StripFrame));
@@ -667,9 +761,14 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)menusChanged:(NotchMenus::Menu)menu
 {
-    BOOL wasOpen = m_SessionItem.open || m_ControlItem.open;
+    BOOL wasOpen = m_SessionItem.open || m_StatsItem.open || m_ControlItem.open;
+    BOOL statusWasOpen = m_StatsItem.open;
     m_SessionItem.open = menu == NotchMenus::Menu::Session;
+    m_StatsItem.open = menu == NotchMenus::Menu::Status;
     m_ControlItem.open = menu == NotchMenus::Menu::ControlCenter;
+    if (m_StatsItem.open && !statusWasOpen) {
+        [self tickStatus:++m_StatusTickGeneration];
+    }
     BOOL isOpen = menu != NotchMenus::Menu::None;
     if (isOpen != wasOpen && m_Actions) {
         m_Actions(isOpen ? NotchMenus::Action::MenusOpened : NotchMenus::Action::MenusClosed);
@@ -689,8 +788,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_SessionItem.frame = NSMakeRect(NSMinX(leftArea) + k_Margin, y, sessionWidth, height);
     m_SessionItem.hidden = sessionWidth <= 0;
 
+    // The stats shrink, down to their icon alone
     std::vector<NotchMenus::Placed> placed = NotchMenus::layoutRight(NSWidth(rightArea), k_Margin, k_ItemGap,
-                                                                     { [m_StatsItem naturalWidth], [m_ControlItem naturalWidth] }, 0);
+                                                                     { [m_StatsItem naturalWidth], [m_ControlItem naturalWidth] }, 0,
+                                                                     [m_StatsItem iconOnlyWidth]);
     NSArray<ForkBarItem*>* items = @[ m_StatsItem, m_ControlItem ];
     for (NSUInteger i = 0; i < items.count; i++) {
         ForkBarItem* item = items[i];
@@ -1394,21 +1495,13 @@ namespace
         explicit MacNotchBar(ForkNotchBarController* controller)
             : m_Controller(controller)
         {
-            ForkStreamStats::setListener([controller](const ForkStreamStats::Snapshot& stats) {
-                // Runs on the decode thread, which has no autorelease pool of its own
+            ForkStreamStats::setListener([controller](const ForkStreamStats::Snapshot&) {
+                // Runs on the decode thread, which has no autorelease pool of its own. The main thread
+                // reads the snapshot itself (ForkStreamStats::latest()), with the link and the history.
                 @autoreleasepool {
-                    // First the connection the stream uses, like "Ethernet 1 Gb/s", where it's shown
-                    QString link = ForkNetworkLink::badge();
-                    // While adaptive bitrate holds the stream lower, its cap follows the bitrate: "18.3 Mb/s ↓20"
-                    NSString* cap = stats.bitrateCapMbps > 0 ? [NSString stringWithFormat:@" ↓%.0f", stats.bitrateCapMbps] : @"";
-                    NSString* text = [[NSString alloc] initWithFormat:@"%@%.0f fps · %u ms · %.1f Mb/s%@ · %@ · %.1f%% loss",
-                                                                      link.isEmpty() ? @"" : [link.toNSString() stringByAppendingString:@" · "],
-                                                                      stats.fps, stats.rttMs, stats.mbps, cap,
-                                                                      stats.codec.toNSString(), stats.dropPercent];
                     [controller retain];
                     dispatch_async(dispatch_get_main_queue(), ^{
-                        [controller setStatsText:text];
-                        [text release];
+                        [controller statsArrived];
                         [controller release];
                     });
                 }
@@ -1500,7 +1593,8 @@ namespace
     };
 }
 
-std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& appName, const QString& hostName)
+std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& appName, const QString& hostName,
+                                           int width, int height)
 {
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);
@@ -1512,7 +1606,9 @@ std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& ap
     @autoreleasepool {
         ForkNotchBarController* controller = [[ForkNotchBarController alloc] initWithStreamWindow:info.info.cocoa.window
                                                                                            appName:appName.toNSString()
-                                                                                          hostName:hostName.toNSString()];
+                                                                                          hostName:hostName.toNSString()
+                                                                                        videoWidth:width
+                                                                                       videoHeight:height];
         return std::unique_ptr<NotchBar>(new MacNotchBar(controller));
     }
 }

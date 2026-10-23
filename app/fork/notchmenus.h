@@ -21,19 +21,24 @@ namespace NotchMenus
         MenusOpened,                // a menu opened: the pointer stays free while one is open
         MenusClosed,                // the last menu closed: the pointer goes back if opening freed it
         BarShownOrHidden,           // the bar came on screen or went: the pointer is held to the picture only without it
+        ToggleStatsOverlay,         // Ctrl+Option+Shift+S
+        CopyDiagnostics,            // a summary of the stream for a bug report, on the Mac's clipboard
+        ToggleClipboardSync,        // automatic clipboard sync for the rest of the stream
+        ToggleNotchStats,           // the bar's stats text, or just its icon (the bar does this itself)
     };
 
     // The bar's menus, left to right as their items sit on the bar
     enum class Menu {
         None,
         Session,
+        Status,         // the stats right of the notch
         ControlCenter,
     };
 
     // The menus in the bar's order, for Left and Right between them
     inline const std::vector<Menu>& order()
     {
-        static const std::vector<Menu> menus = { Menu::Session, Menu::ControlCenter };
+        static const std::vector<Menu> menus = { Menu::Session, Menu::Status, Menu::ControlCenter };
         return menus;
     }
 

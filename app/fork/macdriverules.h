@@ -88,4 +88,10 @@ namespace MacDriveRules
 
     // Whether the stream says so beside the notch: a drive kept from before isn't news
     bool worthTelling(Outcome outcome);
+
+    // Whether this Mac is a drive on the PC now, for Stream Control Center's drive tile
+    bool mapped(Outcome outcome);
+
+    // Whether the drive is the home folder rather than the disk, the first share asked for
+    bool homeFolder(Outcome outcome, const Reply& reply, const std::vector<std::string>& sent);
 }

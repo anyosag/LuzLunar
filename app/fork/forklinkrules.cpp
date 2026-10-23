@@ -26,27 +26,27 @@ namespace
         return "";
     }
 
-    std::string bandText(double ghz)
-    {
-        if (ghz <= 0) {
-            return std::string();
-        }
-        char text[16];
-        if (std::fabs(ghz - std::round(ghz)) < 0.05) {
-            std::snprintf(text, sizeof(text), "%.0f GHz", ghz);
-        }
-        else {
-            std::snprintf(text, sizeof(text), "%.1f GHz", ghz);
-        }
-        return text;
-    }
-
     void append(std::string& text, const std::string& part)
     {
         if (!part.empty()) {
             text += (text.empty() ? "" : " ") + part;
         }
     }
+}
+
+std::string bandText(double ghz)
+{
+    if (!(ghz > 0)) {
+        return std::string();
+    }
+    char text[16];
+    if (std::fabs(ghz - std::round(ghz)) < 0.05) {
+        std::snprintf(text, sizeof(text), "%.0f GHz", ghz);
+    }
+    else {
+        std::snprintf(text, sizeof(text), "%.1f GHz", ghz);
+    }
+    return text;
 }
 
 bool viaLan(Reachability reachability, bool onLink, Kind routeKind)
@@ -117,6 +117,33 @@ std::string badge(const Link& link, bool notViaLan)
         text += " · not via LAN";
     }
     return text;
+}
+
+std::string connectionText(const Link& link, bool viaLan)
+{
+    std::string text;
+    switch (link.kind) {
+    case Kind::Unknown:
+        return std::string();
+    case Kind::Ethernet:
+    case Kind::ThunderboltBridge:
+        text = kindName(link.kind);
+        break;
+    case Kind::WiFi:
+        text = kindName(link.kind);
+        append(text, bandText(link.bandGHz));
+        break;
+    case Kind::Vpn:
+        text = kindName(link.kind);
+        if (link.underlying != Kind::Unknown && link.underlying != Kind::Vpn && link.underlying != Kind::Other) {
+            text += std::string(" over ") + kindName(link.underlying);
+        }
+        break;
+    case Kind::Other:
+        text = link.name.empty() ? std::string("Network") : link.name;
+        break;
+    }
+    return text + (viaLan ? " · LAN" : " · not via LAN");
 }
 
 std::vector<std::string> remember(std::vector<std::string> ids, const std::string& id, std::size_t max)

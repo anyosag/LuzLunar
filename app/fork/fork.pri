@@ -57,6 +57,7 @@ SOURCES += \
     $$PWD/macdriverules.cpp \
     $$PWD/powernotice.cpp \
     $$PWD/sfsymbols.cpp \
+    $$PWD/streamdiagnostics.cpp \
     $$PWD/streamprofiles.cpp \
     $$PWD/streamstats.cpp \
     $$PWD/windowchrome.cpp
@@ -99,8 +100,11 @@ HEADERS += \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
     $$PWD/notchmenus.h \
+    $$PWD/notchstatus.h \
     $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \
+    $$PWD/streamdiagnostics.h \
+    $$PWD/streamhistory.h \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
@@ -111,6 +115,7 @@ HEADERS += \
     $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
     $$PWD/mac/notchmenus_mac.h \
+    $$PWD/mac/notchstatus_mac.h \
     $$PWD/mac/pasteboard.h \
     $$PWD/mac/selfupdate_mac.h \
     $$PWD/mac/trackpadcapture_mac.h \
@@ -127,6 +132,7 @@ macx {
         $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/notchmenus_mac.mm \
+        $$PWD/mac/notchstatus_mac.mm \
         $$PWD/mac/pasteboard_mac.mm \
         $$PWD/mac/selfupdate_mac.mm \
         $$PWD/mac/sfsymbolprovider.mm \

@@ -19,14 +19,18 @@ struct SDL_Window;
 // (through showToast()). While the stream is windowed, they appear in a pill in the window's
 // bottom-left corner instead. Otherwise they stay in Moonlight's status overlay.
 //
-// The app's name and the Control Center icon open menus under the bar, like macOS's menu bar: the
-// Session menu (disconnect, quit the app on the PC, sleep the PC) and Stream Control Center (the
-// pointer, Mac shortcuts). Their panels never take focus from the stream (notchmenus_mac.mm).
+// The bar's items open menus under it, like macOS's menu bar: the app's name opens the Session menu
+// (disconnect, quit the app on the PC, sleep the PC), the stats open Stream status (latency, its
+// last two minutes, the connection), and the Control Center icon opens Stream Control Center
+// (clipboard sync, the pointer, Mac shortcuts). Their panels never take focus from the stream
+// (notchmenus_mac.mm).
 class NotchBar
 {
 public:
-    // Null where there's no bar to show, e.g. on other platforms
-    static std::unique_ptr<NotchBar> create(SDL_Window* window, const QString& appName, const QString& hostName);
+    // Null where there's no bar to show, e.g. on other platforms. width and height: the stream's
+    // resolution, for Stream status.
+    static std::unique_ptr<NotchBar> create(SDL_Window* window, const QString& appName, const QString& hostName,
+                                            int width, int height);
 
     virtual ~NotchBar() = default;
 
@@ -39,6 +43,19 @@ public:
         bool mouseCaptured = true;      // input held by the stream; while a menu is open, whether it will be once it closes
         bool systemKeysToPc = false;    // Mac shortcuts (Command-Tab, ...) go to the PC
         bool canSleepPc = true;         // the PC's Apollo can sleep, and this Mac may ask it to
+
+        // Clipboard sync with the PC (ClipboardSync::Availability), and whether it's automatic now
+        enum class Clipboard { OffInSettings, Unknown, Available, NeedsApollo, NotAllowed };
+        Clipboard clipboard = Clipboard::OffInSettings;
+        bool clipboardAutomatic = false;
+
+        // This Mac as a drive on the PC (MacDrive::mapping())
+        bool driveMapped = false;
+        QString driveLetter;
+        bool driveHomeFolder = false;
+
+        bool statsOverlayShown = false; // Moonlight's stats overlay, Control-Option-Shift-S
+        bool notchStatsShown = true;    // the bar's stats text; the bar fills this in itself
     };
 
     // actions: what the user chose in a menu, on the main thread inside AppKit's event handling; hand
@@ -66,7 +83,7 @@ protected:
 };
 
 #ifndef Q_OS_DARWIN
-inline std::unique_ptr<NotchBar> NotchBar::create(SDL_Window*, const QString&, const QString&)
+inline std::unique_ptr<NotchBar> NotchBar::create(SDL_Window*, const QString&, const QString&, int, int)
 {
     return nullptr;
 }

@@ -40,6 +40,19 @@ public:
     void sendToHost();
     void receiveFromHost();
 
+    // Automatic sync for the rest of this stream, as Stream Control Center's switch sets it. Off,
+    // the shortcuts still send and fetch. Turning it on sends the clipboard, as a stream's start does.
+    void setAutomatic(bool automatic);
+    bool automatic() const { return m_Automatic; }
+
+    // Whether the PC syncs at all, for the switch: Unknown until Apollo's permissions arrive
+    enum class Availability { Unknown, Available, NeedsApollo, NotAllowed };
+    Availability availability() const;
+
+    // LuzLunar put something on the Mac's clipboard itself (Copy Diagnostics). Automatic sync sends
+    // it now, so fetching on focus loss doesn't replace it with what the PC copied before.
+    void localClipboardChanged();
+
     // Messages go to the sink first, like LuzLunar's notch bar. When it returns false, they show
     // in Moonlight's status overlay.
     void setMessageSink(std::function<bool(const QString&)> sink);

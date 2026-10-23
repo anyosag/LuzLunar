@@ -40,6 +40,7 @@ struct MacDrive::Shared
     bool ready = false;     // a message for the main thread
     QString message;
     bool show = false;
+    MacDrive::Mapping mapping;
 };
 
 namespace
@@ -162,7 +163,8 @@ namespace
     }
 
     // Hands the stream its message, and keeps it for Settings even once the stream has ended
-    void finish(const std::shared_ptr<MacDrive::Shared>& shared, const QString& message, bool show)
+    void finish(const std::shared_ptr<MacDrive::Shared>& shared, const QString& message, bool show,
+                const MacDrive::Mapping& mapping = MacDrive::Mapping())
     {
         QSettings().setValue(SER_MACDRIVELAST, message);
         {
@@ -172,6 +174,7 @@ namespace
             }
             shared->message = message;
             shared->show = show;
+            shared->mapping = mapping;
             shared->ready = true;
         }
         SDL_Event event = {};
@@ -253,7 +256,13 @@ namespace
         QString message = outcomeMessage(outcome, reply);
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Mac drive: %s (HTTP %d, %s%s%s)", qPrintable(message), reply.httpStatus,
                     reply.state.empty() ? "no state" : reply.state.c_str(), reply.error.empty() ? "" : ", ", reply.error.c_str());
-        finish(shared, message, MacDriveRules::worthTelling(outcome));
+        MacDrive::Mapping mapping;
+        mapping.mapped = MacDriveRules::mapped(outcome) && !reply.letter.empty();
+        if (mapping.mapped) {
+            mapping.letter = QString::fromStdString(reply.letter);
+            mapping.homeFolder = MacDriveRules::homeFolder(outcome, reply, shares);
+        }
+        finish(shared, message, MacDriveRules::worthTelling(outcome), mapping);
     }
 }
 
@@ -296,25 +305,32 @@ std::function<void(bool viaLan)> MacDrive::linkListener() const
     };
 }
 
-void MacDrive::handleEvent(const SDL_Event& event)
+bool MacDrive::handleEvent(const SDL_Event& event)
 {
     if (event.type != eventType()) {
-        return;
+        return false;
     }
     QString message;
     bool show;
     {
         std::lock_guard<std::mutex> lock(m_Shared->mutex);
         if (!m_Shared->ready) {
-            return;
+            return false;
         }
         m_Shared->ready = false;
         message = m_Shared->message;
         show = m_Shared->show;
+        m_Mapping = m_Shared->mapping;
     }
     if (show && !message.isEmpty() && m_MessageSink) {
         m_MessageSink(message);
     }
+    return true;
+}
+
+MacDrive::Mapping MacDrive::mapping() const
+{
+    return m_Mapping;
 }
 
 void MacDrive::setMessageSink(std::function<bool(const QString&)> sink)

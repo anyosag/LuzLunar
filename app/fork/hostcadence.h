@@ -109,3 +109,23 @@ private:
     double m_Lowest = 0;
     uint64_t m_Count = 0;
 };
+
+// [fork] The notch bar's "PC frame pacing" row, from the lowest score over the last second or so
+// (NaN without one) and the frame rate. Below 10 fps the PC is mostly idle (a still desktop), which
+// scores low for no fault, so there's no verdict. 97 % is a spread of about 2.5 ms: at 60 fps one
+// frame held in 30 already scores 94 %.
+enum class PacingVerdict {
+    Unknown,
+    Even,
+    Uneven,
+};
+
+constexpr double k_EvenPacingPercent = 97.0;
+
+inline PacingVerdict pacingVerdict(double lowestPercent, double fps)
+{
+    if (std::isnan(lowestPercent) || fps < 10) {
+        return PacingVerdict::Unknown;
+    }
+    return lowestPercent >= k_EvenPacingPercent ? PacingVerdict::Even : PacingVerdict::Uneven;
+}
