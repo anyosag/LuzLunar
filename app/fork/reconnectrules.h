@@ -12,6 +12,11 @@
 // (tests/fork/reconnectrules_test.cpp).
 namespace ReconnectRules
 {
+    // Trackpad modes, as StreamingPreferences::TrackpadMode numbers them
+    const int k_TrackpadMacMouse = 0;
+    const int k_TrackpadWindowsTouchpad = 1;
+    const int k_TrackpadMacTrackpad = 2;
+
     // The settings a reconnect can change, as the stream has them
     struct Settings {
         int width = 0;
@@ -20,6 +25,8 @@ namespace ReconnectRules
         int bitrateKbps = 0;
         bool hdr = false;
         bool yuv444 = false;
+        int trackpadMode = k_TrackpadMacMouse;
+        bool absoluteMouse = false;     // the mouse as a remote desktop's, not captured
     };
 
     // What a reconnect changes; 0 or nullopt keeps the stream's
@@ -30,6 +37,7 @@ namespace ReconnectRules
         int bitrateKbps = 0;
         std::optional<bool> hdr;
         std::optional<bool> yuv444;
+        std::optional<int> trackpadMode;
     };
 
     // What was chosen in the notch bar for the stream, which the stream after its reconnect keeps, as
@@ -39,6 +47,7 @@ namespace ReconnectRules
         int manualKbps = 0;             // the bitrate set by hand while not adapting; 0 for none
         std::optional<bool> saver;      // Stream Battery Saver switched by hand (PowerRules::Saver::manual())
         bool lowPowerMode = false;      // Low Power Mode then: a choice by hand holds until it changes
+        bool absoluteBeforeTouchpad = false;    // the remote desktop's mouse a touchpad mode took, for Mac mouse to give back
     };
 
     // The choices the next stream keeps: a bitrate set by hand only while not adapting, and none after
@@ -72,7 +81,29 @@ namespace ReconnectRules
         if (overrides.yuv444) {
             settings.yuv444 = *overrides.yuv444;
         }
+        if (overrides.trackpadMode) {
+            settings.trackpadMode = *overrides.trackpadMode;
+        }
+        // The trackpad as a touchpad needs the game's mouse, as StreamProfiles::createSession() has it
+        if (settings.trackpadMode != k_TrackpadMacMouse) {
+            settings.absoluteMouse = false;
+        }
         return settings;
+    }
+
+    // Whether switching the stream's trackpad mode takes a reconnect. Apollo sets its side up when
+    // the stream starts: in Mac trackpad mode its touchpad takes only gestures and Windows' pointer
+    // speed is held, for the whole stream. So into Mac trackpad reconnects unless the stream started
+    // in it, and into Windows touchpad reconnects if it did. Mac mouse is the Mac's alone.
+    inline bool trackpadNeedsReconnect(int startedMode, int nextMode)
+    {
+        if (nextMode == k_TrackpadMacTrackpad) {
+            return startedMode != k_TrackpadMacTrackpad;
+        }
+        if (nextMode == k_TrackpadWindowsTouchpad) {
+            return startedMode == k_TrackpadMacTrackpad;
+        }
+        return false;
     }
 
     // Quality's frame rates: 60, 90 and 120 up to the screen's highest, and the stream's own if it's

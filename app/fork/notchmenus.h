@@ -33,6 +33,7 @@ namespace NotchMenus
         ReconnectAtFps,             // the same at another frame rate (the action's value)
         ReconnectAtResolution,      // at another resolution (the value, ReconnectRules::packSize())
         ReconnectAtBitrate,         // at another bitrate in kbps (the value): the saver on a PC that can't change it live
+        SetTrackpadMode,            // Control Center's Trackpad (the value, as StreamingPreferences::TrackpadMode): at once, or by reconnecting
     };
 
     // The bar's menus, left to right as their items sit on the bar

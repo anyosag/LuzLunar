@@ -112,6 +112,13 @@ namespace
         return ceil([label.cell cellSizeForBounds:NSMakeRect(0, 0, width, 1000)].height);
     }
 
+    // The trackpad's modes, as Settings names them
+    NSString* trackpadModeTitle(int mode)
+    {
+        return mode == ReconnectRules::k_TrackpadMacTrackpad      ? tr("Mac trackpad") :
+               mode == ReconnectRules::k_TrackpadWindowsTouchpad ? tr("Windows touchpad") : tr("Mac mouse");
+    }
+
     // "18 Mb/s"
     QString mbpsText(int kbps)
     {
@@ -458,6 +465,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     ForkMenuControlSlider,      // a bitrate slider: dragged without a tracking loop, so the stream runs on
     ForkMenuControlChip,        // one choice of a segmented control, as Quality's frame rates
     ForkMenuControlPopup,       // a value in a capsule with up and down chevrons, its choices under it: Resolution
+    ForkMenuControlModule,      // a Control Center tile with a circle and a title over a line: Trackpad, Notch Stats
+    ForkMenuControlChoice,      // one choice of a list over the menu: a tick, its title, and ↻ if it reconnects
 };
 
 @class ForkNotchMenus;
@@ -470,6 +479,32 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (void)sliderMoved:(NSView*)control final:(BOOL)final;
 // Up or down a step, from VoiceOver or the keyboard
 - (void)slider:(NSView*)control step:(int)direction;
+// Closes the list over the menu, as a click beside it does
+- (void)closeList;
+// Whether the pointer may light it: while a list is open, only the list's choices
+- (BOOL)controlTakesPointer:(NSView*)control;
+@end
+
+// Behind a list over the menu: a click on it closes the list and goes no further, as beside a macOS menu
+@interface ForkListScrim : NSView
+{
+@public
+    ForkNotchMenus* m_Owner;    // not retained
+}
+@end
+
+@implementation ForkListScrim
+- (BOOL)acceptsFirstMouse:(NSEvent*)event
+{
+    (void)event;
+    return YES;
+}
+
+- (void)mouseDown:(NSEvent*)event
+{
+    (void)event;
+    [m_Owner closeList];
+}
 @end
 
 // A row, switch or button in a menu
@@ -499,6 +534,11 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (void)setTitle:(NSString*)title detail:(NSString*)detail symbol:(NSString*)name;
 // The width a row or header needs for its title and shortcut
 - (CGFloat)naturalWidth;
+// A Control Center switch's or tile's height at this width, its line under the title on two lines if
+// it needs them
+- (CGFloat)heightForWidth:(CGFloat)width;
+// A choice's tick, and ↻ when choosing it reconnects the stream
+- (void)setChecked:(BOOL)checked reconnects:(BOOL)reconnects;
 - (void)refreshAppearance;
 // Out of the open menu: AppKit may still send it events until its panel goes
 - (void)detach;
@@ -511,6 +551,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     NSImageView* m_Icon;
     NSTextField* m_Title;
     NSTextField* m_Detail;      // a row's shortcut, or a switch's state
+    NSImageView* m_Badge;       // a choice's ↻
     NSTrackingArea* m_Tracking;
 }
 
@@ -544,7 +585,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         break;
     case ForkMenuControlToggle:
     case ForkMenuControlTile:
-        self.layer.cornerRadius = kind == ForkMenuControlTile ? 16 : 8;
+    case ForkMenuControlModule:
+        self.layer.cornerRadius = kind == ForkMenuControlToggle ? 8 : 16;
         m_Circle = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, k_Circle, k_Circle)];
         m_Circle.wantsLayer = YES;
         m_Circle.layer.cornerRadius = k_Circle / 2;
@@ -565,7 +607,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
             m_Title.cell.usesSingleLineMode = NO;
         }
         else {
-            m_Detail = [makeText(@"", [NSFont systemFontOfSize:12], NSColor.secondaryLabelColor) retain];
+            // Two lines when it needs them, at half Control Center's width
+            m_Detail = [makeWrappingText([NSFont systemFontOfSize:12], NSColor.secondaryLabelColor) retain];
             [self addSubview:m_Detail];
         }
         break;
@@ -594,14 +637,30 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
         [self addSubview:m_Icon];
         break;
+    case ForkMenuControlChoice:
+        self.layer.cornerRadius = 5;
+        m_Icon = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        m_Icon.imageScaling = NSImageScaleNone;
+        m_Icon.image = symbol(@"checkmark", 10, NSFontWeightSemibold);
+        [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
+        [self addSubview:m_Icon];
+        m_Title = [makeText(@"", [NSFont menuFontOfSize:13], NSColor.labelColor) retain];
+        [self addSubview:m_Title];
+        m_Badge = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        m_Badge.imageScaling = NSImageScaleNone;
+        m_Badge.image = symbol(@"arrow.clockwise", 10, NSFontWeightMedium);
+        [m_Badge setFrameSize:m_Badge.image != nil ? m_Badge.image.size : NSZeroSize];
+        [self addSubview:m_Badge];
+        break;
     }
 
-    BOOL actionable = kind == ForkMenuControlRow || kind == ForkMenuControlToggle || kind == ForkMenuControlTile;
+    BOOL actionable = kind == ForkMenuControlRow || kind == ForkMenuControlToggle || kind == ForkMenuControlTile ||
+                      kind == ForkMenuControlModule;
     [self setAccessibilityElement:kind != ForkMenuControlSeparator];
     [self setAccessibilityRole:kind == ForkMenuControlRow ? NSAccessibilityMenuItemRole :
                                kind == ForkMenuControlToggle || kind == ForkMenuControlSwitch ? NSAccessibilityCheckBoxRole :
                                kind == ForkMenuControlSlider ? NSAccessibilitySliderRole :
-                               kind == ForkMenuControlChip ? NSAccessibilityRadioButtonRole :
+                               kind == ForkMenuControlChip || kind == ForkMenuControlChoice ? NSAccessibilityRadioButtonRole :
                                kind == ForkMenuControlPopup ? NSAccessibilityPopUpButtonRole :
                                actionable ? NSAccessibilityButtonRole : NSAccessibilityStaticTextRole];
     if (kind == ForkMenuControlToggle || kind == ForkMenuControlSwitch) {
@@ -616,6 +675,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [m_Icon release];
     [m_Title release];
     [m_Detail release];
+    [m_Badge release];
     [m_Tracking release];
     [super dealloc];
 }
@@ -629,7 +689,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 {
     m_Title.stringValue = title != nil ? title : @"";
     m_Detail.stringValue = detail != nil ? detail : @"";
-    if (m_Icon != nil && m_Kind != ForkMenuControlPopup) {
+    if (m_Icon != nil && m_Kind != ForkMenuControlPopup && m_Kind != ForkMenuControlChoice) {
         m_Icon.image = symbol(name, 14, NSFontWeightMedium);
         [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
     }
@@ -663,6 +723,26 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     return ceil(width);
 }
 
+- (CGFloat)heightForWidth:(CGFloat)width
+{
+    [m_Title sizeToFit];
+    if (m_Kind == ForkMenuControlModule) {
+        return 10 + k_Circle + 6 + NSHeight(m_Title.frame) + textHeight(m_Detail, MAX(width - 20, 0)) + 10;
+    }
+    CGFloat text = NSHeight(m_Title.frame) + textHeight(m_Detail, MAX(width - k_Circle - 9, 0));
+    return MAX(k_ToggleHeight, ceil(text) + 5);
+}
+
+- (void)setChecked:(BOOL)checked reconnects:(BOOL)reconnects
+{
+    m_On = checked;
+    m_Icon.hidden = !checked;
+    m_Badge.hidden = !reconnects;
+    [self setAccessibilityValue:checked ? @1 : @0];
+    [self setAccessibilityHelp:reconnects ? tr("Reconnects the stream") : nil];
+    self.needsLayout = YES;
+}
+
 - (void)layout
 {
     [super layout];
@@ -688,11 +768,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         m_Circle.frame = NSMakeRect(0, round((size.height - k_Circle) / 2), k_Circle, k_Circle);
         [self centerIcon];
         [m_Title sizeToFit];
-        [m_Detail sizeToFit];
         CGFloat x = k_Circle + 9;
         CGFloat width = MAX(size.width - x, 0);
         CGFloat titleHeight = NSHeight(m_Title.frame);
-        CGFloat detailHeight = NSHeight(m_Detail.frame);
+        CGFloat detailHeight = textHeight(m_Detail, width);
         CGFloat top = round((size.height - titleHeight - detailHeight) / 2);
         m_Title.frame = NSMakeRect(x, top, width, titleHeight);
         m_Detail.frame = NSMakeRect(x, top + titleHeight, width, detailHeight);
@@ -717,6 +796,27 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     case ForkMenuControlChip: {
         [m_Title sizeToFit];
         m_Title.frame = NSMakeRect(0, round((size.height - NSHeight(m_Title.frame)) / 2), size.width, NSHeight(m_Title.frame));
+        break;
+    }
+    case ForkMenuControlModule: {
+        // As on the canvas: the circle at the top left, the title and its line under it
+        m_Circle.frame = NSMakeRect(10, 10, k_Circle, k_Circle);
+        [self centerIcon];
+        CGFloat width = MAX(size.width - 20, 0);
+        [m_Title sizeToFit];
+        m_Title.frame = NSMakeRect(10, 10 + k_Circle + 6, width, NSHeight(m_Title.frame));
+        m_Detail.frame = NSMakeRect(10, NSMaxY(m_Title.frame), width, textHeight(m_Detail, width));
+        break;
+    }
+    case ForkMenuControlChoice: {
+        // The tick in a column of its own, the title, ↻ at the right
+        NSSize check = m_Icon.frame.size;
+        [m_Icon setFrameOrigin:NSMakePoint(round(4 + (16 - check.width) / 2), round((size.height - check.height) / 2))];
+        NSSize badge = m_Badge.frame.size;
+        [m_Badge setFrameOrigin:NSMakePoint(size.width - 8 - badge.width, round((size.height - badge.height) / 2))];
+        [m_Title sizeToFit];
+        CGFloat right = m_Badge.hidden ? size.width - 8 : NSMinX(m_Badge.frame) - 6;
+        m_Title.frame = NSMakeRect(24, round((size.height - NSHeight(m_Title.frame)) / 2), MAX(right - 24, 0), NSHeight(m_Title.frame));
         break;
     }
     case ForkMenuControlPopup: {
@@ -861,13 +961,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         break;
     }
     case ForkMenuControlToggle:
-    case ForkMenuControlTile: {
-        CGFloat background = m_Kind == ForkMenuControlTile ? (m_Pressed ? 0.20 : (m_Hovered ? 0.12 : 0.08))
-                                                            : (m_Pressed ? 0.12 : (m_Hovered ? 0.06 : 0));
+    case ForkMenuControlTile:
+    case ForkMenuControlModule: {
+        CGFloat background = m_Kind != ForkMenuControlToggle ? (m_Pressed ? 0.20 : (m_Hovered ? 0.12 : 0.08))
+                                                             : (m_Pressed ? 0.12 : (m_Hovered ? 0.06 : 0));
         self.layer.backgroundColor = white(background);
         self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
         self.layer.borderColor = accent.CGColor;
-        BOOL filled = m_Kind == ForkMenuControlToggle && m_On;
+        BOOL filled = m_Kind != ForkMenuControlTile && m_On;
         m_Circle.layer.backgroundColor = filled ? accent.CGColor : white(0.14);
         m_Icon.contentTintColor = filled ? NSColor.whiteColor : NSColor.labelColor;
         self.alphaValue = m_Enabled ? 1 : 0.45;
@@ -887,6 +988,16 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
         self.layer.borderColor = accent.CGColor;
         break;
+    case ForkMenuControlChoice: {
+        // As a menu's rows: the accent under the pointer or the keyboard
+        BOOL lit = m_Selected && m_Enabled;
+        self.layer.backgroundColor = lit ? accent.CGColor : CGColorGetConstantColor(kCGColorClear);
+        NSColor* text = !m_Enabled ? NSColor.tertiaryLabelColor : (lit ? NSColor.whiteColor : NSColor.labelColor);
+        m_Title.textColor = text;
+        m_Icon.contentTintColor = text;
+        m_Badge.contentTintColor = lit ? [NSColor colorWithWhite:1 alpha:0.85] : NSColor.secondaryLabelColor;
+        break;
+    }
     case ForkMenuControlPopup:
         // The canvas's 0.12, lighter under the pointer and while its choices are open
         self.layer.backgroundColor = white(m_Pressed ? 0.24 : (m_On || m_Hovered ? 0.18 : 0.12));
@@ -921,7 +1032,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (void)mouseEntered:(NSEvent*)event
 {
     (void)event;
-    m_Hovered = YES;
+    m_Hovered = [m_Owner controlTakesPointer:self];
     [m_Owner controlHovered:self];
     [self refreshAppearance];
 }
@@ -1060,6 +1171,13 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     BOOL m_ResolutionsShown;
     // Battery's reconnect at the saver's cap
     ForkMenuControl* m_BatteryReconnect;
+    // A list over the open menu, as Control Center's Trackpad opens: only its choices take the pointer
+    // and the keys while it's open. Not retained either: the content holds them.
+    ForkListScrim* m_ListScrim;
+    NSView* m_ListView;
+    NSUInteger m_ListFirst;         // its choices' place in m_Controls
+    ForkMenuControl* m_ListOpener;  // selected again once it closes
+    ForkMenuControl* m_TrackpadTile;
     // Control Center's bitrate, while it's open; not retained either
     NSTextField* m_BitrateTileDetail;
     ForkMenuControl* m_BitrateTileBar;
@@ -1196,13 +1314,15 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         CGFloat width = k_CenterWidth - 2 * k_CenterPadding;
         CGFloat y = k_CenterPadding;
 
-        // The switches, in one tile
+        // As on the canvas, in two columns: the switches in one tall tile at the left, Trackpad and
+        // Notch Stats at the right
+        CGFloat column = floor((width - k_TileGap) / 2);
         NSView* group = [[[ForkFlippedView alloc] initWithFrame:NSZeroRect] autorelease];
         group.wantsLayer = YES;
         group.layer.cornerRadius = 16;
         group.layer.backgroundColor = white(0.08);
         [content addSubview:group];
-        CGFloat groupY = k_CenterPadding;
+        NSMutableArray<ForkMenuControl*>* toggles = [NSMutableArray array];
         auto addToggle = [&](NSString* title, NSString* detail, NSString* name, BOOL on, NotchMenus::Action action, BOOL enabled) {
             ForkMenuControl* control = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlToggle owner:self] autorelease];
             control->m_Action = action;
@@ -1210,10 +1330,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
             control->m_Enabled = enabled;
             [control setTitle:title detail:detail symbol:name];
             [control setAccessibilityValue:on ? @1 : @0];
-            control.frame = NSMakeRect(10, groupY, width - 20, k_ToggleHeight);
             [group addSubview:control];
             [m_Controls addObject:control];
-            groupY += k_ToggleHeight + 6;
+            [toggles addObject:control];
         };
         // Automatic for this stream, or by shortcut; greyed when the PC can't sync
         using Clipboard = NotchBar::MenuState::Clipboard;
@@ -1228,11 +1347,53 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
                   @"keyboard", state.systemKeysToPc, NotchMenus::Action::ToggleSystemKeys, YES);
         addToggle(tr("Mouse"), state.mouseCaptured ? tr("Captured · ⌃⌥⇧Z") : tr("Free · ⌃⌥⇧Z"),
                   @"cursorarrow", state.mouseCaptured, NotchMenus::Action::ToggleMouseCapture, YES);
-        addToggle(tr("Notch Stats"), state.notchStatsShown ? tr("Shown") : tr("Hidden"),
-                  @"chart.bar.fill", state.notchStatsShown, NotchMenus::Action::ToggleNotchStats, YES);
-        // The last switch's gap below it becomes the tile's padding
-        group.frame = NSMakeRect(k_CenterPadding, y, width, groupY - 6 + k_CenterPadding);
-        y += NSHeight(group.frame) + k_TileGap;
+
+        // Trackpad opens its modes (openTrackpadList); Notch Stats switches the bar's stats text
+        m_TrackpadTile = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlModule owner:self] autorelease];
+        m_TrackpadTile->m_On = YES;
+        // A trackpad with a hand on it; an older macOS's symbols have the hand alone
+        NSString* trackpadSymbol = symbol(@"rectangle.and.hand.point.up.left", 14, NSFontWeightMedium) != nil ? @"rectangle.and.hand.point.up.left"
+                                                                                                          : @"hand.point.up.left";
+        [m_TrackpadTile setTitle:tr("Trackpad") detail:trackpadModeTitle(state.trackpadMode) symbol:trackpadSymbol];
+        [m_TrackpadTile setAccessibilityRole:NSAccessibilityPopUpButtonRole];
+        [m_TrackpadTile setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Trackpad mode: %1")
+                                                  .arg(QString::fromNSString(trackpadModeTitle(state.trackpadMode))).toNSString()];
+        [m_TrackpadTile setAccessibilityExpanded:NO];
+        ForkMenuControl* stats = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlModule owner:self] autorelease];
+        stats->m_Action = NotchMenus::Action::ToggleNotchStats;
+        stats->m_On = state.notchStatsShown;
+        [stats setTitle:tr("Notch Stats") detail:state.notchStatsShown ? tr("Shown") : tr("Hidden") symbol:@"chart.bar.fill"];
+        [stats setAccessibilityRole:NSAccessibilityCheckBoxRole];
+        [stats setAccessibilitySubrole:NSAccessibilitySwitchSubrole];
+        [stats setAccessibilityValue:state.notchStatsShown ? @1 : @0];
+        for (ForkMenuControl* tile in @[ m_TrackpadTile, stats ]) {
+            [content addSubview:tile];
+            [m_Controls addObject:tile];
+        }
+
+        // The tall tile's switches as tall as they need, the two at the right as tall as each other;
+        // whichever side is shorter grows to the other, its switches spread out as on the canvas
+        CGFloat toggleWidth = column - 20;
+        CGFloat togglesHeight = 0;
+        for (ForkMenuControl* toggle in toggles) {
+            togglesHeight += [toggle heightForWidth:toggleWidth];
+        }
+        CGFloat leftHeight = 10 + togglesHeight + 8 * (toggles.count - 1) + 10;
+        CGFloat moduleHeight = MAX([m_TrackpadTile heightForWidth:column], [stats heightForWidth:column]);
+        CGFloat gridHeight = MAX(leftHeight, 2 * moduleHeight + k_TileGap);
+        moduleHeight = floor((gridHeight - k_TileGap) / 2);
+        CGFloat spread = toggles.count > 1 ? (gridHeight - leftHeight) / (toggles.count - 1) : 0;
+        CGFloat toggleY = 10;
+        for (ForkMenuControl* toggle in toggles) {
+            CGFloat height = [toggle heightForWidth:toggleWidth];
+            toggle.frame = NSMakeRect(10, round(toggleY), toggleWidth, height);
+            toggleY += height + 8 + spread;
+        }
+        group.frame = NSMakeRect(k_CenterPadding, y, column, gridHeight);
+        CGFloat right = k_CenterPadding + width - column;
+        m_TrackpadTile.frame = NSMakeRect(right, y, column, moduleHeight);
+        stats.frame = NSMakeRect(right, y + gridHeight - moduleHeight, column, moduleHeight);
+        y += gridHeight + k_TileGap;
 
         // The bitrate, to look at: Quality changes it
         NSView* bitrate = [self bitrateTile:state.bitrate width:width];
@@ -1281,6 +1442,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (BOOL)selectable:(int)index
 {
     if (index < 0 || index >= (int)m_Controls.count) {
+        return NO;
+    }
+    if (m_ListView != nil && (NSUInteger)index < m_ListFirst) {
         return NO;
     }
     ForkMenuControl* control = m_Controls[(NSUInteger)index];
@@ -1456,6 +1620,126 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [control detach];
     }
     [m_Controls removeAllObjects];
+    m_ListScrim = nil;
+    m_ListView = nil;
+    m_ListFirst = 0;
+    m_ListOpener = nil;
+    m_TrackpadTile = nil;
+}
+
+// A list of choices over the open menu, under what opened it (above it if there's no room below),
+// its right edge with the opener's, as on the canvas
+- (void)openListFor:(ForkMenuControl*)opener choices:(NSArray<ForkMenuControl*>*)choices
+{
+    [self closeList];
+    NSView* content = opener.superview;
+    while (content != nil && content.superview != m_Panel.contentView) {
+        content = content.superview;
+    }
+    if (content == nil) {
+        return;
+    }
+    const CGFloat width = 224;
+    const CGFloat rowHeight = 22;
+    const CGFloat padding = 5;
+
+    m_ListScrim = [[[ForkListScrim alloc] initWithFrame:content.bounds] autorelease];
+    m_ListScrim->m_Owner = self;
+    [content addSubview:m_ListScrim];
+
+    NSView* list = [[[ForkFlippedView alloc] initWithFrame:NSZeroRect] autorelease];
+    list.wantsLayer = YES;
+    list.layer.cornerRadius = 10;
+    list.layer.backgroundColor = [NSColor colorWithSRGBRed:44 / 255.0 green:44 / 255.0 blue:48 / 255.0 alpha:0.97].CGColor;
+    list.layer.borderWidth = 1;
+    list.layer.borderColor = white(0.10);
+    list.layer.shadowOpacity = 0.55;
+    list.layer.shadowRadius = 16;
+    list.layer.shadowOffset = CGSizeZero;   // all round: a flipped view's layer would turn an offset upwards
+    [list setAccessibilityElement:YES];
+    [list setAccessibilityRole:NSAccessibilityMenuRole];
+    CGFloat height = padding * 2 + rowHeight * choices.count;
+    NSRect openerFrame = [content convertRect:opener.bounds fromView:opener];
+    CGFloat x = MAX(4, MIN(NSMaxX(openerFrame) - width, NSWidth(content.bounds) - 4 - width));
+    CGFloat y = NSMaxY(openerFrame) + 4;
+    if (y + height > NSHeight(content.bounds) - 4) {
+        y = MAX(4, NSMinY(openerFrame) - 4 - height);
+    }
+    list.frame = NSMakeRect(x, y, width, height);
+    m_ListFirst = m_Controls.count;
+    CGFloat rowY = padding;
+    for (ForkMenuControl* choice in choices) {
+        choice.frame = NSMakeRect(padding, rowY, width - 2 * padding, rowHeight);
+        [list addSubview:choice];
+        [m_Controls addObject:choice];
+        rowY += rowHeight;
+    }
+    [content addSubview:list];
+    m_ListView = list;
+    m_ListOpener = opener;
+    [opener setAccessibilityExpanded:YES];
+
+    // The keyboard goes on to the ticked choice; the pointer selects as it moves
+    BOOL keyboard = m_KeyboardSelection;
+    int ticked = -1;
+    for (NSUInteger i = m_ListFirst; i < m_Controls.count; i++) {
+        if (m_Controls[i]->m_On) {
+            ticked = (int)i;
+            break;
+        }
+    }
+    [self select:keyboard ? (ticked >= 0 ? ticked : (int)m_ListFirst) : -1 keyboard:keyboard];
+}
+
+// Control Center's Trackpad: the three modes, the stream's ticked, ↻ on those that reconnect
+// (ReconnectRules::trackpadNeedsReconnect())
+- (void)openTrackpadList
+{
+    if (m_TrackpadTile == nil || m_Host == nil) {
+        return;
+    }
+    NotchBar::MenuState state = [m_Host menusState];
+    NSMutableArray<ForkMenuControl*>* choices = [NSMutableArray array];
+    for (int mode : { ReconnectRules::k_TrackpadMacTrackpad, ReconnectRules::k_TrackpadWindowsTouchpad, ReconnectRules::k_TrackpadMacMouse }) {
+        ForkMenuControl* choice = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlChoice owner:self] autorelease];
+        choice->m_Action = NotchMenus::Action::SetTrackpadMode;
+        choice->m_Value = mode;
+        [choice setTitle:trackpadModeTitle(mode) detail:nil symbol:nil];
+        BOOL current = mode == state.trackpadMode;
+        // Greyed when the PC's Apollo can't take the trackpad that way
+        choice->m_Enabled = current || mode == ReconnectRules::k_TrackpadMacMouse ||
+                            (mode == ReconnectRules::k_TrackpadWindowsTouchpad ? state.trackpadTouchpad : state.trackpadMac);
+        [choice setAccessibilityEnabled:choice->m_Enabled];
+        [choice setChecked:current reconnects:!current && ReconnectRules::trackpadNeedsReconnect(state.trackpadStartedMode, mode)];
+        [choices addObject:choice];
+    }
+    [self openListFor:m_TrackpadTile choices:choices];
+}
+
+- (void)closeList
+{
+    if (m_ListView == nil) {
+        return;
+    }
+    while (m_Controls.count > m_ListFirst) {
+        ForkMenuControl* choice = m_Controls.lastObject;
+        [choice detach];
+        // This may run inside the choice's mouseUp:
+        [[choice retain] autorelease];
+        [m_Controls removeLastObject];
+    }
+    // This may run inside the scrim's mouseDown:
+    [[m_ListView retain] autorelease];
+    [[m_ListScrim retain] autorelease];
+    [m_ListView removeFromSuperview];
+    [m_ListScrim removeFromSuperview];
+    m_ListView = nil;
+    m_ListScrim = nil;
+    ForkMenuControl* opener = m_ListOpener;
+    m_ListOpener = nil;
+    [opener setAccessibilityExpanded:NO];
+    NSUInteger index = opener != nil ? [m_Controls indexOfObject:opener] : NSNotFound;
+    [self select:index != NSNotFound && m_KeyboardSelection ? (int)index : -1 keyboard:m_KeyboardSelection];
 }
 
 - (void)closeQuietly
@@ -1502,12 +1786,19 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [self rebuild];
 }
 
+- (BOOL)controlTakesPointer:(NSView*)control
+{
+    return m_ListView == nil || ((ForkMenuControl*)control)->m_Kind == ForkMenuControlChoice;
+}
+
 // Builds the open menu again in its panel, keeping the selection where it can
 - (void)rebuild
 {
     if (m_Open == NotchMenus::Menu::None || m_Panel == nil) {
         return;
     }
+    // A list over it goes, its opener selected again, rather than vanish with the old content
+    [self closeList];
     int selected = m_Selected;
     BOOL keyboard = m_KeyboardSelection;
 
@@ -2208,6 +2499,26 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
     // Rebuilding drops the menu's controls, and this may run inside this one's mouseUp:
     [[control retain] autorelease];
+    if (m_ListView != nil && control->m_Kind != ForkMenuControlChoice) {
+        // Under an open list (VoiceOver can reach it there), or its opener again: the list closes
+        [self closeList];
+        return;
+    }
+    if (control == m_TrackpadTile) {
+        [self openTrackpadList];
+        return;
+    }
+    if (control->m_Kind == ForkMenuControlChoice) {
+        // The list goes, and the menu stays open to show what changed; the stream ends for a reconnect
+        BOOL current = control->m_On;
+        NotchMenus::Action action = control->m_Action;
+        int value = control->m_Value;
+        [self closeList];
+        if (!current) {
+            [m_Host menusPerform:action value:value];
+        }
+        return;
+    }
     if (control == m_ResolutionButton) {
         // Opens or closes the resolutions under it
         m_ResolutionsShown = !m_ResolutionsShown;
@@ -2230,7 +2541,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
     NotchMenus::Action action = control->m_Action;
     // Switches stay open to show their new state; everything else ends with the menu
-    BOOL staysOpen = control->m_Kind == ForkMenuControlToggle || control->m_Kind == ForkMenuControlSwitch;
+    BOOL staysOpen = control->m_Kind == ForkMenuControlToggle || control->m_Kind == ForkMenuControlSwitch ||
+                     control->m_Kind == ForkMenuControlModule;
     if (control->m_Value != 0) {
         [m_Host menusPerform:action value:control->m_Value];
     }
@@ -2261,7 +2573,12 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     auto selectable = [self](int i) { return [self selectable:i]; };
     switch (scancode) {
     case SDL_SCANCODE_ESCAPE:
-        [self close];
+        if (m_ListView != nil) {
+            [self closeList];
+        }
+        else {
+            [self close];
+        }
         break;
     case SDL_SCANCODE_DOWN:
         [self select:NotchMenus::nextSelectable(count, m_Selected, 1, selectable) keyboard:YES];
@@ -2285,6 +2602,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         ForkMenuControl* selected = [self selectable:m_Selected] ? m_Controls[(NSUInteger)m_Selected] : nil;
         if (m_KeyboardSelection && selected != nil && selected->m_Kind == ForkMenuControlSlider) {
             [self slider:selected step:step];
+            break;
+        }
+        if (m_ListView != nil) {
+            // A list stays put, as a macOS menu's submenu-less items do
             break;
         }
         // Along a segmented control the keyboard selected, as in macOS; it stays at either end

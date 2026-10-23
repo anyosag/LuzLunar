@@ -118,6 +118,34 @@ static void testCarried()
     // Adapting, no bitrate by hand
     choices.adaptive = true;
     CHECK(carried(choices, fps).manualKbps == 0);
+
+    // The remote desktop's mouse a touchpad mode took, for Mac mouse to give back after the reconnect
+    choices.absoluteBeforeTouchpad = true;
+    CHECK(carried(choices, bitrate).absoluteBeforeTouchpad);
+}
+
+static void testTrackpad()
+{
+    // Started in Mac trackpad: Apollo's touchpad takes only gestures for the whole stream
+    CHECK(!trackpadNeedsReconnect(k_TrackpadMacTrackpad, k_TrackpadMacTrackpad));
+    CHECK(trackpadNeedsReconnect(k_TrackpadMacTrackpad, k_TrackpadWindowsTouchpad));
+    CHECK(!trackpadNeedsReconnect(k_TrackpadMacTrackpad, k_TrackpadMacMouse));
+    // Started otherwise: Mac trackpad needs Apollo's side set up at the start
+    CHECK(trackpadNeedsReconnect(k_TrackpadWindowsTouchpad, k_TrackpadMacTrackpad));
+    CHECK(!trackpadNeedsReconnect(k_TrackpadWindowsTouchpad, k_TrackpadMacMouse));
+    CHECK(trackpadNeedsReconnect(k_TrackpadMacMouse, k_TrackpadMacTrackpad));
+    CHECK(!trackpadNeedsReconnect(k_TrackpadMacMouse, k_TrackpadWindowsTouchpad));
+
+    // A reconnect into a touchpad mode takes the game's mouse
+    Settings settings;
+    settings.trackpadMode = k_TrackpadMacMouse;
+    settings.absoluteMouse = true;
+    Overrides overrides;
+    overrides.trackpadMode = k_TrackpadWindowsTouchpad;
+    Settings next = apply(settings, overrides);
+    CHECK(next.trackpadMode == k_TrackpadWindowsTouchpad && !next.absoluteMouse);
+    // Mac mouse keeps the remote desktop's
+    CHECK(apply(settings, Overrides()).absoluteMouse);
 }
 
 int main()
@@ -127,6 +155,7 @@ int main()
     testResolutions();
     testPacking();
     testCarried();
+    testTrackpad();
 
     if (s_Failures == 0) {
         std::printf("reconnectrules: all tests passed\n");

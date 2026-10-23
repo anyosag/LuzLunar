@@ -312,6 +312,22 @@ void SdlInputHandler::forkSuspendRegionLock()
     }
 }
 
+void SdlInputHandler::forkSetAbsoluteMouseMode(bool absolute)
+{
+    if (absolute == m_AbsoluteMouseMode) {
+        return;
+    }
+    // As the combo does, while the stream holds input; otherwise taking it again applies the mode
+    bool captured = isCaptureActive();
+    if (captured) {
+        setCaptureActive(false);
+    }
+    m_AbsoluteMouseMode = absolute;
+    if (captured) {
+        setCaptureActive(true);
+    }
+}
+
 void SdlInputHandler::updatePointerRegionLock()
 {
     // Pointer region lock is irrelevant in relative mouse mode

@@ -73,6 +73,13 @@ public:
         int streamWidth = 0;
         int streamHeight = 0;
 
+        // The trackpad's mode now and the one the stream started in, as StreamingPreferences numbers
+        // them (ReconnectRules::trackpadNeedsReconnect())
+        int trackpadMode = 0;
+        int trackpadStartedMode = 0;
+        bool trackpadTouchpad = false;  // the PC's Apollo takes the trackpad as a touchpad
+        bool trackpadMac = false;       // and in Mac trackpad mode
+
         // The Mac's battery (ForkPower) and Stream Battery Saver
         bool powerKnown = false;        // the stream reads the battery
         PowerRules::Reading power;
