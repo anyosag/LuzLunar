@@ -8,6 +8,11 @@ class NvComputer;
 class Session;
 class StreamingPreferences;
 
+namespace ReconnectRules
+{
+    struct Overrides;
+}
+
 // Per-app stream settings ("profiles") that override the global settings for one app, e.g.
 // HEVC 4:4:4 for an office desktop and AV1 HDR for games. Profiles are keyed by host and app
 // name (Apollo changes app IDs when an app's name or image changes) and are stored under
@@ -30,6 +35,11 @@ public:
     // settings; the global settings are never changed. Command line flags win over the
     // profile: pass the preferences the command line changed as cliPreferences.
     static Session* createSession(NvComputer* computer, NvApp& app, StreamingPreferences* cliPreferences = nullptr);
+
+    // The Session that follows a reconnect from the notch bar: the stream's own settings (its
+    // profile already in them) with the overrides, sizes even (ReconnectRules::apply())
+    static Session* createReconnectSession(NvComputer* computer, NvApp& app, const StreamingPreferences* from,
+                                           const ReconnectRules::Overrides& overrides);
 
 private:
     explicit StreamProfiles(QObject* parent = nullptr);

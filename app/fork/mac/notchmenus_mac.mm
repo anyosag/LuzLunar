@@ -5,6 +5,8 @@
 #include <QCoreApplication>
 #include <QString>
 
+#include "fork/reconnectrules.h"
+
 #import <QuartzCore/QuartzCore.h>
 
 // [fork] The notch bar's items and menus. Like the bar (notchbar.mm), every panel here is
@@ -454,6 +456,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     ForkMenuControlTile,        // a Control Center button: a circle and a title
     ForkMenuControlSwitch,      // a title and an on/off switch at the right, as in Quality
     ForkMenuControlSlider,      // a bitrate slider: dragged without a tracking loop, so the stream runs on
+    ForkMenuControlChip,        // one choice of a segmented control, as Quality's frame rates
+    ForkMenuControlPopup,       // a value in a capsule with up and down chevrons, its choices under it: Resolution
 };
 
 @class ForkNotchMenus;
@@ -489,6 +493,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     BOOL m_Dragging;
     CGFloat m_GrabOffset;       // where on the knob the drag took it, so taking it doesn't move it
     BOOL m_ReadOnly;            // only shows the value, as Control Center's Bitrate does
+    int m_Value;                // what the action carries, as a frame rate; 0 for nothing
 }
 - (instancetype)initWithKind:(ForkMenuControlKind)kind owner:(ForkNotchMenus*)owner;
 - (void)setTitle:(NSString*)title detail:(NSString*)detail symbol:(NSString*)name;
@@ -572,6 +577,23 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     case ForkMenuControlSlider:
         self.layer.cornerRadius = 6;
         break;
+    case ForkMenuControlChip:
+        self.layer.cornerRadius = 5;
+        m_Title = [makeText(@"", [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular], NSColor.labelColor) retain];
+        m_Title.alignment = NSTextAlignmentCenter;
+        [self addSubview:m_Title];
+        break;
+    case ForkMenuControlPopup:
+        self.layer.cornerRadius = 6;
+        m_Title = [makeText(@"", [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular], NSColor.labelColor) retain];
+        [self addSubview:m_Title];
+        m_Icon = [[NSImageView alloc] initWithFrame:NSZeroRect];
+        m_Icon.imageScaling = NSImageScaleNone;
+        m_Icon.contentTintColor = NSColor.labelColor;
+        m_Icon.image = symbol(@"chevron.up.chevron.down", 9, NSFontWeightSemibold);
+        [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
+        [self addSubview:m_Icon];
+        break;
     }
 
     BOOL actionable = kind == ForkMenuControlRow || kind == ForkMenuControlToggle || kind == ForkMenuControlTile;
@@ -579,6 +601,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [self setAccessibilityRole:kind == ForkMenuControlRow ? NSAccessibilityMenuItemRole :
                                kind == ForkMenuControlToggle || kind == ForkMenuControlSwitch ? NSAccessibilityCheckBoxRole :
                                kind == ForkMenuControlSlider ? NSAccessibilitySliderRole :
+                               kind == ForkMenuControlChip ? NSAccessibilityRadioButtonRole :
+                               kind == ForkMenuControlPopup ? NSAccessibilityPopUpButtonRole :
                                actionable ? NSAccessibilityButtonRole : NSAccessibilityStaticTextRole];
     if (kind == ForkMenuControlToggle || kind == ForkMenuControlSwitch) {
         [self setAccessibilitySubrole:NSAccessibilitySwitchSubrole];
@@ -605,7 +629,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 {
     m_Title.stringValue = title != nil ? title : @"";
     m_Detail.stringValue = detail != nil ? detail : @"";
-    if (m_Icon != nil) {
+    if (m_Icon != nil && m_Kind != ForkMenuControlPopup) {
         m_Icon.image = symbol(name, 14, NSFontWeightMedium);
         [m_Icon setFrameSize:m_Icon.image != nil ? m_Icon.image.size : NSZeroSize];
     }
@@ -627,6 +651,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (CGFloat)naturalWidth
 {
     [m_Title sizeToFit];
+    if (m_Kind == ForkMenuControlPopup) {
+        // As on the canvas: 9 before the value, 6 between it and the chevrons, 6 after
+        return ceil(9 + NSWidth(m_Title.frame) + 6 + NSWidth(m_Icon.frame) + 6);
+    }
     CGFloat width = 18 + NSWidth(m_Title.frame);
     if (m_Detail != nil && m_Detail.stringValue.length > 0) {
         [m_Detail sizeToFit];
@@ -686,6 +714,19 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
     case ForkMenuControlSlider:
         break;
+    case ForkMenuControlChip: {
+        [m_Title sizeToFit];
+        m_Title.frame = NSMakeRect(0, round((size.height - NSHeight(m_Title.frame)) / 2), size.width, NSHeight(m_Title.frame));
+        break;
+    }
+    case ForkMenuControlPopup: {
+        NSSize iconSize = m_Icon.frame.size;
+        CGFloat iconX = size.width - 6 - iconSize.width;
+        [m_Icon setFrameOrigin:NSMakePoint(iconX, round((size.height - iconSize.height) / 2))];
+        [m_Title sizeToFit];
+        m_Title.frame = NSMakeRect(9, round((size.height - NSHeight(m_Title.frame)) / 2), MAX(iconX - 6 - 9, 0), NSHeight(m_Title.frame));
+        break;
+    }
     }
 }
 
@@ -840,6 +881,18 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         self.alphaValue = m_ReadOnly ? 0.55 : (m_Enabled ? 1 : 0.45);
         self.needsDisplay = YES;
         break;
+    case ForkMenuControlChip:
+        // The chosen one lit, as on the canvas; the pointer's lighter
+        self.layer.backgroundColor = white(m_On ? 0.24 : (m_Pressed ? 0.16 : (m_Hovered ? 0.10 : 0)));
+        self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
+        self.layer.borderColor = accent.CGColor;
+        break;
+    case ForkMenuControlPopup:
+        // The canvas's 0.12, lighter under the pointer and while its choices are open
+        self.layer.backgroundColor = white(m_Pressed ? 0.24 : (m_On || m_Hovered ? 0.18 : 0.12));
+        self.layer.borderWidth = m_KeyboardSelected && m_Selected ? 2 : 0;
+        self.layer.borderColor = accent.CGColor;
+        break;
     default:
         break;
     }
@@ -992,9 +1045,21 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     NSTextField* m_SliderHigh;
     NSTextField* m_Caption;
     NotchQuality::State m_Bitrate;  // what it shows
-    // Quality's Stream Battery Saver note
+    // Quality's Stream Battery Saver note, and its reconnect on a PC that can't change the bitrate live
     NSView* m_SaverBox;
     NSTextField* m_SaverText;
+    ForkMenuControl* m_SaverReconnect;
+    // Quality's frame rates and resolutions, which reconnect
+    NSView* m_QualityLine;
+    NSTextField* m_FpsTitle;
+    NSView* m_FpsGroup;
+    NSTextField* m_ResolutionTitle;
+    ForkMenuControl* m_ResolutionButton;
+    NSMutableArray<ForkMenuControl*>* m_ResolutionChoices;  // not retained either: shown while m_ResolutionsShown
+    NSTextField* m_ReconnectCaption;
+    BOOL m_ResolutionsShown;
+    // Battery's reconnect at the saver's cap
+    ForkMenuControl* m_BatteryReconnect;
     // Control Center's bitrate, while it's open; not retained either
     NSTextField* m_BitrateTileDetail;
     ForkMenuControl* m_BitrateTileBar;
@@ -1030,6 +1095,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 {
     [m_AppName release];
     [m_HostName release];
+    [m_ResolutionChoices release];
     [m_Panel release];
     [m_Controls release];
     [m_OwedReleases release];
@@ -1075,6 +1141,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
             nil, NotchMenus::Action::QuitAppOnPc, YES);
         add(ForkMenuControlRow, QCoreApplication::translate("NotchBar", "Quit %1 and Sleep PC").arg(app).toNSString(),
             nil, NotchMenus::Action::QuitAndSleepPc, state.canSleepPc);
+        add(ForkMenuControlSeparator, nil, nil, NotchMenus::Action::None, NO);
+        add(ForkMenuControlRow, tr("Reconnect"), nil, NotchMenus::Action::Reconnect, YES);
 
         // As wide as its widest row, like macOS's menus, within limits
         CGFloat width = k_SessionWidth - 2 * k_SessionPadding;
@@ -1117,7 +1185,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         *size = NSMakeSize(k_StatusWidth, y + k_StatusPadding);
     }
     else if (m_Open == NotchMenus::Menu::Quality) {
-        [self buildQuality:content state:state.bitrate];
+        [self buildQuality:content state:state];
         *size = NSMakeSize(k_QualityWidth, [self layoutQuality]);
     }
     else if (m_Open == NotchMenus::Menu::Battery) {
@@ -1360,6 +1428,17 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_BitrateTileBar = nil;
     m_SaverBox = nil;
     m_SaverText = nil;
+    m_SaverReconnect = nil;
+    m_QualityLine = nil;
+    m_FpsTitle = nil;
+    m_FpsGroup = nil;
+    m_ResolutionTitle = nil;
+    m_ResolutionButton = nil;
+    [m_ResolutionChoices release];
+    m_ResolutionChoices = nil;
+    m_ReconnectCaption = nil;
+    m_ResolutionsShown = NO;
+    m_BatteryReconnect = nil;
     m_BatteryContent = nil;
     m_BatteryView = nil;
     m_BatteryLines[0] = m_BatteryLines[1] = nil;
@@ -1420,6 +1499,15 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [self batteryChanged];
         return;
     }
+    [self rebuild];
+}
+
+// Builds the open menu again in its panel, keeping the selection where it can
+- (void)rebuild
+{
+    if (m_Open == NotchMenus::Menu::None || m_Panel == nil) {
+        return;
+    }
     int selected = m_Selected;
     BOOL keyboard = m_KeyboardSelection;
 
@@ -1459,8 +1547,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 
 // Quality: the bitrate now, the switch for adaptive bitrate and why it's where it is, and the slider
 // that sets it by hand. qualityChanged updates the parts in place.
-- (void)buildQuality:(NSView*)content state:(const NotchQuality::State&)state
+- (void)buildQuality:(NSView*)content state:(const NotchBar::MenuState&)menuState
 {
+    const NotchQuality::State& state = menuState.bitrate;
     m_QualityContent = content;
     m_QualityTitle = makeText(tr("Bitrate"), [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold], NSColor.labelColor);
     [content addSubview:m_QualityTitle];
@@ -1482,6 +1571,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_SaverText = makeWrappingText([NSFont systemFontOfSize:12], NSColor.labelColor);
     [m_SaverBox addSubview:m_SaverText];
     [content addSubview:m_SaverBox];
+    m_SaverReconnect = [self reconnectAtSaverRow];
+    [content addSubview:m_SaverReconnect];
+    [m_Controls addObject:m_SaverReconnect];
 
     m_AdaptSwitch = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlSwitch owner:self] autorelease];
     m_AdaptSwitch->m_Action = NotchMenus::Action::ToggleAdaptiveBitrate;
@@ -1510,7 +1602,91 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     m_Caption = makeWrappingText([NSFont systemFontOfSize:11], NSColor.secondaryLabelColor);
     [content addSubview:m_Caption];
 
+    // Frame rate and resolution, which reconnect: the stream's own lit or ticked
+    m_QualityLine = makeSeparatorLine();
+    [content addSubview:m_QualityLine];
+    m_FpsTitle = makeText(tr("Frame rate"), [NSFont systemFontOfSize:13], NSColor.labelColor);
+    [content addSubview:m_FpsTitle];
+    m_FpsGroup = [[[ForkFlippedView alloc] initWithFrame:NSZeroRect] autorelease];
+    m_FpsGroup.wantsLayer = YES;
+    m_FpsGroup.layer.cornerRadius = 7;
+    m_FpsGroup.layer.backgroundColor = white(0.08);
+    [m_FpsGroup setAccessibilityElement:YES];
+    [m_FpsGroup setAccessibilityRole:NSAccessibilityRadioGroupRole];
+    [m_FpsGroup setAccessibilityLabel:tr("Frame rate")];
+    [content addSubview:m_FpsGroup];
+    NSScreen* screen = [m_Host menusBarWindow].screen;
+    int screenFps = 60;
+    if (@available(macOS 12.0, *)) {
+        screenFps = screen != nil ? (int)screen.maximumFramesPerSecond : 60;
+    }
+    for (int fps : ReconnectRules::fpsChoices(menuState.streamFps, screenFps)) {
+        ForkMenuControl* chip = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlChip owner:self] autorelease];
+        BOOL current = fps == menuState.streamFps;
+        chip->m_On = current;
+        chip->m_Action = current ? NotchMenus::Action::None : NotchMenus::Action::ReconnectAtFps;
+        chip->m_Value = fps;
+        [chip setTitle:[NSString stringWithFormat:@"%d", fps] detail:nil symbol:nil];
+        [chip setAccessibilityLabel:QCoreApplication::translate("NotchBar", "%1 frames per second").arg(fps).toNSString()];
+        [chip setAccessibilityValue:current ? @1 : @0];
+        [m_FpsGroup addSubview:chip];
+        [m_Controls addObject:chip];
+    }
+
+    ReconnectRules::Size streamSize { menuState.streamWidth, menuState.streamHeight };
+    m_ResolutionTitle = makeText(tr("Resolution"), [NSFont systemFontOfSize:13], NSColor.labelColor);
+    [content addSubview:m_ResolutionTitle];
+    m_ResolutionButton = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlPopup owner:self] autorelease];
+    m_ResolutionButton->m_On = m_ResolutionsShown;
+    [m_ResolutionButton setTitle:[NSString stringWithFormat:@"%d × %d", streamSize.width, streamSize.height] detail:nil symbol:nil];
+    [m_ResolutionButton setAccessibilityLabel:tr("Resolution")];
+    [m_ResolutionButton setAccessibilityValue:QCoreApplication::translate("NotchBar", "%1 by %2")
+                                                  .arg(streamSize.width).arg(streamSize.height).toNSString()];
+    [m_ResolutionButton setAccessibilityExpanded:m_ResolutionsShown];
+    [content addSubview:m_ResolutionButton];
+    [m_Controls addObject:m_ResolutionButton];
+    [m_ResolutionChoices release];
+    m_ResolutionChoices = [[NSMutableArray alloc] init];
+    if (m_ResolutionsShown) {
+        // The screen's area below the notch, in pixels
+        ReconnectRules::Size screenSize;
+        if (screen != nil) {
+            CGFloat scale = screen.backingScaleFactor;
+            CGFloat top = 0;
+            if (@available(macOS 12.0, *)) {
+                top = screen.safeAreaInsets.top;
+            }
+            screenSize = { (int)lround(NSWidth(screen.frame) * scale), (int)lround((NSHeight(screen.frame) - top) * scale) };
+        }
+        for (const ReconnectRules::Size& size : ReconnectRules::resolutionChoices(streamSize, screenSize)) {
+            ForkMenuControl* row = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlRow owner:self] autorelease];
+            BOOL current = size == streamSize;
+            row->m_Action = current ? NotchMenus::Action::None : NotchMenus::Action::ReconnectAtResolution;
+            row->m_Value = ReconnectRules::packSize(size);
+            [row setTitle:[NSString stringWithFormat:@"    %d × %d", size.width, size.height] detail:current ? @"✓" : nil symbol:nil];
+            [row setAccessibilityLabel:QCoreApplication::translate("NotchBar", "%1 by %2").arg(size.width).arg(size.height).toNSString()];
+            [row setAccessibilitySelected:current];
+            [content addSubview:row];
+            [m_Controls addObject:row];
+            [m_ResolutionChoices addObject:row];
+        }
+    }
+    m_ReconnectCaption = makeWrappingText([NSFont systemFontOfSize:12], NSColor.secondaryLabelColor);
+    m_ReconnectCaption.stringValue = tr("Changing these reconnects the stream.");
+    [content addSubview:m_ReconnectCaption];
+
     [self showQuality:state];
+}
+
+// "Reconnect at 10 Mb/s": Stream Battery Saver's cap on a PC that can't change the bitrate live
+- (ForkMenuControl*)reconnectAtSaverRow
+{
+    ForkMenuControl* row = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlRow owner:self] autorelease];
+    row->m_Action = NotchMenus::Action::ReconnectAtBitrate;
+    row->m_Value = PowerRules::k_SaverKbps;
+    [row setTitle:QCoreApplication::translate("NotchBar", "Reconnect at %1").arg(mbpsText(PowerRules::k_SaverKbps)).toNSString()
+           detail:nil symbol:nil];
+    return row;
 }
 
 // Puts the state in Quality's parts; layoutQuality places them
@@ -1536,6 +1712,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         break;
     }
     m_SaverBox.hidden = m_SaverText.stringValue.length == 0;
+    BOOL saverReconnect = NotchQuality::saverNote(state) == NotchQuality::SaverNote::NeedsReconnect;
+    m_SaverReconnect.hidden = !saverReconnect;
+    m_SaverReconnect->m_Enabled = saverReconnect;
 
     m_AdaptSwitch->m_On = state.adapting;
     m_AdaptSwitch->m_Enabled = NotchQuality::switchEnabled(state);
@@ -1669,6 +1848,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         }
         y += boxHeight + 4;
     }
+    if (!m_SaverReconnect.hidden) {
+        m_SaverReconnect.frame = NSMakeRect(k_QualityPadding, y, width, k_RowHeight);
+        y += k_RowHeight + 4;
+    }
 
     m_AdaptSwitch.frame = NSMakeRect(k_QualityPadding, y, width, k_SwitchRowHeight);
     y += k_SwitchRowHeight;
@@ -1696,8 +1879,39 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 
     CGFloat captionHeight = textHeight(m_Caption, inner);
     m_Caption.frame = NSMakeRect(left, y, inner, captionHeight);
-    y += captionHeight;
-    return y + 6 + k_QualityPadding;
+    y += captionHeight + 6;
+
+    // Frame rate: the title, the chips at the right in their group, 32 pt
+    m_QualityLine.frame = NSMakeRect(left, y + 5, inner, 1);
+    y += 11;
+    NSArray<NSView*>* chips = m_FpsGroup.subviews;
+    CGFloat chipX = 2;
+    for (NSView* chip in chips) {
+        CGFloat chipWidth = MAX(40, [(ForkMenuControl*)chip naturalWidth] - 2);
+        chip.frame = NSMakeRect(chipX, 2, chipWidth, 22);
+        chipX += chipWidth + 2;
+    }
+    m_FpsGroup.frame = NSMakeRect(left + inner - chipX, y + 3, chipX, 26);
+    [m_FpsTitle sizeToFit];
+    m_FpsTitle.frame = NSMakeRect(left, y + round((32 - NSHeight(m_FpsTitle.frame)) / 2), MAX(inner - chipX - 12, 0), NSHeight(m_FpsTitle.frame));
+    y += 32;
+
+    // Resolution: the title, the stream's size in its capsule at the right, 32 pt; its choices under
+    // it while they're open
+    CGFloat buttonWidth = MIN([m_ResolutionButton naturalWidth], inner);
+    m_ResolutionButton.frame = NSMakeRect(left + inner - buttonWidth, y + 5, buttonWidth, 22);
+    [m_ResolutionTitle sizeToFit];
+    m_ResolutionTitle.frame = NSMakeRect(left, y + round((32 - NSHeight(m_ResolutionTitle.frame)) / 2), MAX(inner - buttonWidth - 12, 0),
+                                         NSHeight(m_ResolutionTitle.frame));
+    y += 32;
+    for (ForkMenuControl* choice in m_ResolutionChoices) {
+        choice.frame = NSMakeRect(k_QualityPadding, y, width, k_RowHeight);
+        y += k_RowHeight;
+    }
+    CGFloat reconnectHeight = textHeight(m_ReconnectCaption, inner);
+    m_ReconnectCaption.frame = NSMakeRect(left, y + 2, inner, reconnectHeight);
+    y += 2 + reconnectHeight;
+    return y + 4 + k_QualityPadding;
 }
 
 // Lays Quality out again, its panel's top edge where it was if its height changed
@@ -1777,6 +1991,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [content addSubview:m_SaverCaptions[i]];
     }
     m_SaverCaptions[1].stringValue = tr("Turns on with Low Power Mode. Turning it off isn’t remembered.");
+    m_BatteryReconnect = [self reconnectAtSaverRow];
+    [content addSubview:m_BatteryReconnect];
+    [m_Controls addObject:m_BatteryReconnect];
 
     m_BatterySettingsRow = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlRow owner:self] autorelease];
     m_BatterySettingsRow->m_Action = NotchMenus::Action::OpenBatterySettings;
@@ -1815,6 +2032,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         y += captionHeight + (i == 1 ? 2 : 0);
     }
     y += 6;
+    // The saver on, with a bitrate above its cap, and a PC that can't cap it live: a reconnect can
+    BOOL reconnect = state.saverOn && !state.bitrate.live && state.bitrate.ownKbps > PowerRules::k_SaverKbps;
+    m_BatteryReconnect.hidden = !reconnect;
+    m_BatteryReconnect->m_Enabled = reconnect;
+    if (reconnect) {
+        m_BatteryReconnect.frame = NSMakeRect(k_BatteryPadding, y, width, k_RowHeight);
+        y += k_RowHeight + 4;
+    }
 
     m_BatteryLines[1].frame = NSMakeRect(left, y + 5, inner, 1);
     y += 11;
@@ -1981,10 +2206,37 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         // Dragged, or moved a step with the arrow keys
         return;
     }
+    // Rebuilding drops the menu's controls, and this may run inside this one's mouseUp:
+    [[control retain] autorelease];
+    if (control == m_ResolutionButton) {
+        // Opens or closes the resolutions under it
+        m_ResolutionsShown = !m_ResolutionsShown;
+        [self rebuild];
+        return;
+    }
+    if (control->m_Action == NotchMenus::Action::None) {
+        // The stream's own frame rate or resolution: nothing to reconnect for
+        if (m_ResolutionsShown && control->m_Kind == ForkMenuControlRow) {
+            m_ResolutionsShown = NO;
+            BOOL keyboard = m_KeyboardSelection;
+            [self rebuild];
+            // Back on Resolution, as the choice it was on has gone
+            NSUInteger row = [m_Controls indexOfObject:m_ResolutionButton];
+            if (row != NSNotFound) {
+                [self select:(int)row keyboard:keyboard];
+            }
+        }
+        return;
+    }
     NotchMenus::Action action = control->m_Action;
     // Switches stay open to show their new state; everything else ends with the menu
     BOOL staysOpen = control->m_Kind == ForkMenuControlToggle || control->m_Kind == ForkMenuControlSwitch;
-    [m_Host menusPerform:action];
+    if (control->m_Value != 0) {
+        [m_Host menusPerform:action value:control->m_Value];
+    }
+    else {
+        [m_Host menusPerform:action];
+    }
     if (!staysOpen) {
         [self close];
     }
@@ -2033,6 +2285,14 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         ForkMenuControl* selected = [self selectable:m_Selected] ? m_Controls[(NSUInteger)m_Selected] : nil;
         if (m_KeyboardSelection && selected != nil && selected->m_Kind == ForkMenuControlSlider) {
             [self slider:selected step:step];
+            break;
+        }
+        // Along a segmented control the keyboard selected, as in macOS; it stays at either end
+        if (m_KeyboardSelection && selected != nil && selected->m_Kind == ForkMenuControlChip) {
+            int next = m_Selected + step;
+            if ([self selectable:next] && ((ForkMenuControl*)m_Controls[(NSUInteger)next])->m_Kind == ForkMenuControlChip) {
+                [self select:next keyboard:YES];
+            }
             break;
         }
         // To the next menu whose item is on screen; none, and this one stays open

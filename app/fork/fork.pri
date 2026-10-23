@@ -51,6 +51,7 @@ SOURCES += \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
     $$PWD/forkpower.cpp \
+    $$PWD/forkreconnect.cpp \
     $$PWD/adaptivebitrate.cpp \
     $$PWD/bitrateclient.cpp \
     $$PWD/bitraterules.cpp \
@@ -106,7 +107,9 @@ HEADERS += \
     $$PWD/notchmenus.h \
     $$PWD/notchquality.h \
     $$PWD/forkpower.h \
+    $$PWD/forkreconnect.h \
     $$PWD/powerrules.h \
+    $$PWD/reconnectrules.h \
     $$PWD/notchstatus.h \
     $$PWD/powernotice.h \
     $$PWD/sfsymbols.h \

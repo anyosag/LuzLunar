@@ -29,6 +29,10 @@ namespace NotchMenus
         SetBitrate,                 // the Quality slider's bitrate, in kbps (the action's value)
         ToggleBatterySaver,         // Stream Battery Saver on or off until Low Power Mode changes
         OpenBatterySettings,        // System Settings' Battery pane (the bar does this itself)
+        Reconnect,                  // ends the stream and starts it again, its app running on (Session::forkReconnect())
+        ReconnectAtFps,             // the same at another frame rate (the action's value)
+        ReconnectAtResolution,      // at another resolution (the value, ReconnectRules::packSize())
+        ReconnectAtBitrate,         // at another bitrate in kbps (the value): the saver on a PC that can't change it live
     };
 
     // The bar's menus, left to right as their items sit on the bar

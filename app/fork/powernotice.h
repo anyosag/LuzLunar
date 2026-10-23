@@ -15,6 +15,13 @@
 class PowerNotice
 {
 public:
+    // What's said, and the button after it, if any: "Reconnect at 60 fps" above 60 fps
+    struct Notice {
+        QString text;
+        QString actionTitle;
+        int reconnectFps = 0;
+    };
+
     PowerNotice();
     ~PowerNotice();
 
@@ -22,19 +29,19 @@ public:
     PowerNotice& operator=(const PowerNotice&) = delete;
 
     // Shows a message; returns false while it can't yet (the notch bar's showNotice())
-    void setMessageSink(std::function<bool(const QString&)> sink);
+    void setMessageSink(std::function<bool(const Notice&)> sink);
 
-    // Offers the message from now on, in place of one still waiting; text says what it is when it's
-    // shown: empty for nothing to say, nullopt for not known yet (asked again at the next try)
-    void offer(std::function<std::optional<QString>()> text);
+    // Offers the message from now on, in place of one still waiting; notice says what it is when it's
+    // shown: empty text for nothing to say, nullopt for not known yet (asked again at the next try)
+    void offer(std::function<std::optional<Notice>()> notice);
 
     void handleEvent(const SDL_Event& event);
 
 private:
     void stop();
 
-    std::function<std::optional<QString>()> m_Text;
+    std::function<std::optional<Notice>()> m_Text;
     int m_Attempts = 0;
     SDL_TimerID m_Timer = 0;
-    std::function<bool(const QString&)> m_MessageSink;
+    std::function<bool(const Notice&)> m_MessageSink;
 };

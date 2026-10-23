@@ -133,6 +133,23 @@ static void testSaver()
     CHECK(manual.on());
     CHECK(!manual.setLowPowerMode(true) && manual.on());
     CHECK(manual.setLowPowerMode(false) && !manual.on());
+
+    // Kept across a reconnect while Low Power Mode holds
+    Saver off(true);
+    off.toggle();
+    CHECK(off.manual() == std::optional<bool>(false));
+    Saver next(true);
+    next.restore(off.manual(), off.lowPowerMode());
+    CHECK(!next.on());
+    CHECK(!next.setLowPowerMode(false) && !next.on() && !next.manual());   // forgotten, off either way
+    // Not once it changed in between
+    Saver changed(false);
+    changed.restore(off.manual(), off.lowPowerMode());
+    CHECK(!changed.manual() && !changed.on());
+    // Nothing chosen by hand
+    Saver none(true);
+    none.restore(std::nullopt, true);
+    CHECK(none.on() && !none.manual());
 }
 
 static void testPill()

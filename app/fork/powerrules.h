@@ -196,6 +196,18 @@ namespace PowerRules
 
         bool lowPowerMode() const { return m_LowPowerMode; }
 
+        // The choice by hand, if one holds
+        std::optional<bool> manual() const { return m_Manual; }
+
+        // A choice by hand from the stream before a reconnect, made in that Low Power Mode: it holds
+        // only if Low Power Mode hasn't changed since
+        void restore(std::optional<bool> manual, bool chosenInLowPowerMode)
+        {
+            if (manual && chosenInLowPowerMode == m_LowPowerMode) {
+                m_Manual = manual;
+            }
+        }
+
     private:
         bool m_LowPowerMode;
         std::optional<bool> m_Manual;
