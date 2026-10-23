@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 
 #include <QString>
 
@@ -24,15 +25,15 @@ public:
     void setMessageSink(std::function<bool(const QString&)> sink);
 
     // Offers the message from now on, in place of one still waiting; text says what it is when it's
-    // shown, empty for nothing to say
-    void offer(std::function<QString()> text);
+    // shown: empty for nothing to say, nullopt for not known yet (asked again at the next try)
+    void offer(std::function<std::optional<QString>()> text);
 
     void handleEvent(const SDL_Event& event);
 
 private:
     void stop();
 
-    std::function<QString()> m_Text;
+    std::function<std::optional<QString>()> m_Text;
     int m_Attempts = 0;
     SDL_TimerID m_Timer = 0;
     std::function<bool(const QString&)> m_MessageSink;

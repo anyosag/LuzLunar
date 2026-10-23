@@ -1562,7 +1562,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         lowered = YES;
         break;
     case NotchQuality::Line::Climbing:
-        line = QCoreApplication::translate("NotchBar", "Climbing back to your %1 Mb/s").arg(own);
+        // To the user's own, or to the saver's cap while it holds the stream down
+        line = NotchQuality::saverCaps(state) ?
+                   QCoreApplication::translate("NotchBar", "Climbing back to %1").arg(mbpsText(NotchQuality::climbKbps(state))) :
+                   QCoreApplication::translate("NotchBar", "Climbing back to your %1 Mb/s").arg(own);
         break;
     case NotchQuality::Line::Holding:
         line = QCoreApplication::translate("NotchBar", "Holding the bitrate you set");

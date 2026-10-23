@@ -188,6 +188,8 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     if (m_NotchBar) {
         m_Power = std::make_unique<ForkPower>();
         m_Saver = std::make_unique<PowerRules::Saver>(m_Power->lowPowerMode());
+        // The bar asked before there was a battery to read: the item comes now
+        m_NotchBar->powerChanged();
         NotchBar* notchBar = m_NotchBar.get();
         m_PowerNotice->setMessageSink([notchBar](const QString& text) {
             return notchBar->showNotice(text);
@@ -200,13 +202,12 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     if (forkPrefs->adaptiveBitrate() || m_NotchBar) {
         m_BitrateClient = std::make_shared<BitrateClient>(computer, bitrateKbps);
     }
+    m_AppliedCeiling = bitrateKbps;
     if (forkPrefs->adaptiveBitrate()) {
-        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateCeiling(), prefs.enableHdr, bitrateKbps);
+        m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateKbps, prefs.enableHdr, bitrateKbps);
     }
-    else if (bitrateCeiling() < bitrateKbps) {
-        // The saver's cap from the start
-        applySaver();
-    }
+    // The saver's cap from the start, once the PC has said what it can do
+    applySaver();
     if (m_Saver && m_Saver->lowPowerMode()) {
         m_PowerNotice->offer([this] { return powerNoticeText(); });
     }
@@ -308,18 +309,36 @@ bool ForkStreamExtensions::captureAfterMenus(SdlInputHandler* input) const
     return m_CaptureAfterMenus;
 }
 
-int ForkStreamExtensions::bitrateCeiling() const
+int ForkStreamExtensions::saverCapKbps() const
 {
-    return m_Saver && m_Saver->on() ? std::min(m_OwnBitrateKbps, PowerRules::k_SaverKbps) : m_OwnBitrateKbps;
+    return m_Saver && m_Saver->on() && m_OwnBitrateKbps > PowerRules::k_SaverKbps ? PowerRules::k_SaverKbps : 0;
+}
+
+int ForkStreamExtensions::adaptiveCeiling() const
+{
+    int cap = saverCapKbps();
+    return cap > 0 ? cap : m_OwnBitrateKbps;
 }
 
 void ForkStreamExtensions::applySaver()
 {
-    if (!m_BitrateClient || !m_BitrateClient->state().live) {
-        // Nothing to cap live: Quality says a reconnect would
+    if (!m_BitrateClient) {
         return;
     }
-    int ceiling = bitrateCeiling();
+    BitrateState::State client = m_BitrateClient->state();
+    if (!client.settled) {
+        // Asked before the PC has said whether its encoder can change: the first request would skip
+        // the wait for it (BitrateClient). Again once it has.
+        m_SaverPending = true;
+        return;
+    }
+    m_SaverPending = false;
+    int ceiling = adaptiveCeiling();
+    if (!client.live || ceiling == m_AppliedCeiling) {
+        // Nothing to cap live (Quality says a reconnect would), or nothing changed
+        return;
+    }
+    m_AppliedCeiling = ceiling;
     if (m_AdaptiveBitrate) {
         // From where the stream is going: above the ceiling, it's asked down to it at once
         int start = m_BitrateClient->latestKbps();
@@ -328,18 +347,23 @@ void ForkStreamExtensions::applySaver()
     }
     else {
         int wanted = m_ManualKbps > 0 ? m_ManualKbps : m_OwnBitrateKbps;
-        m_BitrateClient->request(std::min(wanted, ceiling));
+        int cap = saverCapKbps();
+        m_BitrateClient->request(cap > 0 ? std::min(wanted, cap) : wanted);
     }
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Stream Battery Saver %s: the bitrate goes up to %d kbps",
-                m_Saver && m_Saver->on() ? "on" : "off", ceiling);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Stream Battery Saver %s: adaptive bitrate goes up to %d kbps",
+                saverCapKbps() > 0 ? "caps the bitrate" : "doesn't cap the bitrate", ceiling);
 }
 
-QString ForkStreamExtensions::powerNoticeText() const
+std::optional<QString> ForkStreamExtensions::powerNoticeText() const
 {
     if (!m_Saver) {
         return QString();
     }
-    bool capped = m_Saver->on() && m_BitrateClient && m_BitrateClient->state().live && bitrateCeiling() < m_OwnBitrateKbps;
+    if (m_BitrateClient && !m_BitrateClient->state().settled) {
+        // Whether the saver can cap it isn't known yet
+        return std::nullopt;
+    }
+    bool capped = saverCapKbps() > 0 && m_BitrateClient && m_BitrateClient->state().live;
     switch (PowerRules::pill(m_Saver->lowPowerMode(), capped, m_Fps)) {
     case PowerRules::Pill::Capped:
         return QCoreApplication::translate("NotchBar", "Low Power Mode: bitrate capped at %1 Mb/s.")
@@ -482,14 +506,20 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
     case NotchMenus::Action::ToggleAdaptiveBitrate:
         if (m_AdaptiveBitrate) {
             // The bitrate stays where it got to
-            m_ManualKbps = m_BitrateClient->latestKbps();
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate off, holding %d kbps", m_ManualKbps);
+            {
+                // Held where it got to; at the saver's cap, that's the saver's, not a choice to keep
+                int latest = m_BitrateClient->latestKbps();
+                int cap = saverCapKbps();
+                m_ManualKbps = cap > 0 && latest >= cap ? 0 : latest;
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate off, holding %d kbps", latest);
+            }
             m_AdaptiveBitrate.reset();
         }
         else if (m_BitrateClient && m_BitrateClient->state().live) {
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: adaptive bitrate on");
             // From where the stream is going, a slider's request still on its way included
-            m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, bitrateCeiling(), m_Hdr, m_BitrateClient->latestKbps());
+            m_AppliedCeiling = adaptiveCeiling();
+            m_AdaptiveBitrate = std::make_unique<AdaptiveBitrate>(m_BitrateClient, m_AppliedCeiling, m_Hdr, m_BitrateClient->latestKbps());
         }
         break;
     case NotchMenus::Action::SetBitrate:
@@ -497,7 +527,11 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
         if (m_BitrateClient && !m_AdaptiveBitrate && value > 0) {
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: bitrate set to %d kbps", value);
             m_ManualKbps = value;
-            m_BitrateClient->request(std::min(value, bitrateCeiling()));
+            {
+                // Up to the launch bitrate (Apollo's max); only the saver caps it lower
+                int cap = saverCapKbps();
+                m_BitrateClient->request(cap > 0 ? std::min(value, cap) : value);
+            }
         }
         break;
     case NotchMenus::Action::ToggleBatterySaver:
@@ -613,6 +647,9 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     }
     if (BitrateClient::isStateEvent(event)) {
         // What the PC can do with the bitrate, or what it runs at, changed
+        if (m_SaverPending) {
+            applySaver();
+        }
         if (m_NotchBar) {
             m_NotchBar->bitrateChanged();
         }

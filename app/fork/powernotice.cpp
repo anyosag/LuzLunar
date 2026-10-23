@@ -33,7 +33,7 @@ void PowerNotice::setMessageSink(std::function<bool(const QString&)> sink)
     m_MessageSink = std::move(sink);
 }
 
-void PowerNotice::offer(std::function<QString()> text)
+void PowerNotice::offer(std::function<std::optional<QString>()> text)
 {
     m_Text = std::move(text);
     m_Attempts = 0;
@@ -56,8 +56,8 @@ void PowerNotice::handleEvent(const SDL_Event& event)
     if (event.type != eventType() || event.user.code != k_EventCode || !m_Text) {
         return;
     }
-    QString text = m_Text();
-    if (text.isEmpty() || (m_MessageSink && m_MessageSink(text)) || ++m_Attempts >= k_MaxAttempts) {
+    std::optional<QString> text = m_Text();
+    if ((text && (text->isEmpty() || (m_MessageSink && m_MessageSink(*text)))) || ++m_Attempts >= k_MaxAttempts) {
         // Nothing to say by now, said, or the bar never came up (a windowed stream without one, say)
         m_Text = nullptr;
         stop();

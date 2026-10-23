@@ -58,6 +58,9 @@ static void testBranch()
     reading.charging = false;
     reading.charged = true;
     CHECK(branch(reading) == Branch::Charged);
+    // Held at 80% by Optimized Battery Charging: not charged, not charging
+    reading.charged = false;
+    CHECK(branch(reading) == Branch::NotCharging);
 }
 
 static void testRates()
@@ -70,9 +73,12 @@ static void testRates()
     CHECK(minutesLeft(reading) == 399);
     CHECK(duration(minutesLeft(reading)) == "6 h 40 min");
 
-    // macOS's own estimate first
+    // The watts first, as "% an hour" counts them; macOS's estimate without them
     reading.minutesToEmpty = 250;
-    CHECK(minutesLeft(reading) == 250);
+    CHECK(minutesLeft(reading) == 399);
+    Reading estimate = onBattery(76);
+    estimate.minutesToEmpty = 250;
+    CHECK(minutesLeft(estimate) == 250);
     CHECK(duration(250) == "4 h 10 min");
 
     // Without the watts, the level over the time left

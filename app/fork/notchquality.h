@@ -44,10 +44,11 @@ namespace NotchQuality
         bool saver = false;     // Stream Battery Saver is on (powerrules.h)
     };
 
-    // Stream Battery Saver holds the stream at its cap or below: on, and the PC changes the bitrate live
+    // Stream Battery Saver holds the stream at its cap or below: on, a bitrate above the cap to hold
+    // down, and a PC that changes it live
     inline bool saverCaps(const State& state)
     {
-        return state.saver && state.live;
+        return state.saver && state.live && state.ownKbps > PowerRules::k_SaverKbps;
     }
 
     // The yellow note under Quality's title
@@ -59,10 +60,17 @@ namespace NotchQuality
 
     inline SaverNote saverNote(const State& state)
     {
-        if (!state.saver) {
+        if (!state.saver || state.ownKbps <= PowerRules::k_SaverKbps) {
+            // Off, or nothing above its cap
             return SaverNote::None;
         }
         return state.live ? SaverNote::Caps : SaverNote::NeedsReconnect;
+    }
+
+    // Where adaptive bitrate climbs back to: the user's own, or Stream Battery Saver's cap
+    inline int climbKbps(const State& state)
+    {
+        return saverCaps(state) ? PowerRules::k_SaverKbps : state.ownKbps;
     }
 
     // The bitrate the stream runs at, as far as known
@@ -133,7 +141,7 @@ namespace NotchQuality
         if (!lowered(state)) {
             return Line::None;
         }
-        if (saverCaps(state) && shownKbps(state) >= std::min(state.ownKbps, PowerRules::k_SaverKbps)) {
+        if (saverCaps(state) && shownKbps(state) >= PowerRules::k_SaverKbps) {
             // At Stream Battery Saver's cap, which its note says
             return Line::None;
         }

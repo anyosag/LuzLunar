@@ -156,6 +156,22 @@ static void testSaver()
 
     State off = canvas();
     CHECK(saverNote(off) == SaverNote::None && range(off).maxKbps == 25000);
+
+    // Climbing back under the cap goes to the cap
+    State climbing = canvas();
+    climbing.saver = true;
+    climbing.targetKbps = 8000;
+    climbing.changeReason = BitrateRules::Reason::Climb;
+    CHECK(line(climbing) == Line::Climbing && climbKbps(climbing) == 10000);
+    CHECK(climbKbps(canvas()) == 20000);
+
+    // A user's bitrate at the cap or below: nothing to cap, nothing to say
+    State small = canvas();
+    small.saver = true;
+    small.ownKbps = 8000;
+    small.targetKbps = 8000;
+    small.maxKbps = 10000;
+    CHECK(!saverCaps(small) && saverNote(small) == SaverNote::None && range(small).maxKbps == 10000);
 }
 
 int main()

@@ -193,11 +193,18 @@ namespace
             // Without the watts, the rate the level falls at takes their place
             headline = QCoreApplication::translate("NotchBar", "%1% an hour").arg(qRound(perHour)).toNSString();
         }
+        // Rows without a value are left out
+        int row = 0;
         int left = PowerRules::minutesLeft(power);
-        rows[0][0] = tr("Time left at this rate");
-        rows[0][1] = left > 0 ? ns(PowerRules::duration(left)) : @"—";
-        rows[1][0] = tr("This stream so far");
-        rows[1][1] = state.powerStartLevel >= 0 ? ns(PowerRules::sinceStart(state.powerStartLevel, power.level, state.powerMinutes)) : @"—";
+        if (left > 0) {
+            rows[row][0] = tr("Time left at this rate");
+            rows[row][1] = ns(PowerRules::duration(left));
+            row++;
+        }
+        if (state.powerStartLevel >= 0) {
+            rows[row][0] = tr("This stream so far");
+            rows[row][1] = ns(PowerRules::sinceStart(state.powerStartLevel, power.level, state.powerMinutes));
+        }
         break;
     }
     case PowerRules::Branch::Charging:
@@ -211,7 +218,9 @@ namespace
         }
         break;
     case PowerRules::Branch::Charged:
-        headline = tr("Charged");
+    case PowerRules::Branch::NotCharging:
+        // Held short of full, macOS's menu says "Not Charging" too
+        headline = PowerRules::branch(power) == PowerRules::Branch::Charged ? tr("Charged") : tr("Not Charging");
         if (PowerRules::known(power.watts)) {
             rows[0][0] = tr("The Mac draws");
             rows[0][1] = ns(PowerRules::wattsText(power.watts));

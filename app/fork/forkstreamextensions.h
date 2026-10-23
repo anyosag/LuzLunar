@@ -62,16 +62,21 @@ private:
     // The Quality item and menu's state
     NotchQuality::State bitrateState() const;
 
-    // The most adaptive bitrate or the slider may ask for now: the user's own, or Stream Battery
-    // Saver's cap while it's on
-    int bitrateCeiling() const;
+    // Stream Battery Saver's cap while it holds the stream down (on, with the user's bitrate above
+    // it); 0 otherwise
+    int saverCapKbps() const;
 
-    // Puts Stream Battery Saver's ceiling into effect: adaptive bitrate starts again under it, or the
-    // bitrate set by hand is asked for under it
+    // The most adaptive bitrate asks for: the user's own, or the saver's cap
+    int adaptiveCeiling() const;
+
+    // Puts Stream Battery Saver's cap into effect, or takes it away: adaptive bitrate starts again
+    // under the new ceiling, or the bitrate set by hand is asked for under it. Waits for the PC to have
+    // said what it can do (BitrateState::State::settled).
     void applySaver();
 
-    // The Low Power Mode message beside the notch now (PowerRules::pill()); empty for none
-    QString powerNoticeText() const;
+    // The Low Power Mode message beside the notch now (PowerRules::pill()); empty for none, nullopt
+    // while the PC hasn't said yet whether the saver can cap the bitrate
+    std::optional<QString> powerNoticeText() const;
 
     // Whether the stream will hold input once the open menus close
     bool captureAfterMenus(SdlInputHandler* input) const;
@@ -86,6 +91,8 @@ private:
     bool m_Hdr;
     int m_Fps;
     int m_ManualKbps = 0;           // the bitrate set by hand last, which the saver gives back; 0 for the user's own
+    int m_AppliedCeiling = 0;       // the ceiling applySaver() put into effect last
+    bool m_SaverPending = false;    // applySaver() waits for the PC's answers
     QString m_HostName;
     QString m_HostUuid;
     // The menus free the pointer while they're open, from MenusOpened to MenusClosed. Control

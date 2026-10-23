@@ -61,9 +61,10 @@ namespace PowerRules
 
     // The menu's "While streaming"
     enum class Branch {
-        OnBattery,  // the watts, % an hour, time left, this stream so far
-        Charging,   // "Full in …", what the Mac draws
-        Charged,    // on a power adapter and not charging: what the Mac draws
+        OnBattery,      // the watts, % an hour, time left, this stream so far
+        Charging,       // "Full in …", what the Mac draws
+        Charged,        // full on a power adapter: what the Mac draws
+        NotCharging,    // on a power adapter, held short of full (Optimized Battery Charging, a weak adapter)
     };
 
     inline Branch branch(const Reading& reading)
@@ -71,20 +72,24 @@ namespace PowerRules
         if (!reading.onAC) {
             return Branch::OnBattery;
         }
-        return reading.charging ? Branch::Charging : Branch::Charged;
+        if (reading.charging) {
+            return Branch::Charging;
+        }
+        return reading.charged ? Branch::Charged : Branch::NotCharging;
     }
 
-    // Minutes left on battery at this rate: macOS's estimate, else what's left over the watts; -1
+    // Minutes left on battery at this rate: what's left over the watts, as "% an hour" counts it, else
+    // macOS's estimate; -1
     inline int minutesLeft(const Reading& reading)
     {
         if (reading.onAC) {
             return -1;
         }
-        if (reading.minutesToEmpty > 0) {
-            return reading.minutesToEmpty;
-        }
         if (known(reading.watts) && known(reading.capacityWh) && reading.watts > 0.1) {
             return static_cast<int>(std::lround(reading.level / 100.0 * reading.capacityWh / reading.watts * 60));
+        }
+        if (reading.minutesToEmpty > 0) {
+            return reading.minutesToEmpty;
         }
         return -1;
     }

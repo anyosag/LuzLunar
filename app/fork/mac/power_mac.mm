@@ -14,8 +14,9 @@
 // battery's Voltage and Current come from IOKit's power sources (IOPSCopyPowerSourcesInfo, keys in
 // IOPSKeys.h). Where the power source leaves out Voltage or Current, and for the battery's capacity,
 // the battery's IORegistry entry, which isn't documented (AppleSmartBattery: Voltage, InstantAmperage or Amperage,
-// AppleRawMaxCapacity or NominalChargeCapacity, and PowerTelemetryData's SystemPowerIn on a power
-// adapter). Where none of them is there, the menu leaves out what needs it.
+// AppleRawMaxCapacity or NominalChargeCapacity, and on a power adapter PowerTelemetryData's
+// SystemLoad, else its SystemPowerIn while not charging). Where none of them is there, the menu leaves
+// out what needs it.
 
 namespace
 {
@@ -62,6 +63,7 @@ namespace
         double amperageMa = PowerRules::unknown();
         double capacityMah = PowerRules::unknown();
         double systemPowerInMw = PowerRules::unknown();
+        double systemLoadMw = PowerRules::unknown();
     };
 
     Registry readRegistry()
@@ -86,9 +88,14 @@ namespace
                 registry.capacityMah = value;
             }
             CFTypeRef telemetry = CFDictionaryGetValue(properties, CFSTR("PowerTelemetryData"));
-            if (telemetry != nullptr && CFGetTypeID(telemetry) == CFDictionaryGetTypeID() &&
-                    number(static_cast<CFDictionaryRef>(telemetry), CFSTR("SystemPowerIn"), &value) && value > 0) {
-                registry.systemPowerInMw = value;
+            if (telemetry != nullptr && CFGetTypeID(telemetry) == CFDictionaryGetTypeID()) {
+                CFDictionaryRef data = static_cast<CFDictionaryRef>(telemetry);
+                if (number(data, CFSTR("SystemPowerIn"), &value) && value > 0) {
+                    registry.systemPowerInMw = value;
+                }
+                if (number(data, CFSTR("SystemLoad"), &value) && value > 0) {
+                    registry.systemLoadMw = value;
+                }
             }
             CFRelease(properties);
         }
@@ -167,7 +174,13 @@ namespace
                 reading.watts = voltage * -current / 1e6;
             }
         }
-        else if (PowerRules::known(registry.systemPowerInMw)) {
+        else if (PowerRules::known(registry.systemLoadMw)) {
+            // On a power adapter: what the Mac itself uses
+            reading.watts = registry.systemLoadMw / 1000;
+        }
+        else if (PowerRules::known(registry.systemPowerInMw) && !reading.charging) {
+            // What comes in from the adapter, which is the Mac's own use only while nothing goes to
+            // the battery
             reading.watts = registry.systemPowerInMw / 1000;
         }
         return reading;
@@ -199,7 +212,8 @@ struct ForkPower::Impl
     id lowPowerObserver = nil;
 
     // Main thread: keeps a reading, and tells the stream's event loop when what it shows changed
-    static void store(const std::shared_ptr<Shared>& shared, const PowerRules::Reading& reading, bool lowPowerMode)
+    // sample: the reading is new, so its watts join the average
+    static void store(const std::shared_ptr<Shared>& shared, const PowerRules::Reading& reading, bool lowPowerMode, bool sample = true)
     {
         if (!shared->alive) {
             return;
@@ -209,7 +223,7 @@ struct ForkPower::Impl
             shared->watts.clear();
             shared->lastOnAC = reading.onAC;
         }
-        if (PowerRules::known(reading.watts)) {
+        if (sample && PowerRules::known(reading.watts)) {
             shared->watts.push_back(reading.watts);
             while (shared->watts.size() > k_WattsSamples) {
                 shared->watts.pop_front();
@@ -295,7 +309,8 @@ ForkPower::ForkPower()
                                                                           usingBlock:^(NSNotification* notification) {
         (void)notification;
         if (shared->alive) {
-            Impl::store(shared, shared->reading, lowPowerModeNow());
+            // The last reading again, with Low Power Mode now; its watts are already in the average
+            Impl::store(shared, shared->reading, lowPowerModeNow(), false);
         }
     }] retain];
 
