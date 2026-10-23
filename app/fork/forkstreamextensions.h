@@ -16,6 +16,7 @@
 class AdaptiveBitrate;
 class BitrateClient;
 class ClipboardSync;
+class ForkBarReach;
 class ForkPower;
 class MacDrive;
 class NotchBar;
@@ -98,6 +99,16 @@ private:
     // stream's hold on input is let go first, and MenusClosed takes it again as it would have.
     void setAbsoluteMouse(SdlInputHandler* input, bool absolute);
 
+    // Mac trackpad mode's pointer was pushed up past the top of the picture (ForkBarReach): the stream
+    // lets it go, and the Mac's pointer goes on into the bar above this fraction of the picture
+    void handBarThePointer(double fraction);
+
+    // The Mac's pointer came back down from the bar: the stream holds it again from there
+    void takePointerFromBar(SdlInputHandler* input, int x, int y);
+
+    // The picture in the stream window, in its points, as the absolute mouse fits it
+    SDL_Rect videoRect() const;
+
     // The bitrate the stream's own from now on: adaptive bitrate starts again under it, or it's asked
     // for; the PC already takes it live, up to its max
     void setOwnBitrate(int kbps);
@@ -135,6 +146,9 @@ private:
     bool m_CaptureLeftByBar = false;
     // Held back while the stream isn't in front (MenusClosed)
     std::optional<bool> m_CaptureOnFocus;
+    // Mac trackpad mode's pointer went up into the bar (handBarThePointer()): the stream holds it
+    // again once it comes back down into the picture with no menu open
+    bool m_BarHasPointer = false;
 
     bool m_ShortcutGuard;
     std::unique_ptr<ClipboardSync> m_Clipboard;
@@ -149,4 +163,6 @@ private:
     std::unique_ptr<AdaptiveBitrate> m_AdaptiveBitrate;
     // The notch bar's Stream Settings, with the bar only
     std::unique_ptr<ForkStreamSettings> m_StreamSettings;
+    // Mac trackpad mode's pointer up into the bar, with a PC that says where its pointer is
+    std::unique_ptr<ForkBarReach> m_BarReach;
 };

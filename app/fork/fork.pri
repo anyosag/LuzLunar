@@ -55,6 +55,7 @@ SOURCES += \
     $$PWD/streamsettings.cpp \
     $$PWD/adaptivebitrate.cpp \
     $$PWD/bitrateclient.cpp \
+    $$PWD/forkbarreach.cpp \
     $$PWD/bitraterules.cpp \
     $$PWD/hostpacing.cpp \
     $$PWD/macdrive.cpp \
@@ -101,6 +102,8 @@ HEADERS += \
     $$PWD/luztouchpad.h \
     $$PWD/adaptivebitrate.h \
     $$PWD/bitrateclient.h \
+    $$PWD/barreach.h \
+    $$PWD/forkbarreach.h \
     $$PWD/bitraterules.h \
     $$PWD/bitratestate.h \
     $$PWD/macdrive.h \

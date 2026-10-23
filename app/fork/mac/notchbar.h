@@ -51,6 +51,7 @@ public:
     struct MenuState {
         bool mouseCaptured = true;      // input held by the stream; while a menu is open, whether it will be once it closes
         bool mouseAbsolute = false;     // the remote desktop's mouse: the Mac's own pointer, which reaches the bar
+        bool pointerReachesBar = false; // Mac trackpad mode's pointer comes up into the bar past the top (ForkBarReach)
         bool systemKeysToPc = false;    // Mac shortcuts (Command-Tab, ...) go to the PC
         bool canSleepPc = true;         // the PC's Apollo can sleep, and this Mac may ask it to
 
@@ -108,6 +109,11 @@ public:
 
     // The bar is beside the notch now, where the pointer must be able to reach it
     virtual bool onScreen() const = 0;
+
+    // Puts the Mac's pointer in the strip, above this x of the stream window (in its points): Mac
+    // trackpad mode's pointer came up past the top of the picture (ForkBarReach). The stream has let
+    // the pointer go first.
+    virtual void takePointer(double windowX) = 0;
 
     // An open menu and the Quality item show MenuState again, after an action changed it
     virtual void refreshMenus() = 0;

@@ -235,6 +235,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/streamsettingsrules_test.cpp -o "$RUNNER_TEMP/streamsettingsrules_test"
           "$RUNNER_TEMP/streamsettingsrules_test"
+          # Mac trackpad mode's pointer up into the notch bar: following the PC's, when to ask it, handing over
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/barreach_test.cpp -o "$RUNNER_TEMP/barreach_test"
+          "$RUNNER_TEMP/barreach_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"

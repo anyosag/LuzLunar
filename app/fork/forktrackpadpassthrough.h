@@ -37,6 +37,13 @@ namespace ForkTrackpadPassthrough
     // Where to show its messages (the notch bar); set before activate()
     void setMessageSink(std::function<bool(const QString&)> sink);
 
+    // Mac trackpad mode's pointer moves as sent to Windows (in its pixels), with the Mac's motion they
+    // came from (in points), for the notch bar's reach (ForkBarReach). Main thread.
+    void setMacPointerListener(std::function<void(int dx, int dy, double dxPoints, double dyPoints)> listener);
+
+    // Mac trackpad mode runs now: macOS's own pointer moves Windows'
+    bool macPointerActive();
+
     // For SdlInputHandler: true to drop a mouse event Windows gets otherwise (the fingers, or
     // macOS's own event in Mac trackpad mode). False for anything while passthrough isn't running.
     bool muteMotion(const SDL_MouseMotionEvent* event);

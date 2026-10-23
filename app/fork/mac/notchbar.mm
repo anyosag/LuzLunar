@@ -18,6 +18,7 @@
 #include <SDL_syswm.h>
 
 #import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <QuartzCore/QuartzCore.h>
 
 namespace
@@ -282,6 +283,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
 - (BOOL)menuOpen;
 - (BOOL)barOnScreen;
+- (void)takePointerAtWindowX:(CGFloat)windowX;
 - (void)refreshMenus;
 - (void)bitrateChanged;
 - (void)powerChanged;
@@ -999,10 +1001,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 }
 
 // While the PC has the mouse (a game's, or the trackpad as a touchpad), the pointer on screen is the
-// PC's, drawn in the picture, and it can't leave it for the bar: say how to reach the bar instead.
-// Once a stream, when the bar first comes up with the mouse held, in the first few streams, and not
-// once Control-Option-Shift-N has been used. The remote desktop's mouse is the Mac's own pointer,
-// which moves up into the bar.
+// PC's, drawn in the picture, and it can't leave it for the bar: say how to reach the bar instead,
+// pushing past the top in Mac trackpad mode, else Control-Option-Shift-N. Once a stream, when the bar
+// first comes up with the mouse held, in the first few streams, and not once either has been used.
+// The remote desktop's mouse is the Mac's own pointer, which moves up into the bar.
 - (void)offerReachHint
 {
     [self offerReachHint:0];
@@ -1036,13 +1038,38 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         return;
     }
     prefs->setNotchBarHints(prefs->notchBarHints() + 1);
-    [self showToast:QCoreApplication::translate("NotchBar", "Press ⌃⌥⇧N to use this bar while the PC has the mouse").toNSString()
-               kind:ForkMessageKindHint];
+    // Mac trackpad mode's pointer comes up into the bar by itself, past the top
+    NSString* text = state.pointerReachesBar ?
+                         QCoreApplication::translate("NotchBar", "Keep moving up past the top to use this bar").toNSString() :
+                         QCoreApplication::translate("NotchBar", "Press ⌃⌥⇧N to use this bar while the PC has the mouse").toNSString();
+    [self showToast:text kind:ForkMessageKindHint];
 }
 
 - (BOOL)barOnScreen
 {
     return m_BarOnScreen;
+}
+
+// Mac trackpad mode's pointer came up past the top of the picture: the Mac's own goes on from there,
+// half way up the strip
+- (void)takePointerAtWindowX:(CGFloat)windowX
+{
+    if (m_StreamWindow == nil || !m_BarOnScreen || !m_HasGeometry) {
+        return;
+    }
+    // No more hints: this is how
+    ForkPreferences::get()->setNotchBarHints(MAX(ForkPreferences::get()->notchBarHints(), k_ReachHintStreams));
+
+    CGFloat x = MIN(MAX(NSMinX(m_StreamWindow.frame) + windowX, NSMinX(m_StripFrame) + 1), NSMaxX(m_StripFrame) - 1);
+    CGFloat y = NSMinY(m_StripFrame) + NSHeight(m_StripFrame) / 2;
+    // Quartz's coordinates go down from the top of the primary display
+    NSScreen* primary = NSScreen.screens.firstObject;
+    if (primary == nil) {
+        return;
+    }
+    CGWarpMouseCursorPosition(CGPointMake(x, NSMaxY(primary.frame) - y));
+    // Else macOS holds the pointer still for a moment after the warp
+    CGAssociateMouseAndMouseCursorPosition(true);
 }
 
 - (void)pressedItemForMenu:(NotchMenus::Menu)menu
@@ -2122,6 +2149,13 @@ namespace
         bool onScreen() const override
         {
             return [m_Controller barOnScreen];
+        }
+
+        void takePointer(double windowX) override
+        {
+            @autoreleasepool {
+                [m_Controller takePointerAtWindowX:windowX];
+            }
         }
 
         void refreshMenus() override
