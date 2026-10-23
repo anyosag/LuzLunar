@@ -134,6 +134,11 @@ public:
     bool notchBarStats() const { return m_NotchBarStats; }
     void setNotchBarStats(bool shown);
 
+    // The streams that have shown how to reach the notch bar while the PC has the mouse (⌃⌥⇧N); the
+    // bar stops after a few, and once ⌃⌥⇧N has been used. No signal, as QML isn't running then.
+    int notchBarHints() const { return m_NotchBarHints; }
+    void setNotchBarHints(int count);
+
     bool describeDisplay() const { return m_DescribeDisplay; }
     void setDescribeDisplay(bool enabled);
 
@@ -173,6 +178,7 @@ private:
     bool m_ClipboardFiles;
     bool m_NotchBar;
     bool m_NotchBarStats;
+    int m_NotchBarHints;
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;
     bool m_MacShortcutsAll;

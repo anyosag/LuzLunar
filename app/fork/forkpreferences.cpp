@@ -16,6 +16,7 @@
 #define SER_CLIPBOARDSYNC "fork/clipboardSync"
 #define SER_NOTCHBAR "fork/notchBar"
 #define SER_NOTCHBARSTATS "fork/notchBarStats"
+#define SER_NOTCHBARHINTS "fork/notchBarHints"
 #define SER_DESCRIBEDISPLAY "fork/describeDisplay"
 #define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
 #define SER_MACSHORTCUTS "fork/macShortcuts"
@@ -78,6 +79,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_ClipboardFiles(true),
       m_NotchBar(true),
       m_NotchBarStats(true),
+      m_NotchBarHints(0),
       m_DescribeDisplay(true),
       m_HdrPeakOverride(0),
       m_MacShortcutsAll(false),
@@ -111,6 +113,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
     m_ClipboardFiles = settings.value(SER_CLIPBOARDFILES, m_ClipboardFiles).toBool();
     m_NotchBar = settings.value(SER_NOTCHBAR, m_NotchBar).toBool();
     m_NotchBarStats = settings.value(SER_NOTCHBARSTATS, m_NotchBarStats).toBool();
+    m_NotchBarHints = settings.value(SER_NOTCHBARHINTS, m_NotchBarHints).toInt();
     m_DescribeDisplay = settings.value(SER_DESCRIBEDISPLAY, m_DescribeDisplay).toBool();
 
     int peak = settings.value(SER_HDRPEAKOVERRIDE, m_HdrPeakOverride).toInt();
@@ -330,6 +333,16 @@ void ForkPreferences::setNotchBarStats(bool shown)
 
     m_NotchBarStats = shown;
     QSettings().setValue(SER_NOTCHBARSTATS, shown);
+}
+
+void ForkPreferences::setNotchBarHints(int count)
+{
+    if (count == m_NotchBarHints) {
+        return;
+    }
+
+    m_NotchBarHints = count;
+    QSettings().setValue(SER_NOTCHBARHINTS, count);
 }
 
 void ForkPreferences::setClipboardSyncMode(int mode)

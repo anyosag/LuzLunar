@@ -12,6 +12,7 @@
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
+#include "forkbarreach.h"
 #include "forkevents.h"
 #include "forkhostpower.h"
 #include "forkpower.h"
@@ -33,6 +34,7 @@
 #include "streamstats.h"
 #include "streaming/input/input.h"
 #include "streaming/session.h"
+#include "streaming/streamutils.h"
 
 namespace
 {
@@ -150,6 +152,8 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 SdlInputHandler* input = inputHandler();
                 if (input != nullptr) {
                     state.mouseCaptured = captureAfterMenus(input);
+                    state.mouseAbsolute = input->forkAbsoluteMouseMode();
+                    state.pointerReachesBar = m_BarReach && ForkTrackpadPassthrough::macPointerActive();
                     state.systemKeysToPc = input->isSystemKeyCaptureActive();
                 }
                 // Known once the PC's menu or the app's start asked; until then it's tried, and the
@@ -289,6 +293,23 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
     // Which Mac shortcuts system key capture takes; SdlInputHandler asks it before grabbing
     ForkSystemShortcuts::activate(window);
 
+    // Mac trackpad mode's pointer comes up into the bar past the top of the picture, on a PC that
+    // says where its pointer is
+    bool pcSaysCursor;
+    {
+        QReadLocker lock(&computer->lock);
+        pcSaysCursor = computer->apolloCursor;
+    }
+    if (m_NotchBar && pcSaysCursor) {
+        m_BarReach = std::make_unique<ForkBarReach>(computer, [this](double fraction) {
+            handBarThePointer(fraction);
+        });
+        ForkBarReach* reach = m_BarReach.get();
+        ForkTrackpadPassthrough::setMacPointerListener([reach](int dx, int dy, double dxPoints, double dyPoints) {
+            reach->moved(dx, dy, dxPoints, dyPoints);
+        });
+    }
+
     // The trackpad as a Windows touchpad, when the stream's setting is on; its messages appear
     // beside the notch too
     if (m_NotchBar) {
@@ -303,6 +324,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
 ForkStreamExtensions::~ForkStreamExtensions()
 {
     ForkNetworkLink::stop();
+    ForkTrackpadPassthrough::setMacPointerListener(nullptr);
     ForkTrackpadPassthrough::deactivate();
     ForkTrackpadPassthrough::setMessageSink(nullptr);
     ForkSystemShortcuts::deactivate();
@@ -531,7 +553,8 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
         // The pointer has to reach the menus: out of a game's hold, and out of the picture
         m_BarMenusOpen = true;
         m_CaptureOnFocus.reset();
-        m_CaptureAfterMenus = input->isCaptureActive();
+        // Mac trackpad mode's pointer that came up into the bar goes back to the PC after, too
+        m_CaptureAfterMenus = input->isCaptureActive() || m_BarHasPointer;
         if (input->isCaptureActive() && SDL_GetRelativeMouseMode()) {
             input->setCaptureActive(false);
             input->raiseAllKeys();
@@ -544,6 +567,13 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
     case NotchMenus::Action::MenusClosed: {
         bool capture = captureAfterMenus(input);
         m_BarMenusOpen = false;
+        if (m_BarHasPointer && !input->isCaptureActive()) {
+            // The pointer came up from the picture: the stream takes it again as it goes back down
+            // into the picture, not here, where it may still be in the bar. Unless the Mouse tile
+            // let it go.
+            m_BarHasPointer = capture;
+            break;
+        }
         if (capture == input->isCaptureActive()) {
             break;
         }
@@ -563,6 +593,10 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
         // Moonlight holds the pointer to the picture in fullscreen on one display; not while the bar is
         // above the picture, where the pointer has to reach it
         input->updatePointerRegionLock();
+        if (m_BarHasPointer && !(m_NotchBar && m_NotchBar->onScreen())) {
+            // Windowed, or on another Space: a click takes the pointer again, as in any free window
+            m_BarHasPointer = false;
+        }
         break;
     case NotchMenus::Action::ToggleStatsOverlay: {
         // As Control-Option-Shift-S does (SdlInputHandler::performSpecialKeyCombo())
@@ -727,6 +761,46 @@ void ForkStreamExtensions::setTrackpadMode(int mode)
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: trackpad mode %d, in place (the stream started in %d)", mode,
                 m_TrackpadStartedMode);
     m_TrackpadMode = mode;
+}
+
+SDL_Rect ForkStreamExtensions::videoRect() const
+{
+    SDL_Rect src = { 0, 0, m_Width, m_Height };
+    SDL_Rect dst = { 0, 0, 0, 0 };
+    SDL_GetWindowSize(m_Window, &dst.w, &dst.h);
+    StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+    return dst;
+}
+
+void ForkStreamExtensions::handBarThePointer(double fraction)
+{
+    SdlInputHandler* input = inputHandler();
+    // Only from the hold Mac trackpad mode moves the PC's pointer from, with the bar to go to
+    if (input == nullptr || !m_NotchBar || !m_NotchBar->onScreen() || m_BarMenusOpen || !input->isCaptureActive() ||
+            !SDL_GetRelativeMouseMode() || !ForkTrackpadPassthrough::macPointerActive() || SDL_GetKeyboardFocus() == nullptr) {
+        return;
+    }
+    SDL_Rect video = videoRect();
+    // As the menus let a game's hold go (MenusOpened)
+    input->setCaptureActive(false);
+    input->raiseAllKeys();
+    m_BarHasPointer = true;
+    m_NotchBar->takePointer(video.x + fraction * video.w);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: the pointer went up past the top into the bar");
+}
+
+void ForkStreamExtensions::takePointerFromBar(SdlInputHandler* input, int x, int y)
+{
+    m_BarHasPointer = false;
+    SDL_Rect video = videoRect();
+    input->setCaptureActive(true);
+    // The PC's pointer comes down where the Mac's did, and goes on from there
+    LiSendMousePositionEvent(static_cast<short>(x - video.x), static_cast<short>(y - video.y), static_cast<short>(video.w),
+                             static_cast<short>(video.h));
+    if (m_BarReach && video.w > 0 && video.h > 0) {
+        m_BarReach->placed(static_cast<double>(x - video.x) / video.w, static_cast<double>(y - video.y) / video.h);
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: the pointer came back down into the picture");
 }
 
 void ForkStreamExtensions::setAbsoluteMouse(SdlInputHandler* input, bool absolute)
@@ -1019,6 +1093,26 @@ void ForkStreamExtensions::copyDiagnostics()
 
 void ForkStreamExtensions::handleEvent(const SDL_Event& event)
 {
+    if (m_BarReach && m_BarReach->handleEvent(event)) {
+        // The PC said where its pointer is
+        return;
+    }
+    if (m_BarHasPointer && event.type == SDL_MOUSEMOTION) {
+        SdlInputHandler* input = inputHandler();
+        if (input == nullptr || input->isCaptureActive()) {
+            // Taken again some other way: Control-Option-Shift-Z, a click on the picture
+            m_BarHasPointer = false;
+        }
+        else if (!m_BarMenusOpen && SDL_GetKeyboardFocus() != nullptr) {
+            SDL_Rect video = videoRect();
+            int x = event.motion.x;
+            int y = event.motion.y;
+            // A little way in, as Moonlight's region lock takes it back (SdlInputHandler::handleMouseMotionEvent())
+            if (x >= std::max(video.x, 0) && x < video.x + video.w && y > std::max(video.y, 0) + 8 && y < video.y + video.h) {
+                takePointerFromBar(input, x, y);
+            }
+        }
+    }
     if (event.type == barActionEventType() && event.user.code == k_BarActionCode) {
         performBarAction(static_cast<NotchMenus::Action>(reinterpret_cast<intptr_t>(event.user.data1)),
                          static_cast<int>(reinterpret_cast<intptr_t>(event.user.data2)));

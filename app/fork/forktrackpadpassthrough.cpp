@@ -58,6 +58,7 @@ namespace
 
     std::unique_ptr<State> s_State;
     std::function<bool(const QString&)> s_Sink;
+    std::function<void(int, int, double, double)> s_PointerListener;
 
     Uint32 keepaliveEventType()
     {
@@ -159,6 +160,10 @@ namespace
         int y = s.pointerY.take(dy * scaleY);
         if (x != 0 || y != 0) {
             LiSendMouseMoveEvent(static_cast<short>(x), static_cast<short>(y));
+        }
+        if (s_PointerListener) {
+            // Less than a pixel still counts as pushing
+            s_PointerListener(x, y, dx, dy);
         }
     }
 
@@ -277,6 +282,16 @@ void ForkTrackpadPassthrough::setMessageSink(std::function<bool(const QString&)>
     if (s_State) {
         s_State->sink = s_Sink;
     }
+}
+
+void ForkTrackpadPassthrough::setMacPointerListener(std::function<void(int, int, double, double)> listener)
+{
+    s_PointerListener = std::move(listener);
+}
+
+bool ForkTrackpadPassthrough::macPointerActive()
+{
+    return s_State && s_State->active && s_State->macMode;
 }
 
 void ForkTrackpadPassthrough::activate(SDL_Window* window, const StreamingPreferences& prefs)

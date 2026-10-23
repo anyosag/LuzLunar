@@ -228,6 +228,9 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     // [fork] LuzLunar's Apollo starts a stream at the bitrate in luzBitrate, so the stream can launch
     // above it and be raised later (Session::startConnectionAsync()). Not saved: serverinfo says it.
     this->apolloBitrateStart = NvHTTP::getXmlString(serverInfo, "LuzBitrateStart") == "1";
+    // [fork] It says where its pointer is (GET /actions/cursor), so Mac trackpad mode's pointer can
+    // move up into the notch bar (ForkBarReach). Not saved either.
+    this->apolloCursor = NvHTTP::getXmlString(serverInfo, "LuzCursor") == "1";
 
     this->pairState = NvHTTP::getXmlString(serverInfo, "PairStatus") == "1" ?
                 PS_PAIRED : PS_NOT_PAIRED;
@@ -613,6 +616,7 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(isNvidiaServerSoftware);
     ASSIGN_IF_CHANGED(isApolloServerSoftware); // [fork]
     ASSIGN_IF_CHANGED(apolloBitrateStart); // [fork]
+    ASSIGN_IF_CHANGED(apolloCursor); // [fork]
     ASSIGN_IF_CHANGED(maxLumaPixelsHEVC);
     ASSIGN_IF_CHANGED(gpuModel);
     ASSIGN_IF_CHANGED_AND_NONNULL(serverCert);
