@@ -102,7 +102,9 @@ private:
     SDL_Window* m_Window;
     int m_TrackpadMode;             // as StreamingPreferences::TrackpadMode
     int m_TrackpadStartedMode;      // Apollo set its side up for this one (ReconnectRules::trackpadNeedsReconnect())
-    bool m_AbsoluteBeforeTouchpad = false;  // the remote desktop's mouse a touchpad mode took away, for Mac mouse to give back
+    bool m_AbsoluteBeforeTouchpad;  // the remote desktop's mouse a touchpad mode took away, for Mac mouse to give back
+    bool m_TouchpadSupported;       // the PC's Apollo takes the trackpad as a touchpad (luztouchpad.h)
+    bool m_MacTrackpadSupported;    // and in Mac trackpad mode
     int m_ManualKbps = 0;           // the bitrate set by hand last, which the saver gives back; 0 for the user's own
     int m_AppliedCeiling = 0;       // the ceiling applySaver() put into effect last
     bool m_SaverPending = false;    // applySaver() waits for the PC's answers

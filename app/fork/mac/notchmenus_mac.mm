@@ -481,6 +481,8 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (void)slider:(NSView*)control step:(int)direction;
 // Closes the list over the menu, as a click beside it does
 - (void)closeList;
+// Whether the pointer may light it: while a list is open, only the list's choices
+- (BOOL)controlTakesPointer:(NSView*)control;
 @end
 
 // Behind a list over the menu: a click on it closes the list and goes no further, as beside a macOS menu
@@ -990,7 +992,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         // As a menu's rows: the accent under the pointer or the keyboard
         BOOL lit = m_Selected && m_Enabled;
         self.layer.backgroundColor = lit ? accent.CGColor : CGColorGetConstantColor(kCGColorClear);
-        NSColor* text = lit ? NSColor.whiteColor : NSColor.labelColor;
+        NSColor* text = !m_Enabled ? NSColor.tertiaryLabelColor : (lit ? NSColor.whiteColor : NSColor.labelColor);
         m_Title.textColor = text;
         m_Icon.contentTintColor = text;
         m_Badge.contentTintColor = lit ? [NSColor colorWithWhite:1 alpha:0.85] : NSColor.secondaryLabelColor;
@@ -1030,7 +1032,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
 - (void)mouseEntered:(NSEvent*)event
 {
     (void)event;
-    m_Hovered = YES;
+    m_Hovered = [m_Owner controlTakesPointer:self];
     [m_Owner controlHovered:self];
     [self refreshAppearance];
 }
@@ -1364,9 +1366,9 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         [stats setAccessibilityRole:NSAccessibilityCheckBoxRole];
         [stats setAccessibilitySubrole:NSAccessibilitySwitchSubrole];
         [stats setAccessibilityValue:state.notchStatsShown ? @1 : @0];
-        for (ForkMenuControl* module in @[ m_TrackpadTile, stats ]) {
-            [content addSubview:module];
-            [m_Controls addObject:module];
+        for (ForkMenuControl* tile in @[ m_TrackpadTile, stats ]) {
+            [content addSubview:tile];
+            [m_Controls addObject:tile];
         }
 
         // The tall tile's switches as tall as they need, the two at the right as tall as each other;
@@ -1376,7 +1378,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         for (ForkMenuControl* toggle in toggles) {
             togglesHeight += [toggle heightForWidth:toggleWidth];
         }
-        CGFloat leftHeight = 10 + togglesHeight + 6 * (toggles.count - 1) + 10;
+        CGFloat leftHeight = 10 + togglesHeight + 8 * (toggles.count - 1) + 10;
         CGFloat moduleHeight = MAX([m_TrackpadTile heightForWidth:column], [stats heightForWidth:column]);
         CGFloat gridHeight = MAX(leftHeight, 2 * moduleHeight + k_TileGap);
         moduleHeight = floor((gridHeight - k_TileGap) / 2);
@@ -1385,7 +1387,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         for (ForkMenuControl* toggle in toggles) {
             CGFloat height = [toggle heightForWidth:toggleWidth];
             toggle.frame = NSMakeRect(10, round(toggleY), toggleWidth, height);
-            toggleY += height + 6 + spread;
+            toggleY += height + 8 + spread;
         }
         group.frame = NSMakeRect(k_CenterPadding, y, column, gridHeight);
         CGFloat right = k_CenterPadding + width - column;
@@ -1653,7 +1655,7 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     list.layer.borderColor = white(0.10);
     list.layer.shadowOpacity = 0.55;
     list.layer.shadowRadius = 16;
-    list.layer.shadowOffset = CGSizeMake(0, -8);
+    list.layer.shadowOffset = CGSizeZero;   // all round: a flipped view's layer would turn an offset upwards
     [list setAccessibilityElement:YES];
     [list setAccessibilityRole:NSAccessibilityMenuRole];
     CGFloat height = padding * 2 + rowHeight * choices.count;
@@ -1704,6 +1706,10 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
         choice->m_Value = mode;
         [choice setTitle:trackpadModeTitle(mode) detail:nil symbol:nil];
         BOOL current = mode == state.trackpadMode;
+        // Greyed when the PC's Apollo can't take the trackpad that way
+        choice->m_Enabled = current || mode == ReconnectRules::k_TrackpadMacMouse ||
+                            (mode == ReconnectRules::k_TrackpadWindowsTouchpad ? state.trackpadTouchpad : state.trackpadMac);
+        [choice setAccessibilityEnabled:choice->m_Enabled];
         [choice setChecked:current reconnects:!current && ReconnectRules::trackpadNeedsReconnect(state.trackpadStartedMode, mode)];
         [choices addObject:choice];
     }
@@ -1780,12 +1786,19 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     [self rebuild];
 }
 
+- (BOOL)controlTakesPointer:(NSView*)control
+{
+    return m_ListView == nil || ((ForkMenuControl*)control)->m_Kind == ForkMenuControlChoice;
+}
+
 // Builds the open menu again in its panel, keeping the selection where it can
 - (void)rebuild
 {
     if (m_Open == NotchMenus::Menu::None || m_Panel == nil) {
         return;
     }
+    // A list over it goes, its opener selected again, rather than vanish with the old content
+    [self closeList];
     int selected = m_Selected;
     BOOL keyboard = m_KeyboardSelection;
 
@@ -2486,6 +2499,11 @@ typedef NS_ENUM(NSInteger, ForkMenuControlKind) {
     }
     // Rebuilding drops the menu's controls, and this may run inside this one's mouseUp:
     [[control retain] autorelease];
+    if (m_ListView != nil && control->m_Kind != ForkMenuControlChoice) {
+        // Under an open list (VoiceOver can reach it there), or its opener again: the list closes
+        [self closeList];
+        return;
+    }
     if (control == m_TrackpadTile) {
         [self openTrackpadList];
         return;

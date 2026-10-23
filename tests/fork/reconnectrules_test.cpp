@@ -118,6 +118,10 @@ static void testCarried()
     // Adapting, no bitrate by hand
     choices.adaptive = true;
     CHECK(carried(choices, fps).manualKbps == 0);
+
+    // The remote desktop's mouse a touchpad mode took, for Mac mouse to give back after the reconnect
+    choices.absoluteBeforeTouchpad = true;
+    CHECK(carried(choices, bitrate).absoluteBeforeTouchpad);
 }
 
 static void testTrackpad()

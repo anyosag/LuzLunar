@@ -3,6 +3,8 @@
 #include <QCoreApplication>
 #include <QReadLocker>
 
+#include <Limelight.h>
+
 #include "adaptivebitrate.h"
 #include "bitrateclient.h"
 #include "backend/nvapp.h"
@@ -19,6 +21,7 @@
 #include "hostpacing.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
+#include "luztouchpad.h"
 #include "macdrive.h"
 #include "mac/pasteboard.h"
 #include "powernotice.h"
@@ -86,9 +89,19 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
       m_Window(window),
       m_TrackpadMode(prefs.trackpadMode),
       m_TrackpadStartedMode(prefs.trackpadMode),
+      m_AbsoluteBeforeTouchpad(choices.absoluteBeforeTouchpad),
       m_ShortcutGuard(false)
 {
     ForkPreferences* forkPrefs = ForkPreferences::get();
+
+    // What the PC's Apollo can do with the trackpad, for Control Center's Trackpad, as the
+    // passthrough reads it (LUZLUNAR_TRACKPAD_FORCE=1 sends it to any host)
+    {
+        std::uint32_t features = LiGetHostFeatureFlags();
+        bool forced = qgetenv("LUZLUNAR_TRACKPAD_FORCE") == "1";
+        m_TouchpadSupported = forced || (features & luztouchpad::k_host_feature_flag) != 0;
+        m_MacTrackpadSupported = m_TouchpadSupported && (forced || (features & luztouchpad::k_host_mac_trackpad_flag) != 0);
+    }
 
     // A new stream's numbers, before anything (the notch bar's listener) starts publishing them
     ForkStreamStats::resetHistory();
@@ -161,6 +174,8 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                 state.streamHeight = m_Height;
                 state.trackpadMode = m_TrackpadMode;
                 state.trackpadStartedMode = m_TrackpadStartedMode;
+                state.trackpadTouchpad = m_TouchpadSupported;
+                state.trackpadMac = m_MacTrackpadSupported;
                 if (m_Power) {
                     state.powerKnown = true;
                     state.power = m_Power->reading();
@@ -631,6 +646,7 @@ void ForkStreamExtensions::reconnect(const ReconnectRules::Overrides& overrides,
         choices.saver = m_Saver->manual();
         choices.lowPowerMode = m_Saver->lowPowerMode();
     }
+    choices.absoluteBeforeTouchpad = m_AbsoluteBeforeTouchpad;
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: reconnect%s", why);
     session->forkReconnect(overrides, choices);
     pushQuit();
@@ -644,11 +660,27 @@ void ForkStreamExtensions::setTrackpadMode(int mode)
         mode > ReconnectRules::k_TrackpadMacTrackpad) {
         return;
     }
+    // A PC that can't take it doesn't get it (Control Center greys it): the passthrough would stay a mouse
+    if ((mode != ReconnectRules::k_TrackpadMacMouse && !m_TouchpadSupported) ||
+        (mode == ReconnectRules::k_TrackpadMacTrackpad && !m_MacTrackpadSupported)) {
+        return;
+    }
     if (ReconnectRules::trackpadNeedsReconnect(m_TrackpadStartedMode, mode)) {
         ReconnectRules::Overrides overrides;
         overrides.trackpadMode = mode;
         reconnect(overrides, " for another trackpad mode");
         return;
+    }
+
+    // An open menu holds the pointer free (MenusOpened). A remote desktop's mouse stays held to the
+    // stream then, and taking it again in a game's mode would hide the pointer under the menu: it's let
+    // go now, and MenusClosed takes it as it would have.
+    if (m_BarMenusOpen && input->isCaptureActive()) {
+        bool after = captureAfterMenus(input);
+        input->setCaptureActive(false);
+        input->raiseAllKeys();
+        m_CaptureAfterMenus = after;
+        m_CaptureLeftByBar = false;
     }
 
     // In place: the stream's own settings, which a later reconnect copies, then the passthrough again
@@ -665,14 +697,6 @@ void ForkStreamExtensions::setTrackpadMode(int mode)
         input->forkSetAbsoluteMouseMode(true);
     }
     prefs->absoluteMouseMode = input->forkAbsoluteMouseMode();
-    if (m_BarMenusOpen) {
-        if (input->isCaptureActive()) {
-            // Taking input again put the pointer back in the picture: the menu is still open
-            input->forkSuspendRegionLock();
-        }
-        // What the bar leaves it as, so MenusClosed doesn't take this for the user's change
-        m_CaptureLeftByBar = input->isCaptureActive();
-    }
 
     ForkTrackpadPassthrough::deactivate();
     ForkTrackpadPassthrough::activate(m_Window, *prefs);

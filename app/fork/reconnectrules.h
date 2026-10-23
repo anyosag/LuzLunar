@@ -47,6 +47,7 @@ namespace ReconnectRules
         int manualKbps = 0;             // the bitrate set by hand while not adapting; 0 for none
         std::optional<bool> saver;      // Stream Battery Saver switched by hand (PowerRules::Saver::manual())
         bool lowPowerMode = false;      // Low Power Mode then: a choice by hand holds until it changes
+        bool absoluteBeforeTouchpad = false;    // the remote desktop's mouse a touchpad mode took, for Mac mouse to give back
     };
 
     // The choices the next stream keeps: a bitrate set by hand only while not adapting, and none after
