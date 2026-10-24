@@ -135,6 +135,20 @@ static void testStopsShort()
     CHECK(settle.action == Action::Cancel && !settle.pcPulses);
 }
 
+static void testSwipes()
+{
+    // Quick swipes up, the finger lifting between them: one push
+    Tracker tracker;
+    up(tracker, 1000);
+    CHECK(tracker.answered(at(800, 0), 1020).action == Action::None);
+    std::uint32_t ms = 1030;
+    CHECK(push(tracker, ms, 100).action == Action::None);
+    ms += 200;
+    CHECK(tracker.tick(ms).action == Action::None);
+    CHECK(tracker.busy());
+    CHECK(push(tracker, ms, 200).action == Action::HandOver);
+}
+
 static void testEndsBeforeTheAnswer()
 {
     Tracker tracker;
@@ -218,6 +232,7 @@ int main()
     testPulsesHereWhenThePcCant();
     testLowerSyncs();
     testStopsShort();
+    testSwipes();
     testEndsBeforeTheAnswer();
     testNotEnoughPush();
     testSlidingAndDragging();

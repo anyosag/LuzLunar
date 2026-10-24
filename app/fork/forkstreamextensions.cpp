@@ -812,6 +812,11 @@ void ForkStreamExtensions::handBarThePointer(double fraction)
     // Only from the hold Mac trackpad mode moves the PC's pointer from, with the bar to go to
     if (input == nullptr || !m_NotchBar || !m_NotchBar->onScreen() || m_BarMenusOpen || !input->isCaptureActive() ||
             !SDL_GetRelativeMouseMode() || !ForkTrackpadPassthrough::macPointerActive() || SDL_GetKeyboardFocus() == nullptr) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] Notch bar: the pointer stays in the picture (bar %d, menu %d, captured %d, relative %d, Mac trackpad %d, focus %d)",
+                    m_NotchBar && m_NotchBar->onScreen(), m_BarMenusOpen, input != nullptr && input->isCaptureActive(),
+                    SDL_GetRelativeMouseMode() == SDL_TRUE, ForkTrackpadPassthrough::macPointerActive(),
+                    SDL_GetKeyboardFocus() != nullptr);
         return;
     }
     SDL_Rect video = videoRect();
@@ -1144,9 +1149,18 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
             m_BarHasPointer = false;
         }
         else if (!m_BarMenusOpen && SDL_GetKeyboardFocus() != nullptr) {
+            // Where the pointer is now, not where the event says: the move that sent it up, and
+            // any macOS queued with it, reach SDL after the stream let go of the pointer, and say
+            // where macOS held it then, in the middle of the window (SDL's relative mode)
+            int x = 0;
+            int y = 0;
+            int windowX = 0;
+            int windowY = 0;
+            SDL_GetGlobalMouseState(&x, &y);
+            SDL_GetWindowPosition(m_Window, &windowX, &windowY);
+            x -= windowX;
+            y -= windowY;
             SDL_Rect video = videoRect();
-            int x = event.motion.x;
-            int y = event.motion.y;
             // A little way in, as Moonlight's region lock takes it back (SdlInputHandler::handleMouseMotionEvent())
             if (x >= std::max(video.x, 0) && x < video.x + video.w && y > std::max(video.y, 0) + 8 && y < video.y + video.h) {
                 takePointerFromBar(input, x, y);
