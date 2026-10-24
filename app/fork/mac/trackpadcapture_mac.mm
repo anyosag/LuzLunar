@@ -18,6 +18,10 @@ namespace
     bool s_ChangedTouchTypes = false;
     BOOL s_PreviousRestingTouches = NO;
     bool s_ChangedRestingTouches = false;
+    NSPoint s_LastLocation = NSZeroPoint;  // where the pointer was as of the last mouse event, on the screen
+    id s_ActiveObserver = nil;
+    // Farther than a finger moves the pointer between two events: a warp
+    const double k_WarpPoints = 40;
 
     NSWindow* cocoaWindow(SDL_Window* window)
     {
@@ -62,6 +66,12 @@ namespace
     bool inStreamWindow(NSEvent* event)
     {
         return event.window == s_Window || (event.window == nil && [s_Window isKeyWindow]);
+    }
+
+    // Where the pointer is on the screen as of an event, in Cocoa's coordinates (y up)
+    NSPoint screenLocation(NSEvent* event)
+    {
+        return event.window != nil ? [event.window convertPointToScreen:event.locationInWindow] : event.locationInWindow;
     }
 }
 
@@ -135,7 +145,43 @@ bool ForkTrackpadCapture::start(SDL_Window* window, Handler handler, MacInput ma
     if (s_MacInput.pointer || s_MacInput.scroll) {
         NSEventMask mask = NSEventMaskMouseMoved | NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged |
                            NSEventMaskOtherMouseDragged | NSEventMaskScrollWheel;
-        s_MacMonitor = [[NSEvent addLocalMonitorForEventsMatchingMask:mask handler:^NSEvent*(NSEvent* event) {
+        // Clicks only say where the pointer is, as does coming back to the app
+        NSEventMask buttons = NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp | NSEventMaskRightMouseDown |
+                              NSEventMaskRightMouseUp | NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp;
+        s_LastLocation = NSEvent.mouseLocation;
+        s_ActiveObserver = [[NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidBecomeActiveNotification
+                                                                            object:nil
+                                                                             queue:nil
+                                                                        usingBlock:^(NSNotification* note) {
+                                                                            (void)note;
+                                                                            s_LastLocation = NSEvent.mouseLocation;
+                                                                        }] retain];
+        s_MacMonitor = [[NSEvent addLocalMonitorForEventsMatchingMask:mask | buttons handler:^NSEvent*(NSEvent* event) {
+            bool button = (NSEventMaskFromType(event.type) & buttons) != 0;
+            double dx = 0;
+            double dy = 0;
+            if (button) {
+                s_LastLocation = screenLocation(event);
+                return event;
+            }
+            if (event.type != NSEventTypeScrollWheel) {
+                dx = event.deltaX;
+                dy = event.deltaY;
+                // Held in relative mode, the pointer stays put on the screen and moves only when
+                // it's warped: SDL warps it to the middle of the window as relative mode begins,
+                // as the stream takes the pointer back from the notch bar. macOS adds a warp to the
+                // next event's motion, which would move the PC's pointer half a screen; that's taken
+                // out, as SDL does for its own motion (SDL_cocoamouse.m). Only a jump, so a pointer
+                // that moved with the motion keeps it; unheld, nothing is sent to the PC anyway.
+                NSPoint location = screenLocation(event);
+                double movedX = location.x - s_LastLocation.x;
+                double movedY = location.y - s_LastLocation.y;
+                if (std::hypot(movedX, movedY) > k_WarpPoints) {
+                    dx -= movedX;
+                    dy += movedY;
+                }
+                s_LastLocation = location;
+            }
             if (!inStreamWindow(event)) {
                 return event;
             }
@@ -148,7 +194,7 @@ bool ForkTrackpadCapture::start(SDL_Window* window, Handler handler, MacInput ma
                 return event;
             }
             if (s_MacInput.pointer) {
-                s_MacInput.pointer(event.deltaX, event.deltaY, sdlTicks(event.timestamp));
+                s_MacInput.pointer(dx, dy, sdlTicks(event.timestamp));
             }
             return event;
         }] retain];
@@ -168,6 +214,11 @@ void ForkTrackpadCapture::stop()
         [NSEvent removeMonitor:s_MacMonitor];
         [s_MacMonitor release];
         s_MacMonitor = nil;
+    }
+    if (s_ActiveObserver != nil) {
+        [NSNotificationCenter.defaultCenter removeObserver:s_ActiveObserver];
+        [s_ActiveObserver release];
+        s_ActiveObserver = nil;
     }
     if (s_Window != nil) {
         NSView* view = s_Window.contentView;

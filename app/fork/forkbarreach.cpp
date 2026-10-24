@@ -257,6 +257,7 @@ void ForkBarReach::apply(const BarReach::Step& step)
         }
         break;
     case BarReach::Action::Cancel:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Notch bar: the push up stopped before the pointer went");
         if (step.pcPulses) {
             send(0, false, false);
         }
