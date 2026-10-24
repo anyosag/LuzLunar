@@ -8,17 +8,20 @@
 // [fork] Reaching the notch bar with Mac trackpad mode's pointer. That pointer is the PC's, drawn in
 // the picture, and Windows keeps it on the PC's screen, so it can't go up into the bar above the
 // picture by itself. These are the rules for when the Mac's own pointer takes over: the PC's pointer
-// is followed by the moves sent to it (Windows moves it a pixel a count in Mac trackpad mode), and
-// once it has been pushed up against the top for a moment, the PC is asked where it is
-// (GET /actions/cursor), as an app may have moved it since. Only when the PC says it's at the top
-// does the Mac's pointer go up into the bar. Free of Qt, so tests can build it alone
-// (tests/fork/barreach_test.cpp); ForkBarReach (forkbarreach.h) asks the PC.
+// is followed by the moves sent to it (Windows moves it a pixel a count in Mac trackpad mode). As a
+// push up against the top begins, the PC is asked where its pointer is and to pulse it twice
+// (POST /actions/cursor), as an app may have moved it since; only when the PC says it's at the top
+// does the Mac's pointer go up into the bar, at the end of the second pulse, if the push is still on.
+// Free of Qt, so tests can build it alone (tests/fork/barreach_test.cpp); ForkBarReach
+// (forkbarreach.h) asks the PC.
 namespace BarReach
 {
-    // How long and how far the pointer is pushed up against the top before the PC is asked, so
-    // throwing it up at a tab or a window's close button doesn't land in the bar
-    const std::uint32_t k_PushMs = 250;
-    const double k_PushPoints = 24;     // of the Mac's pointer motion, after macOS's acceleration
+    // Two pulses on the PC's pointer, as Apollo draws them (its cursor_pulse.h): the projection
+    // leaves as the second ends
+    const int k_Pulses = 2;
+    const std::uint32_t k_PulseMs = 170;
+    // At least this much of the Mac's pointer motion up, after macOS's acceleration, by then
+    const double k_PushPoints = 24;
     // A push ends when nothing has pushed up for this long, or the pointer goes down
     const std::uint32_t k_PauseMs = 150;
     const int k_DownPx = 2;
@@ -33,14 +36,29 @@ namespace BarReach
         int width = 0;
         int height = 0;
         bool shown = false;     // Windows draws it: a game may hide it
+        bool pulsing = false;   // the PC pulses it now, as asked
+    };
+
+    enum class Action {
+        None,
+        Ask,            // ask the PC where its pointer is, and to pulse it if it's at the top
+        PulseHere,      // the PC can't pulse it: pulse it over the picture instead
+        Cancel,         // the push stopped short: the pulses settle back
+        HandOver,       // the Mac's pointer goes up into the bar, above fraction of the picture's width
+    };
+
+    struct Step {
+        Action action = Action::None;
+        double fraction = 0;    // HandOver: from 0 at the picture's left edge to 1 at its right
+        bool pcPulses = false;  // Cancel: the PC's pulses, else the ones over the picture
     };
 
     class Tracker
     {
     public:
         // A move sent to the PC (in its pixels) and the Mac's pointer motion it came from (in points,
-        // up negative), with a button held or not. True to ask the PC where its pointer is now.
-        bool moved(int dx, int dy, double dxPoints, double dyPoints, bool buttonDown, std::uint32_t ms)
+        // up negative), with a button held or not
+        Step moved(int dx, int dy, double dxPoints, double dyPoints, bool buttonDown, std::uint32_t ms)
         {
             // Where Windows has it: kept on the display
             bool atTop = !m_Known;  // not known yet: any push may be at the top, and the first asks
@@ -54,51 +72,68 @@ namespace BarReach
                 m_SinceAskY += dy;
             }
 
+            Step ended;
             if (m_Pushing && ms - m_LastUpMs > k_PauseMs) {
-                m_Pushing = false;
+                ended = endPush();
             }
             if (buttonDown || dy > k_DownPx || !atTop) {
                 // Dragging, as a window up to the top to fill the screen, or not at the top
-                m_Pushing = false;
+                Step step = endPush();
+                return ended.action != Action::None ? ended : step;
             }
-            else if (dyPoints < 0 && -dyPoints >= std::fabs(dxPoints)) {
+            if (dyPoints < 0 && -dyPoints >= std::fabs(dxPoints)) {
                 // Mostly up: sliding along the top, as across tabs, doesn't push
                 if (!m_Pushing) {
                     m_Pushing = true;
-                    m_PushStartMs = ms;
                     m_PushPoints = 0;
                 }
                 m_PushPoints += -dyPoints;
                 m_LastUpMs = ms;
             }
-
-            if (!m_Pushing || m_Asking || ms - m_PushStartMs < k_PushMs || m_PushPoints < k_PushPoints) {
-                return false;
+            if (ended.action != Action::None) {
+                return ended;
             }
-            if (m_Asked && ms - m_LastAskMs < k_AskGapMs) {
-                return false;
+            if (!m_Pushing) {
+                return {};
+            }
+
+            if (m_Waiting) {
+                if (reached(ms, m_ReleaseAtMs) && m_PushPoints >= k_PushPoints) {
+                    m_Waiting = false;
+                    m_PcPulses = m_HerePulses = false;
+                    m_Pushing = false;
+                    Step step;
+                    step.action = Action::HandOver;
+                    step.fraction = (m_X + 0.5) / m_Width;
+                    return step;
+                }
+                return {};
+            }
+            if (m_Asking || (m_Asked && ms - m_LastAskMs < k_AskGapMs)) {
+                return {};
             }
             m_Asking = true;
             m_Asked = true;
             m_LastAskMs = ms;
             m_SinceAskX = 0;
             m_SinceAskY = 0;
-            return true;
+            Step step;
+            step.action = Action::Ask;
+            return step;
         }
 
-        // The PC's answer to the question asked. Where the Mac's pointer goes into the bar, from 0 at
-        // the picture's left edge to 1 at its right, when the PC's pointer is at the top and still
-        // pushed; none otherwise.
-        std::optional<double> answered(const Cursor& cursor, std::uint32_t ms)
+        // The PC's answer to the question asked
+        Step answered(const Cursor& cursor, std::uint32_t ms)
         {
             m_Asking = false;
+            m_PcPulses = cursor.pulsing;
             bool onDisplay = cursor.width > 0 && cursor.height > 0 && cursor.x >= 0 && cursor.x < cursor.width &&
                              cursor.y < cursor.height;
             if (!onDisplay) {
                 // On another display beside this one: nothing to follow
                 m_Known = false;
-                m_Pushing = false;
-                return std::nullopt;
+                m_Waiting = false;
+                return settle();
             }
 
             // The moves sent since it was asked came after
@@ -108,17 +143,26 @@ namespace BarReach
             m_X = std::clamp(cursor.x + m_SinceAskX, 0, m_Width - 1);
             m_Y = std::clamp(cursor.y + m_SinceAskY, 0, m_Height - 1);
 
-            bool pushed = m_Pushing && ms - m_LastUpMs <= k_PauseMs;
-            if (cursor.y > 0 || m_Y > 0) {
-                // Lower than it seemed: a push starts again once it's at the top
+            if (cursor.y > 0 || m_Y > 0 || !cursor.shown) {
+                // Lower than it seemed, or hidden: a push starts again once it's at the top
                 m_Pushing = false;
-                return std::nullopt;
+                m_Waiting = false;
+                return settle();
             }
-            if (!cursor.shown || !pushed) {
-                return std::nullopt;
+            if (!m_Pushing || ms - m_LastUpMs > k_PauseMs) {
+                // The push ended while the PC answered
+                m_Pushing = false;
+                return settle();
             }
-            m_Pushing = false;
-            return (cursor.x + 0.5) / cursor.width;
+            m_Waiting = true;
+            m_ReleaseAtMs = ms + k_Pulses * k_PulseMs;
+            if (!cursor.pulsing) {
+                m_HerePulses = true;
+                Step step;
+                step.action = Action::PulseHere;
+                return step;
+            }
+            return {};
         }
 
         // The question went unanswered; the next push asks again
@@ -127,16 +171,13 @@ namespace BarReach
             m_Asking = false;
         }
 
-        // The PC's pointer was put there, as fractions of the picture (the Mac's came back down into it)
-        void placed(double fx, double fy)
+        // Now and then while the pulses run, for a push that stopped with no move to say so
+        Step tick(std::uint32_t ms)
         {
-            m_Pushing = false;
-            if (m_Width <= 0 || m_Height <= 0) {
-                return;
+            if (m_Pushing && ms - m_LastUpMs > k_PauseMs) {
+                return endPush();
             }
-            m_Known = true;
-            m_X = std::clamp(static_cast<int>(fx * m_Width), 0, m_Width - 1);
-            m_Y = std::clamp(static_cast<int>(fy * m_Height), 0, m_Height - 1);
+            return {};
         }
 
         // Where the PC's pointer is isn't known any more: the stream stopped moving it, and something
@@ -144,15 +185,45 @@ namespace BarReach
         void forget()
         {
             m_Known = false;
-            m_Pushing = false;
+            endPush();
         }
 
         bool known() const { return m_Known; }
         int x() const { return m_X; }
         int y() const { return m_Y; }
+        int width() const { return m_Width; }
+        int height() const { return m_Height; }
         bool asking() const { return m_Asking; }
+        // Waiting for the pulses to end, or for the PC's answer: tick() wants calling
+        bool busy() const { return m_Waiting || m_Asking || m_PcPulses || m_HerePulses; }
 
     private:
+        // ms at or after then, across the wrap
+        static bool reached(std::uint32_t ms, std::uint32_t then)
+        {
+            return static_cast<std::int32_t>(ms - then) >= 0;
+        }
+
+        Step endPush()
+        {
+            m_Pushing = false;
+            m_Waiting = false;
+            return settle();
+        }
+
+        // Pulses that run settle back
+        Step settle()
+        {
+            if (!m_PcPulses && !m_HerePulses) {
+                return {};
+            }
+            Step step;
+            step.action = Action::Cancel;
+            step.pcPulses = m_PcPulses;
+            m_PcPulses = m_HerePulses = false;
+            return step;
+        }
+
         bool m_Known = false;
         int m_X = 0;
         int m_Y = 0;
@@ -160,7 +231,6 @@ namespace BarReach
         int m_Height = 0;
 
         bool m_Pushing = false;
-        std::uint32_t m_PushStartMs = 0;
         std::uint32_t m_LastUpMs = 0;
         double m_PushPoints = 0;
 
@@ -169,5 +239,10 @@ namespace BarReach
         std::uint32_t m_LastAskMs = 0;
         int m_SinceAskX = 0;
         int m_SinceAskY = 0;
+
+        bool m_Waiting = false;         // the PC said it's at the top: going up as the pulses end
+        std::uint32_t m_ReleaseAtMs = 0;
+        bool m_PcPulses = false;        // the PC pulses its pointer, as asked
+        bool m_HerePulses = false;      // pulses over the picture instead
     };
 }

@@ -261,7 +261,7 @@ Column {
                 visible: SystemProperties.isDarwin
                 showDivider: false
                 label: qsTr("Notch bar")
-                help: qsTr("On a MacBook with a camera notch, fullscreen streams show the app's name, stream stats, the bitrate and the battery in the strip beside the notch, each opening a menu. With the Mac trackpad, keep moving up past the top to reach them; while a game has the mouse, press ⌃⌥⇧N.")
+                help: qsTr("On a MacBook with a camera notch, fullscreen streams show the app's name, stream stats, the bitrate and the battery in the strip beside the notch, each opening a menu. With the Mac trackpad, keep moving up past the top: the pointer pulses twice, then floats up to them. While a game has the mouse, press ⌃⌥⇧N.")
                 checked: ForkPreferences.notchBar
                 onToggled: (on) => ForkPreferences.notchBar = on
             }

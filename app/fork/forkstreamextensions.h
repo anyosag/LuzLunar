@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include <QString>
 
@@ -100,11 +101,19 @@ private:
     void setAbsoluteMouse(SdlInputHandler* input, bool absolute);
 
     // Mac trackpad mode's pointer was pushed up past the top of the picture (ForkBarReach): the stream
-    // lets it go, and the Mac's pointer goes on into the bar above this fraction of the picture
+    // lets it go, and the Mac's pointer goes on into the bar above the PC's, or this fraction of the
+    // picture
     void handBarThePointer(double fraction);
 
-    // The Mac's pointer came back down from the bar: the stream holds it again from there
+    // The Mac's pointer came back down from the bar: the stream holds it again, and the PC's pointer
+    // goes on from where it went up
     void takePointerFromBar(SdlInputHandler* input, int x, int y);
+
+    // Where the PC's pointer is in the stream window, in its points, while ForkBarReach knows
+    std::optional<std::pair<double, double>> pcPointerInWindow() const;
+
+    // Pulses over the PC's pointer, for a PC that can't pulse its own
+    void pulseOverPicture(int pulses);
 
     // The picture in the stream window, in its points, as the absolute mouse fits it
     SDL_Rect videoRect() const;

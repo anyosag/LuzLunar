@@ -1,5 +1,6 @@
 #include "notchbar.h"
 #include "notchmenus_mac.h"
+#include "notchreach_mac.h"
 
 #include "fork/forklinkrules.h"
 #include "fork/forknetworklink.h"
@@ -241,6 +242,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     NotchBar::StreamSettingsSource m_StreamSettings;
     NotchMenus::Menu m_OpenMenu;    // the menu open now, Stream Settings (no item of its own) included
     NSRect m_StripFrame;            // the strip beside the notch on screen, from the last layout
+    ForkReachOverlay* m_Reach;      // Mac trackpad mode's pointer up into the strip and back, drawn over it all
 
     // Messages beside the notch, in a pill that grows out of a blinking red dot
     NSView* m_MessagePill;
@@ -283,7 +285,12 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
 - (BOOL)menuOpen;
 - (BOOL)barOnScreen;
-- (void)takePointerAtWindowX:(CGFloat)windowX;
+- (void)projectUpFromWindowX:(CGFloat)windowX y:(CGFloat)windowY;
+- (void)pullHomeFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
+                    pcPoint:(std::function<std::optional<std::pair<double, double>>()>)pcPoint
+                   arriving:(std::function<void()>)arriving;
+- (void)pulseAtWindowX:(CGFloat)windowX y:(CGFloat)windowY count:(int)count size:(CGFloat)size;
+- (void)settlePulse;
 - (void)refreshMenus;
 - (void)bitrateChanged;
 - (void)powerChanged;
@@ -553,6 +560,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_StreamWindow = [window retain];
     m_Panel = makeNotchPanel();
     m_Corner = [[ForkCornerMessage alloc] initWithStreamWindow:window];
+    m_Reach = [[ForkReachOverlay alloc] initWithStreamWindow:window];
     m_AppName = [appName copy];
     m_HostName = [hostName copy];
     m_VideoWidth = videoWidth;
@@ -682,6 +690,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Warning release];
     [m_Toast release];
     [m_Corner release];
+    [m_Reach release];
     [super dealloc];
 }
 
@@ -705,6 +714,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_AnimationGeneration++;
     m_ShowsMessages = false;
     [m_Corner invalidate];
+    // Shows the Mac's pointer if a ghost was on its way up
+    [m_Reach invalidate];
     [m_Dot.layer removeAllAnimations];
     [m_Panel orderOut:nil];
     [m_Panel close];
@@ -1050,9 +1061,16 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_BarOnScreen;
 }
 
+// A point of the stream window, in its points from its top left, on the screen
+- (NSPoint)screenPointAtWindowX:(CGFloat)windowX y:(CGFloat)windowY
+{
+    NSRect content = [m_StreamWindow contentRectForFrameRect:m_StreamWindow.frame];
+    return NSMakePoint(NSMinX(content) + windowX, NSMaxY(content) - windowY);
+}
+
 // Mac trackpad mode's pointer came up past the top of the picture: the Mac's own goes on from there,
-// half way up the strip
-- (void)takePointerAtWindowX:(CGFloat)windowX
+// half way up the strip, and the ghost of the PC's floats up to it
+- (void)projectUpFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
 {
     if (m_StreamWindow == nil || !m_BarOnScreen || !m_HasGeometry) {
         return;
@@ -1060,7 +1078,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     // No more hints: this is how
     ForkPreferences::get()->setNotchBarHints(MAX(ForkPreferences::get()->notchBarHints(), k_ReachHintStreams));
 
-    CGFloat x = MIN(MAX(NSMinX(m_StreamWindow.frame) + windowX, NSMinX(m_StripFrame) + 1), NSMaxX(m_StripFrame) - 1);
+    NSPoint from = [self screenPointAtWindowX:windowX y:windowY];
+    CGFloat x = MIN(MAX(from.x, NSMinX(m_StripFrame) + 1), NSMaxX(m_StripFrame) - 1);
     CGFloat y = NSMinY(m_StripFrame) + NSHeight(m_StripFrame) / 2;
     // Quartz's coordinates go down from the top of the primary display
     NSScreen* primary = NSScreen.screens.firstObject;
@@ -1070,6 +1089,43 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     CGWarpMouseCursorPosition(CGPointMake(x, NSMaxY(primary.frame) - y));
     // Else macOS holds the pointer still for a moment after the warp
     CGAssociateMouseAndMouseCursorPosition(true);
+    [m_Reach projectFrom:from to:NSMakePoint(x, y)];
+}
+
+// The Mac's pointer came back down into the picture: its ghost is sucked into the PC's
+- (void)pullHomeFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
+                    pcPoint:(std::function<std::optional<std::pair<double, double>>()>)pcPoint
+                   arriving:(std::function<void()>)arriving
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+    std::function<std::optional<NSPoint>()> target;
+    if (pcPoint) {
+        // The overlay is invalidated with the controller, so this never outlives it
+        ForkNotchBarController* controller = self;
+        target = [controller, pcPoint]() -> std::optional<NSPoint> {
+            std::optional<std::pair<double, double>> point = pcPoint();
+            if (!point) {
+                return std::nullopt;
+            }
+            return [controller screenPointAtWindowX:point->first y:point->second];
+        };
+    }
+    [m_Reach pullFrom:[self screenPointAtWindowX:windowX y:windowY] target:std::move(target) arriving:std::move(arriving)];
+}
+
+- (void)pulseAtWindowX:(CGFloat)windowX y:(CGFloat)windowY count:(int)count size:(CGFloat)size
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+    [m_Reach pulseAt:[self screenPointAtWindowX:windowX y:windowY] count:count size:size];
+}
+
+- (void)settlePulse
+{
+    [m_Reach settlePulse];
 }
 
 - (void)pressedItemForMenu:(NotchMenus::Menu)menu
@@ -2151,10 +2207,32 @@ namespace
             return [m_Controller barOnScreen];
         }
 
-        void takePointer(double windowX) override
+        void projectUp(double windowX, double windowY) override
         {
             @autoreleasepool {
-                [m_Controller takePointerAtWindowX:windowX];
+                [m_Controller projectUpFromWindowX:windowX y:windowY];
+            }
+        }
+
+        void pullHome(double windowX, double windowY, std::function<std::optional<std::pair<double, double>>()> pcPoint,
+                      std::function<void()> arriving) override
+        {
+            @autoreleasepool {
+                [m_Controller pullHomeFromWindowX:windowX y:windowY pcPoint:std::move(pcPoint) arriving:std::move(arriving)];
+            }
+        }
+
+        void pulseAt(double windowX, double windowY, int pulses, double size) override
+        {
+            @autoreleasepool {
+                [m_Controller pulseAtWindowX:windowX y:windowY count:pulses size:size];
+            }
+        }
+
+        void settlePulse() override
+        {
+            @autoreleasepool {
+                [m_Controller settlePulse];
             }
         }
 
@@ -2182,6 +2260,11 @@ namespace
     private:
         ForkNotchBarController* m_Controller;
     };
+}
+
+bool NotchBar::reduceMotion()
+{
+    return ::reduceMotion();
 }
 
 std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& appName, const QString& hostName,
