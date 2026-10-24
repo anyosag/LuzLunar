@@ -22,8 +22,10 @@ namespace BarReach
     const std::uint32_t k_PulseMs = 170;
     // At least this much of the Mac's pointer motion up, after macOS's acceleration, by then
     const double k_PushPoints = 24;
-    // A push ends when nothing has pushed up for this long, or the pointer goes down
-    const std::uint32_t k_PauseMs = 150;
+    // A push ends when nothing has pushed up for this long, or the pointer goes down. Long enough
+    // for the finger to lift and come back between swipes up, as a push on a trackpad often is; a
+    // throw up at a tab that stops still doesn't go, as going takes a move up after the pulses.
+    const std::uint32_t k_PauseMs = 350;
     const int k_DownPx = 2;
     // Questions go one at a time, at least this far apart
     const std::uint32_t k_AskGapMs = 200;
