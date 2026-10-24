@@ -120,10 +120,11 @@ public:
     // let the pointer go first.
     virtual void projectUp(double windowX, double windowY) = 0;
     // pullHome: the Mac's pointer, at this point, came back down into the picture. Its ghost is
-    // sucked back into the PC's pointer, wherever pcPoint says it is as it goes (none: where it
-    // left); arriving is called just before it gets there.
+    // sucked back into the PC's pointer, chasing it to wherever pcPoint says the stream has put it
+    // (none: where it left), as the picture shows it lagMs later (the stream's latency); arriving
+    // is called just before it gets there.
     virtual void pullHome(double windowX, double windowY, std::function<std::optional<std::pair<double, double>>()> pcPoint,
-                          std::function<void()> arriving) = 0;
+                          double lagMs, std::function<void()> arriving) = 0;
     // Pulses over the PC's pointer at this point, for a PC that can't pulse its own; size: its
     // arrow's height in points. settlePulse: they stop short, settling back.
     virtual void pulseAt(double windowX, double windowY, int pulses, double size) = 0;
