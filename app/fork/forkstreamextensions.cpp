@@ -837,10 +837,19 @@ void ForkStreamExtensions::takePointerFromBar(SdlInputHandler* input, int x, int
 {
     m_BarHasPointer = false;
     input->setCaptureActive(true);
-    // The PC's pointer stays where it went up from, and goes on from there: the Mac's ghost is
-    // sucked back into it, following it if it moves meanwhile, and it pulses once as the ghost gets
-    // there (over the picture for a PC that can't)
-    m_NotchBar->pullHome(x, y, [this] { return pcPointerInWindow(); }, [this] {
+    // The PC's pointer stays where it went up from, and goes on from there at once: the Mac's ghost
+    // is sucked back into it, chasing it as the picture shows it, a stream's latency after the
+    // stream moves it, and it pulses once as the ghost gets there (over the picture for a PC that
+    // can't)
+    double lagMs = 0;
+    ForkStreamStats::Snapshot stats;
+    if (ForkStreamStats::latest(&stats)) {
+        double latency = StreamHistory::total(stats.latencyMs);
+        if (StreamHistory::known(latency)) {
+            lagMs = latency;
+        }
+    }
+    m_NotchBar->pullHome(x, y, [this] { return pcPointerInWindow(); }, lagMs, [this] {
         if (m_BarReach && !m_BarReach->pulseOnce()) {
             pulseOverPicture(1);
         }

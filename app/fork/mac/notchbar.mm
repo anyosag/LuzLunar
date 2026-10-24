@@ -288,6 +288,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (void)projectUpFromWindowX:(CGFloat)windowX y:(CGFloat)windowY;
 - (void)pullHomeFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
                     pcPoint:(std::function<std::optional<std::pair<double, double>>()>)pcPoint
+                      lagMs:(double)lagMs
                    arriving:(std::function<void()>)arriving;
 - (void)pulseAtWindowX:(CGFloat)windowX y:(CGFloat)windowY count:(int)count size:(CGFloat)size;
 - (void)settlePulse;
@@ -1095,6 +1096,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 // The Mac's pointer came back down into the picture: its ghost is sucked into the PC's
 - (void)pullHomeFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
                     pcPoint:(std::function<std::optional<std::pair<double, double>>()>)pcPoint
+                      lagMs:(double)lagMs
                    arriving:(std::function<void()>)arriving
 {
     if (m_StreamWindow == nil) {
@@ -1112,7 +1114,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
             return [controller screenPointAtWindowX:point->first y:point->second];
         };
     }
-    [m_Reach pullFrom:[self screenPointAtWindowX:windowX y:windowY] target:std::move(target) arriving:std::move(arriving)];
+    [m_Reach pullFrom:[self screenPointAtWindowX:windowX y:windowY] target:std::move(target) lagMs:lagMs arriving:std::move(arriving)];
 }
 
 - (void)pulseAtWindowX:(CGFloat)windowX y:(CGFloat)windowY count:(int)count size:(CGFloat)size
@@ -2215,10 +2217,10 @@ namespace
         }
 
         void pullHome(double windowX, double windowY, std::function<std::optional<std::pair<double, double>>()> pcPoint,
-                      std::function<void()> arriving) override
+                      double lagMs, std::function<void()> arriving) override
         {
             @autoreleasepool {
-                [m_Controller pullHomeFromWindowX:windowX y:windowY pcPoint:std::move(pcPoint) arriving:std::move(arriving)];
+                [m_Controller pullHomeFromWindowX:windowX y:windowY pcPoint:std::move(pcPoint) lagMs:lagMs arriving:std::move(arriving)];
             }
         }
 

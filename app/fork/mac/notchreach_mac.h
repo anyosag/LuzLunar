@@ -23,9 +23,13 @@
 - (void)projectFrom:(NSPoint)from to:(NSPoint)to;
 
 // The ghost of the Mac's pointer, from this point of the screen, is sucked back into the PC's,
-// wherever target says it is as it goes (none: where it was); arriving is called just before it
-// gets there, for the PC's pulse
-- (void)pullFrom:(NSPoint)from target:(std::function<std::optional<NSPoint>()>)target arriving:(std::function<void()>)arriving;
+// chasing it to wherever target says the stream has put it (none: where it was), as the picture
+// shows it lagMs later (the stream's latency); arriving is called just before it gets there, for
+// the PC's pulse
+- (void)pullFrom:(NSPoint)from
+          target:(std::function<std::optional<NSPoint>()>)target
+           lagMs:(double)lagMs
+        arriving:(std::function<void()>)arriving;
 
 // Pulses drawn over the PC's pointer at this point of the screen, for a PC that can't pulse it
 // itself; size: the PC's arrow's height in points

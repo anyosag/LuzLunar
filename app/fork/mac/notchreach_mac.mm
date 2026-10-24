@@ -2,7 +2,10 @@
 
 #import <QuartzCore/QuartzCore.h>
 
+#include <algorithm>
 #include <cmath>
+#include <deque>
+#include <vector>
 
 // [fork] The notch bar's astral projection, as the design canvas has it (the timings, the curves and
 // the look): a ghost of the pointer and three afterimages on a click-through panel over the stream
@@ -14,10 +17,12 @@ namespace
     // Up: the ghost floats up into the strip, then fades as the Mac's pointer shows
     const double k_RiseMs = 220;
     const double k_LandMs = 120;
-    // Home: a lurch, as if caught, then sucked in faster and faster along a shallow arc
-    const double k_LurchMs = 160;
-    const double k_PullMs = 520;
-    const double k_ArrivingMs = 460;    // the PC's pulse is asked for then, so it shows as the ghost gets there
+    // Home: sucked in faster and faster, chasing the PC's pointer, which moves as soon as the stream
+    // has it again; it lands on it at k_PullMs whatever the pointer does
+    const double k_PullMs = 240;
+    const double k_PullEase = 1.4;      // the share of the way covered: (t / k_PullMs) to this power
+    const double k_BowShare = 0.12;     // the bow to one side, of the distance it set off from
+    const double k_ArrivingMs = 180;    // the PC's pulse is asked for then, so it shows as the ghost gets there
     // Afterimages, behind the ghost
     const double k_TrailGapMs = 30;
     const double k_TrailOpacity[3] = { 0.32, 0.2, 0.1 };
@@ -99,6 +104,14 @@ namespace
     }
 }
 
+// The ghost as it was drawn going home, for its afterimages
+struct ForkGhostFrame {
+    double ms;
+    NSPoint position;
+    CATransform3D transform;
+    double opacity;
+};
+
 typedef NS_ENUM(NSInteger, ForkReachKind) {
     ForkReachNone,
     ForkReachUp,
@@ -144,6 +157,16 @@ typedef NS_ENUM(NSInteger, ForkReachKind) {
     std::function<std::optional<NSPoint>()> m_Target;
     std::function<void()> m_Arriving;
     BOOL m_Arrived;
+    // Going home: where the PC's pointer was, for the one the picture shows a stream's latency later;
+    // the chase, its bow and the frames drawn
+    std::deque<std::pair<CFTimeInterval, NSPoint>> m_TargetSamples;
+    double m_LagMs;
+    NSPoint m_Chase;
+    double m_Progress;
+    NSPoint m_Bow;          // the side it bows to, times the bow's height
+    NSPoint m_LastShown;
+    double m_Angle;
+    std::vector<ForkGhostFrame> m_Frames;
     BOOL m_InTick;          // arriving can start a pulse from inside a tick
     BOOL m_CursorHidden;
     BOOL m_ReduceMotion;
@@ -394,7 +417,10 @@ typedef NS_ENUM(NSInteger, ForkReachKind) {
     [self play:ForkReachUp];
 }
 
-- (void)pullFrom:(NSPoint)from target:(std::function<std::optional<NSPoint>()>)target arriving:(std::function<void()>)arriving
+- (void)pullFrom:(NSPoint)from
+          target:(std::function<std::optional<NSPoint>()>)target
+           lagMs:(double)lagMs
+        arriving:(std::function<void()>)arriving
 {
     [self stop];
     if (NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion || ![self preparePanel]) {
@@ -410,6 +436,25 @@ typedef NS_ENUM(NSInteger, ForkReachKind) {
     m_Target = std::move(target);
     m_Arriving = std::move(arriving);
     m_Arrived = NO;
+    m_TargetSamples.clear();
+    m_TargetSamples.emplace_back(CACurrentMediaTime(), m_To);
+    m_LagMs = std::clamp(lagMs, 0.0, 150.0);
+    m_Chase = m_From;
+    m_Progress = 0;
+    m_LastShown = m_From;
+    m_Frames.clear();
+    // Off toward the pointer, bowing upward to one side of that way, which it keeps
+    double dx = m_To.x - m_From.x;
+    double dy = m_To.y - m_From.y;
+    double distance = std::hypot(dx, dy);
+    m_Angle = distance > 0 ? std::atan2(dy, dx) : -M_PI / 2;
+    double px = distance > 0 ? -dy / distance : 0;
+    double py = distance > 0 ? dx / distance : 0;
+    if (py < 0) {
+        px = -px;
+        py = -py;
+    }
+    m_Bow = NSMakePoint(px * distance * k_BowShare, py * distance * k_BowShare);
     [self play:ForkReachHome];
 }
 
@@ -541,76 +586,85 @@ typedef NS_ENUM(NSInteger, ForkReachKind) {
     return ms >= k_RiseMs + k_LandMs && !trails;
 }
 
-// Where the ghost is t ms into the pull home, and how it's stretched
-- (void)place:(CALayer*)layer at:(double)t target:(NSPoint)target opacity:(double)opacity
+// Where the picture shows the PC's pointer now: where the stream put it a stream's latency ago
+- (NSPoint)shownTarget:(CFTimeInterval)now
 {
-    NSPoint from = m_From;
-    double dx = target.x - from.x;
-    double dy = target.y - from.y;
-    double distance = std::hypot(dx, dy);
-    if (t < k_LurchMs) {
-        // Away from home, as if caught, then jolted back
-        double ax = distance > 0 ? -dx / distance : 0;
-        double ay = distance > 0 ? -dy / distance : 1;
-        double w = std::sin(M_PI * t / k_LurchMs);
-        layer.position = NSMakePoint(from.x + ax * 9 * w, from.y + ay * 9 * w);
-        layer.transform = CATransform3DMakeRotation(-0.17 * std::sin(2 * M_PI * t / k_LurchMs), 0, 0, 1);
-        layer.opacity = opacity;
-        return;
+    CFTimeInterval then = now - m_LagMs / 1000;
+    while (m_TargetSamples.size() > 1 && m_TargetSamples[1].first <= then) {
+        m_TargetSamples.pop_front();
     }
-    // Then along a shallow arc, faster and faster: stretched along the way, shrinking to nothing
-    double e = bezier(0.42, 0, 1, 1, (t - k_LurchMs) / (k_PullMs - k_LurchMs));
-    double px = distance > 0 ? -dy / distance : 0;
-    double py = distance > 0 ? dx / distance : 1;
-    if (py < 0) {
-        // The arc bows upward
-        px = -px;
-        py = -py;
-    }
-    NSPoint control = NSMakePoint((from.x + target.x) / 2 + px * distance * 0.12, (from.y + target.y) / 2 + py * distance * 0.12);
-    double r = 1 - e;
-    layer.position = NSMakePoint(r * r * from.x + 2 * r * e * control.x + e * e * target.x,
-                                 r * r * from.y + 2 * r * e * control.y + e * e * target.y);
-    double tx = 2 * r * (control.x - from.x) + 2 * e * (target.x - control.x);
-    double ty = 2 * r * (control.y - from.y) + 2 * e * (target.y - control.y);
-    double angle = std::atan2(ty, tx);
-    double k = 1 + 0.8 * 4 * e * (1 - e);
-    double size = 1 - 0.85 * e * e * e;
-    layer.transform = distance > 0 ? stretch(angle, k * size, size / k) : CATransform3DMakeScale(size, size, 1);
-    layer.opacity = e < 0.6 ? opacity : opacity * (1 - (e - 0.6) / 0.4);
+    return m_TargetSamples.front().second;
 }
 
-// Sucked back home: a lurch, then pulled in by 520 ms, to wherever the PC's pointer is now
+// Sucked back into the PC's pointer, chasing it as it moves: each frame the ghost covers the share
+// of what's left that its eased progress does, toward where the picture shows the pointer, so it
+// lands on it at k_PullMs whatever the pointer does. Stretched along its way and shrinking to
+// nothing; the afterimages are where it was.
 - (BOOL)drawHome:(double)ms
 {
+    CFTimeInterval now = CACurrentMediaTime();
     if (m_Target) {
-        std::optional<NSPoint> now = m_Target();
-        if (now) {
-            m_To = [self local:*now];
+        std::optional<NSPoint> point = m_Target();
+        if (point) {
+            m_TargetSamples.emplace_back(now, [self local:*point]);
         }
     }
+    NSPoint target = [self shownTarget:now];
     if (!m_Arrived && ms >= k_ArrivingMs) {
         m_Arrived = YES;
         if (m_Arriving) {
             m_Arriving();
         }
     }
+
     if (ms <= k_PullMs) {
-        [self place:m_Ghost at:ms target:m_To opacity:0.85];
+        double progress = std::pow(clamp01(ms / k_PullMs), k_PullEase);
+        double share = progress >= 1 ? 1 : (progress - m_Progress) / (1 - m_Progress);
+        m_Chase = lerp(m_Chase, target, share);
+        m_Progress = progress;
+        double bow = std::sin(M_PI * progress);
+        NSPoint shown = NSMakePoint(m_Chase.x + m_Bow.x * bow, m_Chase.y + m_Bow.y * bow);
+        if (std::hypot(shown.x - m_LastShown.x, shown.y - m_LastShown.y) > 0.5) {
+            m_Angle = std::atan2(shown.y - m_LastShown.y, shown.x - m_LastShown.x);
+        }
+        m_LastShown = shown;
+        double k = 1 + 0.8 * 4 * progress * (1 - progress);
+        double size = 1 - 0.85 * progress * progress * progress;
+        ForkGhostFrame frame;
+        frame.ms = ms;
+        frame.position = shown;
+        frame.transform = stretch(m_Angle, k * size, size / k);
+        frame.opacity = progress < 0.6 ? 0.85 : 0.85 * (1 - (progress - 0.6) / 0.4);
+        m_Frames.push_back(frame);
+        m_Ghost.position = frame.position;
+        m_Ghost.transform = frame.transform;
+        m_Ghost.opacity = frame.opacity;
     }
     else {
         m_Ghost.opacity = 0;
     }
+
     BOOL trails = NO;
     for (int i = 0; i < 3; i++) {
         double t = ms - k_TrailGapMs * (i + 1);
-        if (t >= k_LurchMs && t <= k_PullMs) {
-            [self place:m_Trails[i] at:t target:m_To opacity:k_TrailOpacity[i]];
+        const ForkGhostFrame* frame = nullptr;
+        if (t >= 0 && t <= k_PullMs) {
+            for (const ForkGhostFrame& f : m_Frames) {
+                if (f.ms > t) {
+                    break;
+                }
+                frame = &f;
+            }
+        }
+        if (frame != nullptr) {
+            m_Trails[i].position = frame->position;
+            m_Trails[i].transform = frame->transform;
+            m_Trails[i].opacity = k_TrailOpacity[i] * frame->opacity / 0.85;
             trails = YES;
         }
         else {
             m_Trails[i].opacity = 0;
-            trails = trails || t < k_LurchMs;
+            trails = trails || t < 0;
         }
     }
     return ms > k_PullMs && !trails;
