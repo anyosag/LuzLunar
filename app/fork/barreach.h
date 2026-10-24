@@ -26,6 +26,9 @@ namespace BarReach
     // for the finger to lift and come back between swipes up, as a push on a trackpad often is; a
     // throw up at a tab that stops still doesn't go, as going takes a move up after the pulses.
     const std::uint32_t k_PauseMs = 350;
+    // As the pulses end, the pointer goes if the push moved up this recently: a swipe that kept on
+    // past the top does, a throw up at a tab that stopped there doesn't
+    const std::uint32_t k_GoMs = 200;
     const int k_DownPx = 2;
     // Questions go one at a time, at least this far apart
     const std::uint32_t k_AskGapMs = 200;
@@ -100,16 +103,7 @@ namespace BarReach
             }
 
             if (m_Waiting) {
-                if (reached(ms, m_ReleaseAtMs) && m_PushPoints >= k_PushPoints) {
-                    m_Waiting = false;
-                    m_PcPulses = m_HerePulses = false;
-                    m_Pushing = false;
-                    Step step;
-                    step.action = Action::HandOver;
-                    step.fraction = (m_X + 0.5) / m_Width;
-                    return step;
-                }
-                return {};
+                return go(ms);
             }
             if (m_Asking || (m_Asked && ms - m_LastAskMs < k_AskGapMs)) {
                 return {};
@@ -173,11 +167,15 @@ namespace BarReach
             m_Asking = false;
         }
 
-        // Now and then while the pulses run, for a push that stopped with no move to say so
+        // Now and then while the pulses run: they may have ended with no move since, or the push
+        // stopped with no move to say so
         Step tick(std::uint32_t ms)
         {
             if (m_Pushing && ms - m_LastUpMs > k_PauseMs) {
                 return endPush();
+            }
+            if (m_Pushing && m_Waiting) {
+                return go(ms);
             }
             return {};
         }
@@ -204,6 +202,21 @@ namespace BarReach
         static bool reached(std::uint32_t ms, std::uint32_t then)
         {
             return static_cast<std::int32_t>(ms - then) >= 0;
+        }
+
+        // Up into the bar once the pulses have ended, with enough push, still pushing
+        Step go(std::uint32_t ms)
+        {
+            if (!reached(ms, m_ReleaseAtMs) || m_PushPoints < k_PushPoints || ms - m_LastUpMs > k_GoMs) {
+                return {};
+            }
+            m_Waiting = false;
+            m_PcPulses = m_HerePulses = false;
+            m_Pushing = false;
+            Step step;
+            step.action = Action::HandOver;
+            step.fraction = (m_X + 0.5) / m_Width;
+            return step;
         }
 
         Step endPush()

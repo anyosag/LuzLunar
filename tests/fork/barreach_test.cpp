@@ -149,6 +149,28 @@ static void testSwipes()
     CHECK(push(tracker, ms, 200).action == Action::HandOver);
 }
 
+static void testOneSwipe()
+{
+    // One swipe up that ends just before the pulses do: it goes as they end
+    Tracker tracker;
+    up(tracker, 1000);
+    tracker.answered(at(800, 0), 1020);
+    std::uint32_t ms = 1030;
+    CHECK(push(tracker, ms, 230).action == Action::None);
+    CHECK(tracker.tick(1020 + k_Release - 10).action == Action::None);
+    Step step = tracker.tick(1020 + k_Release);
+    CHECK(step.action == Action::HandOver);
+
+    // A throw up at a tab that stops there: the pulses end without it going, then settle
+    Tracker thrown;
+    up(thrown, 1000);
+    thrown.answered(at(800, 0), 1020);
+    ms = 1030;
+    push(thrown, ms, 60);
+    CHECK(thrown.tick(1020 + k_Release).action == Action::None);
+    CHECK(thrown.tick(ms + k_PauseMs).action == Action::Cancel);
+}
+
 static void testEndsBeforeTheAnswer()
 {
     Tracker tracker;
@@ -233,6 +255,7 @@ int main()
     testLowerSyncs();
     testStopsShort();
     testSwipes();
+    testOneSwipe();
     testEndsBeforeTheAnswer();
     testNotEnoughPush();
     testSlidingAndDragging();
