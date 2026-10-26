@@ -225,6 +225,11 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     // and Nvidia's software don't, so the redesign can say which host software a PC runs
     this->isApolloServerSoftware = !NvHTTP::getXmlString(serverInfo, "Permission").isEmpty();
 
+    // [fork] anyosag/Apollo's multi-display app and device pairing (forkmultidisplay.*)
+    this->forkDisplayGroupSlots = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroup").toInt();
+    this->forkDisplayGroupAppId = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroupApp").toInt();
+    this->forkPairDevice = NvHTTP::getXmlString(serverInfo, "LuzPairDevice") == "1";
+
     this->pairState = NvHTTP::getXmlString(serverInfo, "PairStatus") == "1" ?
                 PS_PAIRED : PS_NOT_PAIRED;
     this->currentGameId = NvHTTP::getCurrentGame(serverInfo);
@@ -608,6 +613,9 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(isSupportedServerVersion);
     ASSIGN_IF_CHANGED(isNvidiaServerSoftware);
     ASSIGN_IF_CHANGED(isApolloServerSoftware); // [fork]
+    ASSIGN_IF_CHANGED(forkDisplayGroupSlots); // [fork]
+    ASSIGN_IF_CHANGED(forkDisplayGroupAppId); // [fork]
+    ASSIGN_IF_CHANGED(forkPairDevice); // [fork]
     ASSIGN_IF_CHANGED(maxLumaPixelsHEVC);
     ASSIGN_IF_CHANGED(gpuModel);
     ASSIGN_IF_CHANGED_AND_NONNULL(serverCert);

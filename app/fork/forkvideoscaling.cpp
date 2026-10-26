@@ -1,5 +1,6 @@
 #include "forkvideoscaling.h"
 
+#include "forkmultidisplay.h"
 #include "forkpolicy.h"
 #include "forkpreferences.h"
 #include "settings/streamingpreferences.h"
@@ -15,6 +16,8 @@
 #ifdef Q_OS_DARWIN
 #include <ApplicationServices/ApplicationServices.h>
 #include <cmath>
+
+#include "mac/multidisplay_mac.h"
 #endif
 
 namespace ForkVideoScaling
@@ -54,6 +57,11 @@ namespace
 int displayIndexFor(QWindow* qtWindow)
 {
 #ifdef Q_OS_DARWIN
+    // A stream of a multi-display group opens on its own display, wherever the window is
+    if (ForkMultiDisplay::targetDisplay() != 0) {
+        return ForkMultiDisplay::targetDisplayIndex();
+    }
+
     QScreen* screen = qtWindow != nullptr ? qtWindow->screen() : QGuiApplication::primaryScreen();
     return screen != nullptr ? displayIndexAt(screen->geometry().topLeft()) : -1;
 #else
@@ -62,7 +70,32 @@ int displayIndexFor(QWindow* qtWindow)
 #endif
 }
 
+namespace
+{
+    bool notchSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWindow* qtWindow);
+}
+
 bool useSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWindow* qtWindow)
+{
+    bool useSpaces = notchSpacesFullscreen(upstream, prefs, qtWindow);
+
+#ifdef Q_OS_DARWIN
+    // With "Displays have separate Spaces" off, a fullscreen Space covers every display, which
+    // would hide the other displays of a multi-display stream
+    if (useSpaces && ForkMultiDisplay::isGroupMain() && !MultiDisplayMac::screensHaveSeparateSpaces()) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] Streaming fullscreen without a Space: displays don't have separate Spaces, so one would cover the group's other displays");
+        useSpaces = false;
+    }
+#endif
+
+    return useSpaces;
+}
+
+namespace
+{
+
+bool notchSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWindow* qtWindow)
 {
 #ifdef Q_OS_DARWIN
     int displayIndex = displayIndexFor(qtWindow);
@@ -99,6 +132,8 @@ bool useSpacesFullscreen(bool upstream, const StreamingPreferences& prefs, QWind
     (void)qtWindow;
     return upstream;
 #endif
+}
+
 }
 
 void activate(SDL_Window* window, bool stretch)

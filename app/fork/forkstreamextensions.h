@@ -5,6 +5,7 @@
 #include "SDL_compat.h"
 
 class ClipboardSync;
+class ForkDisplayCoordinator;
 class NotchBar;
 class NvComputer;
 class NvApp;
@@ -29,11 +30,17 @@ public:
     // Observes events only; never consumes upstream's events
     void handleEvent(const SDL_Event& event);
 
+    // The stream's event loop ended: the other displays of a multi-display stream end now, before
+    // SDL shuts down, rather than when this goes out of scope
+    void stopDisplayGroup();
+
     // Null when clipboard sync is off
     ClipboardSync* clipboard() { return m_Clipboard.get(); }
 
 private:
+    bool m_Helper;
     bool m_ShortcutGuard;
     std::unique_ptr<ClipboardSync> m_Clipboard;
     std::unique_ptr<NotchBar> m_NotchBar;
+    std::unique_ptr<ForkDisplayCoordinator> m_DisplayGroup;   // slot 0 of a multi-display stream
 };

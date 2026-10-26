@@ -3,6 +3,8 @@ import QtQuick.Shapes
 
 import AspectRatios 1.0
 import ClientHardware 1.0
+import ComputerManager 1.0
+import ForkImacSetup 1.0
 import ForkPreferences 1.0
 import ForkTheme 1.0
 import StreamingPreferences 1.0
@@ -746,6 +748,84 @@ Column {
         }
     }
 
+    // ---- Multiple displays -----------------------------------------------------------------
+
+    ForkCard {
+        title: qsTr("Multiple displays")
+
+        ForkText {
+            width: parent.width
+            kind: "body"
+            color: ForkTheme.text2
+            text: qsTr("With two or more displays, an Apollo PC offers “Desktop (multiple displays)”: Windows gets a display for each of this Mac's, arranged the same way. The main display's stream has the keyboard and sound, and the pointer moves between displays as it does on Windows. The PC's own monitors stay off until the app quits.")
+        }
+
+        Column {
+            width: parent.width
+            spacing: 10
+
+            ForkText {
+                kind: "label"
+                font.weight: Font.DemiBold
+                text: qsTr("iMac picture")
+            }
+
+            ForkSegmented {
+                accessibleName: qsTr("iMac picture")
+                options: [
+                    { "value": ForkPreferences.IR_AUTOMATIC, "label": qsTr("Automatic") },
+                    { "value": ForkPreferences.IR_DIRECT, "label": qsTr("Straight from the PC") },
+                    { "value": ForkPreferences.IR_VIA_MAC, "label": qsTr("Through this Mac") }
+                ]
+                value: ForkPreferences.imacRoute
+                onActivated: (value) => ForkPreferences.imacRoute = value
+            }
+
+            ForkText {
+                width: parent.width
+                kind: "help"
+                text: qsTr("When one of this Mac's displays is DisplayExtend's, the iMac can stream its display straight from the PC, or show it through this Mac as usual. Automatic measures both at each launch and picks the faster.")
+            }
+        }
+
+        Item {
+            width: parent.width
+            height: Math.max(imacStatus.implicitHeight, setUpButton.visible ? setUpButton.implicitHeight : 0)
+            visible: ForkImacSetup.status !== ""
+
+            ForkText {
+                id: imacStatus
+                anchors.left: parent.left
+                anchors.right: setUpButton.visible ? setUpButton.left : parent.right
+                anchors.rightMargin: setUpButton.visible ? 12 : 0
+                anchors.verticalCenter: parent.verticalCenter
+                kind: "body"
+                color: ForkTheme.text2
+                text: ForkImacSetup.status
+            }
+
+            ForkButton {
+                id: setUpButton
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                visible: ForkImacSetup.canSetUp || ForkImacSetup.busy
+                enabled: !ForkImacSetup.busy
+                text: ForkImacSetup.busy ? qsTr("Setting up…") : qsTr("Set up the iMac")
+                Accessible.name: qsTr("Set up the iMac to stream straight from the PC")
+                onClicked: ForkImacSetup.setUp()
+            }
+        }
+    }
+
+    Connections {
+        target: ForkImacSetup
+        function onFinished(text) {
+            if (window.forkToast) {
+                window.forkToast(text)
+            }
+        }
+    }
+
     // ---- Dialogs --------------------------------------------------------------------------
 
     ForkCustomResolutionDialog {
@@ -768,5 +848,7 @@ Column {
         refreshScreen()
         displaysLoaded++
         syncToSaved()
+        ForkImacSetup.setComputerManager(ComputerManager)
+        ForkImacSetup.refresh()
     }
 }

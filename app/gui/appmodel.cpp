@@ -1,4 +1,6 @@
 #include "appmodel.h"
+#include "fork/clienthardware.h" // [fork]
+#include "fork/forkmultidisplay.h" // [fork]
 #include "fork/streamprofiles.h" // [fork]
 
 AppModel::AppModel(QObject *parent)
@@ -18,6 +20,11 @@ void AppModel::initialize(ComputerManager* computerManager, int computerIndex, b
     m_Computer = m_ComputerManager->getComputers().at(computerIndex);
     m_CurrentGameId = m_Computer->currentGameId;
     m_ShowHiddenGames = showHiddenGames;
+
+    // [fork] The multi-display app comes and goes with the Mac's displays
+    connect(ClientHardware::get(), &ClientHardware::changed, this, [this]() {
+        updateAppList(m_AllApps);
+    });
 
     updateAppList(m_Computer->appList);
 }
@@ -46,6 +53,16 @@ Session* AppModel::createSessionForApp(int appIndex)
     NvApp app = m_VisibleApps.at(appIndex);
 
     return StreamProfiles::createSession(m_Computer, app); // [fork]
+}
+
+int AppModel::forkIndexOfApp(int appId)
+{
+    for (int i = 0; i < m_VisibleApps.count(); i++) {
+        if (m_VisibleApps[i].id == appId) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 int AppModel::getDirectLaunchAppIndex()
@@ -138,6 +155,13 @@ QVector<NvApp> AppModel::getVisibleApps(const QVector<NvApp>& appList)
         // Don't immediately hide games that were previously visible. This
         // allows users to easily uncheck the "Hide App" checkbox if they
         // check it by mistake.
+        // [fork] The multi-display app shows only when this Mac and the host can stream several
+        // displays, or while it runs (so it can be quit)
+        if (ForkMultiDisplay::isGroupApp(m_Computer, app) && app.id != m_CurrentGameId &&
+                !ForkMultiDisplay::canStreamGroup(m_Computer)) {
+            continue;
+        }
+
         if (m_ShowHiddenGames || !app.hidden || isAppCurrentlyVisible(app)) {
             visibleApps.append(app);
         }
@@ -300,6 +324,9 @@ void AppModel::handleComputerStateChanged(NvComputer* computer)
         // Now update our internal state
         m_CurrentGameId = m_Computer->currentGameId;
     }
+
+    // [fork] Whether the multi-display app shows depends on what runs and what the host offers
+    updateAppList(m_AllApps);
 }
 
 void AppModel::handleBoxArtLoaded(NvComputer* computer, NvApp app, QUrl /* image */)

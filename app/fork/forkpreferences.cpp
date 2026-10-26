@@ -13,6 +13,7 @@
 #define SER_NOTCHBAR "fork/notchBar"
 #define SER_DESCRIBEDISPLAY "fork/describeDisplay"
 #define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
+#define SER_IMACROUTE "fork/imacRoute"
 #define SER_MACSHORTCUTS "fork/macShortcuts"
 #define SER_MACSHORTCUTSALL "fork/macShortcutsAll"
 #define SER_TRACKPADPAUSEMACSETTINGS "fork/trackpadPauseMacSettings"
@@ -71,6 +72,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_NotchBar(true),
       m_DescribeDisplay(true),
       m_HdrPeakOverride(0),
+      m_ImacRoute(IR_AUTOMATIC),
       m_MacShortcutsAll(false),
       m_TrackpadPauseMacSettings(true),
       m_TrackpadScrollSpeed(1.0)
@@ -107,6 +109,10 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
 
     m_MacShortcutsAll = settings.value(SER_MACSHORTCUTSALL, m_MacShortcutsAll).toBool();
+    int route = settings.value(SER_IMACROUTE, m_ImacRoute).toInt();
+    if (route >= IR_AUTOMATIC && route <= IR_VIA_MAC) {
+        m_ImacRoute = route;
+    }
     m_TrackpadPauseMacSettings = settings.value(SER_TRACKPADPAUSEMACSETTINGS, m_TrackpadPauseMacSettings).toBool();
     double scrollSpeed = settings.value(SER_TRACKPADSCROLLSPEED, m_TrackpadScrollSpeed).toDouble();
     if (scrollSpeed >= MIN_TRACKPAD_SCROLL_SPEED && scrollSpeed <= MAX_TRACKPAD_SCROLL_SPEED) {
@@ -238,6 +244,17 @@ void ForkPreferences::setHdrPeakOverride(int nits)
     m_HdrPeakOverride = nits;
     QSettings().setValue(SER_HDRPEAKOVERRIDE, nits);
     emit hdrPeakOverrideChanged();
+}
+
+void ForkPreferences::setImacRoute(int route)
+{
+    if (route < IR_AUTOMATIC || route > IR_VIA_MAC || route == m_ImacRoute) {
+        return;
+    }
+
+    m_ImacRoute = route;
+    QSettings().setValue(SER_IMACROUTE, route);
+    emit imacRouteChanged();
 }
 
 void ForkPreferences::setNotchBar(bool enabled)

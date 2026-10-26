@@ -28,13 +28,20 @@ SOURCES += \
     $$PWD/clipfiles.cpp \
     $$PWD/forkaspect.cpp \
     $$PWD/forkaspectratios.cpp \
+    $$PWD/forkdisplaycoordinator.cpp \
+    $$PWD/forkdisplayextend.cpp \
+    $$PWD/forkdisplaygroup.cpp \
+    $$PWD/forkdisplayroute.cpp \
+    $$PWD/forkhelper.cpp \
     $$PWD/forkhostupdates.cpp \
+    $$PWD/forkimacsetup.cpp \
     $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
     $$PWD/forkkeymap.cpp \
     $$PWD/forklaunchargs.cpp \
     $$PWD/forklinkrules.cpp \
     $$PWD/forkmacshortcuts.cpp \
+    $$PWD/forkmultidisplay.cpp \
     $$PWD/forkmultitouch.cpp \
     $$PWD/forknetworklink.cpp \
     $$PWD/forkpolicy.cpp \
@@ -62,13 +69,20 @@ HEADERS += \
     $$PWD/clipfiles.h \
     $$PWD/forkaspect.h \
     $$PWD/forkaspectratios.h \
+    $$PWD/forkdisplaycoordinator.h \
+    $$PWD/forkdisplayextend.h \
+    $$PWD/forkdisplaygroup.h \
+    $$PWD/forkdisplayroute.h \
+    $$PWD/forkhelper.h \
     $$PWD/forkhostupdates.h \
+    $$PWD/forkimacsetup.h \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \
     $$PWD/forkkeymap.h \
     $$PWD/forklaunchargs.h \
     $$PWD/forklinkrules.h \
     $$PWD/forkmacshortcuts.h \
+    $$PWD/forkmultidisplay.h \
     $$PWD/forkmultitouch.h \
     $$PWD/forknetworklink.h \
     $$PWD/forkpolicy.h \
@@ -88,6 +102,7 @@ HEADERS += \
     $$PWD/windowchrome.h \
     $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macintegration.h \
+    $$PWD/mac/multidisplay_mac.h \
     $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
     $$PWD/mac/pasteboard.h \
@@ -101,6 +116,7 @@ macx {
         $$PWD/mac/clienthardware_mac.mm \
         $$PWD/mac/gesturesuppressor_mac.mm \
         $$PWD/mac/macintegration.mm \
+        $$PWD/mac/multidisplay_mac.mm \
         $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
         $$PWD/mac/pasteboard_mac.mm \

@@ -5,6 +5,9 @@
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
+#include "forkdisplaycoordinator.h"
+#include "forkhelper.h"
+#include "forkmultidisplay.h"
 #include "forknetworklink.h"
 #include "forkpreferences.h"
 #include "forksystemshortcuts.h"
@@ -21,8 +24,16 @@ namespace
 
 ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
                                            const StreamingPreferences& prefs)
-    : m_ShortcutGuard(false)
+    : m_Helper(ForkMultiDisplay::isHelper()),
+      m_ShortcutGuard(false)
 {
+    // A multi-display stream's helper only shows video over its display (forkhelper.*): none of the
+    // rest, which belongs to the main stream that has the keyboard
+    if (m_Helper) {
+        ForkHelper::streamWindowCreated(window);
+        return;
+    }
+
     ForkPreferences* forkPrefs = ForkPreferences::get();
 
     // When Command sends something other than the Windows key, Command shortcuts are meant
@@ -74,10 +85,28 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         });
     }
     ForkTrackpadPassthrough::activate(window, prefs);
+
+    // Slot 0 of a multi-display stream is connected: bring up the other displays
+    if (std::shared_ptr<const ForkMultiDisplay::Group> group = ForkMultiDisplay::group()) {
+        m_DisplayGroup = std::make_unique<ForkDisplayCoordinator>(group, window);
+        if (m_NotchBar) {
+            NotchBar* notchBar = m_NotchBar.get();
+            m_DisplayGroup->setMessageSink([notchBar](const QString& text) {
+                return notchBar->showToast(text);
+            });
+        }
+    }
 }
 
 ForkStreamExtensions::~ForkStreamExtensions()
 {
+    if (m_Helper) {
+        return;
+    }
+
+    // The other displays' streams end with this one
+    m_DisplayGroup.reset();
+
     ForkNetworkLink::stop();
     ForkTrackpadPassthrough::deactivate();
     ForkTrackpadPassthrough::setMessageSink(nullptr);
@@ -101,8 +130,21 @@ ForkStreamExtensions* ForkStreamExtensions::active()
     return s_Active;
 }
 
+void ForkStreamExtensions::stopDisplayGroup()
+{
+    m_DisplayGroup.reset();
+}
+
 void ForkStreamExtensions::handleEvent(const SDL_Event& event)
 {
+    if (m_Helper) {
+        return;
+    }
+
+    if (m_DisplayGroup) {
+        m_DisplayGroup->handleEvent(event);
+    }
+
     if (m_Clipboard) {
         m_Clipboard->handleEvent(event);
     }

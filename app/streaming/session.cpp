@@ -2,7 +2,9 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
+#include "fork/forkhelper.h" // [fork]
 #include "fork/forklaunchargs.h" // [fork]
+#include "fork/forkmultidisplay.h" // [fork]
 #include "fork/forknetworklink.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
 #include "fork/forkvideoscaling.h" // [fork]
@@ -621,6 +623,11 @@ bool Session::initialize(QQuickWindow* qtWindow)
         SDL_DisplayMode desktopMode;
         SDL_Rect safeArea;
         for (int displayIndex = 0; StreamUtils::getNativeDesktopMode(displayIndex, &desktopMode, &safeArea); displayIndex++) {
+            // [fork] A stream of a multi-display group only shows on its own display
+            if (ForkMultiDisplay::targetDisplayIndex() >= 0 && displayIndex != ForkMultiDisplay::targetDisplayIndex()) {
+                continue;
+            }
+
             // Check if this display has a notch (safeArea != desktopMode)
             if (desktopMode.h != safeArea.h || desktopMode.w != safeArea.w) {
                 // Check if we're trying to stream at the full native resolution (including notch)
@@ -736,6 +743,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
     m_AudioCallbacks.cleanup = arCleanup;
     m_AudioCallbacks.decodeAndPlaySample = arDecodeAndPlaySample;
     m_AudioCallbacks.capabilities = getAudioRendererCapabilities(m_StreamConfig.audioConfiguration);
+    ForkHelper::silenceAudio(m_AudioCallbacks); // [fork] a helper's display has no sound of its own
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Audio channel count: %d",
@@ -1338,6 +1346,13 @@ void Session::getWindowDimensions(int& x, int& y,
         displayIndex = SDL_GetWindowDisplayIndex(m_Window);
         SDL_assert(displayIndex >= 0);
     }
+    // [fork] A stream of a multi-display group opens on its own display (forkmultidisplay.*)
+    else if (ForkMultiDisplay::targetSdlDisplayIndex() >= 0) {
+        displayIndex = ForkMultiDisplay::targetSdlDisplayIndex();
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] Opening the stream on its display group display (SDL display %d)",
+                    displayIndex);
+    }
     // Create our window on the same display that Qt's UI
     // was being displayed on.
     else {
@@ -1410,6 +1425,9 @@ void Session::getWindowDimensions(int& x, int& y,
     }
 
     x = y = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
+
+    // [fork] A helper's window covers its display, below the notch on a notched one
+    ForkHelper::windowFrame(x, y, width, height);
 }
 
 void Session::updateOptimalWindowDisplayMode()
@@ -1426,6 +1444,11 @@ void Session::updateOptimalWindowDisplayMode()
             SDL_Rect safeArea;
             if (!StreamUtils::getNativeDesktopMode(displayIndex, &desktopMode, &safeArea)) {
                 return;
+            }
+
+            // [fork] A virtual display (DisplayExtend's) has no mode marked native: keep its desktop mode
+            if (desktopMode.w <= 0 || desktopMode.h <= 0) {
+                SDL_GetDesktopDisplayMode(displayIndex, &desktopMode);
             }
         }
     }
@@ -1630,7 +1653,7 @@ bool Session::startConnectionAsync()
                       m_App.id, &m_StreamConfig,
                       enableGameOptimizations,
                       m_Preferences->playAudioOnHost,
-                      m_InputHandler->getAttachedGamepadMask(),
+                      ForkMultiDisplay::isHelper() ? 0 : m_InputHandler->getAttachedGamepadMask(), // [fork] video only
                       !m_Preferences->multiController,
                       rtspSessionUrl,
                       ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware)); // [fork]
@@ -1834,6 +1857,12 @@ void Session::exec()
     // We always want a resizable window with High DPI enabled
     Uint32 defaultWindowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
 
+    // [fork] A helper's window is a borderless one covering its display, never fullscreen, so it
+    // never takes a Space or the keyboard from the main stream (forkhelper.*)
+    if (ForkMultiDisplay::isHelper()) {
+        defaultWindowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_BORDERLESS;
+    }
+
     // If we're starting in windowed mode and the Moonlight GUI is maximized or
     // minimized, match that with the streaming window.
     if (!m_IsFullScreen && m_QtWindow != nullptr) {
@@ -2017,6 +2046,11 @@ void Session::exec()
         }
 #endif
         forkExtensions.handleEvent(event); // [fork]
+
+        // [fork] A helper only shows video; its input never reaches the host (forkhelper.*)
+        if (ForkHelper::dropsEvent(event)) {
+            continue;
+        }
 
         switch (event.type) {
         case SDL_QUIT:
@@ -2331,6 +2365,9 @@ void Session::exec()
     }
 
 DispatchDeferredCleanup:
+    // [fork] A multi-display stream's other displays end with this one, before SDL shuts down
+    forkExtensions.stopDisplayGroup();
+
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();
 

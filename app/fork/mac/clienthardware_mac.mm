@@ -97,6 +97,19 @@ namespace
         CGRect bounds = CGDisplayBounds(displayId);
         display.pointWidth = static_cast<int>(std::lround(bounds.size.width));
         display.pointHeight = static_cast<int>(std::lround(bounds.size.height));
+        display.originX = static_cast<int>(std::lround(bounds.origin.x));
+        display.originY = static_cast<int>(std::lround(bounds.origin.y));
+
+        display.displayId = displayId;
+        display.vendor = CGDisplayVendorNumber(displayId);
+        display.model = CGDisplayModelNumber(displayId);
+        display.serial = CGDisplaySerialNumber(displayId);
+        display.isMain = CGDisplayIsMain(displayId);
+        display.isMirror = CGDisplayMirrorsDisplay(displayId) != kCGNullDirectDisplay;
+
+        // DisplayExtend's virtual display has vendor 'DM' and product 1 (its VirtualDisplayShim.m);
+        // its serial changes for test runs, so it isn't checked
+        display.isDisplayExtend = display.vendor == 0x444D && display.model == 1;
 
         NSScreen* screen = screenFor(displayId);
         if (screen != nil) {
