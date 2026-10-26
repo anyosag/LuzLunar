@@ -37,9 +37,6 @@ namespace
     constexpr int k_ShownTimeoutMs = 5000;
     constexpr int k_DirectTimeoutMs = 30000;
 
-    // How long the route probes may still take once slot 0 is up (they started with it)
-    constexpr int k_RouteFactsTimeoutMs = 8000;
-
     // How long helpers get to end their streams before they're killed
     constexpr int k_StopGraceMs = 2000;
 
@@ -361,25 +358,18 @@ struct ForkDisplayCoordinator::State
             return false;
         }
 
-        // The probes started with slot 0; wait for them a little at a time, so ending the stream isn't held up
+        // The launch screen checked the route before the stream connected (ForkGroupLaunch); a stream
+        // started without it checks now
         ForkDisplayRoute::Facts facts;
-        int64_t deadline = nowMs() + k_RouteFactsTimeoutMs;
-        bool done = false;
-        while (!done && !stopping && nowMs() < deadline) {
-            facts = ForkMultiDisplay::routeFacts(200, &done);
+        ForkDisplayRoute::Decision decision;
+        if (!ForkMultiDisplay::routeDecision(&decision, &facts)) {
+            facts = ForkMultiDisplay::checkRoute(*group, [](const ForkDisplayRoute::Facts&, double) {});
+            decision = ForkDisplayRoute::decide(group->route, facts);
+            ForkMultiDisplay::setRouteDecision(decision, facts);
         }
         if (stopping) {
             return false;
         }
-        if (!done) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] iMac route: through this Mac (the route probes didn't finish in time)");
-            if (group->route == ForkDisplayRoute::Setting::Direct) {
-                post(CodeMessage, QStringLiteral("The iMac's picture goes through this Mac: it didn't answer in time"));
-            }
-            return false;
-        }
-
-        ForkDisplayRoute::Decision decision = ForkDisplayRoute::decide(group->route, facts);
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] iMac route: %s",
                     ForkDisplayRoute::describe(decision, facts).c_str());
         if (decision.route != ForkDisplayRoute::Route::Direct) {

@@ -66,11 +66,34 @@ namespace
             return "the iMac can't reach the PC";
         }
         if (fastestReachable->failures > 0) {
-            return "the iMac's connection to the PC drops connects";
+            return std::to_string(fastestReachable->failures) + " of " + std::to_string(fastestReachable->count) +
+                   " connects from the iMac to the PC failed";
         }
         return "the iMac's connection to the PC is too slow (" + ms(fastestReachable->medianMs) + ", worst " +
                ms(fastestReachable->maxMs) + ")";
     }
+}
+
+Probe combine(const std::vector<Probe>& rounds)
+{
+    Probe out;
+    std::vector<double> medians;
+    for (const Probe& round : rounds) {
+        if (out.address.empty()) {
+            out.address = round.address;
+        }
+        out.count += round.count;
+        out.failures += round.failures;
+        if (round.medianMs >= 0) {
+            medians.push_back(round.medianMs);
+            out.maxMs = std::max(out.maxMs, round.maxMs);
+        }
+    }
+    out.medianMs = median(medians);
+    if (medians.empty()) {
+        out.maxMs = -1;
+    }
+    return out;
 }
 
 double median(std::vector<double> values)
@@ -92,6 +115,19 @@ Decision decide(Setting setting, const Facts& facts)
         return decision;
     }
 
+    bool measured = facts.displayExtendFrames >= k_MinDisplayExtendFrames && facts.displayExtendP50Ms > 0;
+    double displayExtendMs = measured ? facts.displayExtendP50Ms : k_DefaultDisplayExtendMs;
+    double displayExtendWorstMs = measured && facts.displayExtendP95Ms > 0 ? facts.displayExtendP95Ms : k_DefaultDisplayExtendWorstMs;
+    double macOneWay = facts.macToPc.medianMs >= 0 ? facts.macToPc.medianMs / 2 : 0;
+    double macWorstOneWay = facts.macToPc.maxMs >= 0 ? facts.macToPc.maxMs / 2 : 0;
+
+    // Through this Mac once its connects were timed, also when the iMac can't go straight from
+    // the PC, so the launch screen can show it
+    if (facts.macToPc.medianMs >= 0) {
+        decision.estViaMs = macOneWay + k_MacDecodeMs + frameWaitMs(facts.virtualRefreshHz) + displayExtendMs;
+        decision.estViaWorstMs = macWorstOneWay + k_MacDecodeMs + frameWaitMs(facts.virtualRefreshHz) + displayExtendWorstMs;
+    }
+
     const Probe* best = nullptr;
     std::string why = ineligible(facts, best);
     if (!why.empty()) {
@@ -99,25 +135,24 @@ Decision decide(Setting setting, const Facts& facts)
         return decision;
     }
 
-    double displayExtendMs = facts.displayExtendFrames >= k_MinDisplayExtendFrames && facts.displayExtendP50Ms > 0
-                                 ? facts.displayExtendP50Ms
-                                 : k_DefaultDisplayExtendMs;
-    double macOneWay = facts.macToPc.medianMs >= 0 ? facts.macToPc.medianMs / 2 : 0;
-
     decision.address = best->address;
     decision.estDirectMs = best->medianMs / 2 + k_ImacDecodeMs + frameWaitMs(facts.imacRefreshHz);
+    decision.estDirectWorstMs = best->maxMs / 2 + k_ImacDecodeMs + frameWaitMs(facts.imacRefreshHz);
     decision.estViaMs = macOneWay + k_MacDecodeMs + frameWaitMs(facts.virtualRefreshHz) + displayExtendMs;
+    decision.estViaWorstMs = macWorstOneWay + k_MacDecodeMs + frameWaitMs(facts.virtualRefreshHz) + displayExtendWorstMs;
 
+    bool fasterTypically = decision.estDirectMs <= decision.estViaMs + k_DirectBiasMs;
+    bool fasterAtWorst = decision.estDirectWorstMs <= decision.estViaWorstMs + k_DirectWorstBiasMs;
     if (setting == Setting::Direct) {
         decision.route = Route::Direct;
         decision.reason = "set to go straight from the PC";
     }
-    else if (decision.estDirectMs <= decision.estViaMs + k_DirectBiasMs) {
+    else if (fasterTypically && fasterAtWorst) {
         decision.route = Route::Direct;
         decision.reason = "faster";
     }
     else {
-        decision.reason = "faster";
+        decision.reason = fasterTypically ? "steadier at its worst" : "faster";
     }
     return decision;
 }
@@ -136,17 +171,23 @@ std::string describe(const Decision& decision, const Facts& facts)
         }
     }
 
-    double first = decision.route == Route::Direct ? decision.estDirectMs : decision.estViaMs;
-    double second = decision.route == Route::Direct ? decision.estViaMs : decision.estDirectMs;
-    text += " (about " + ms(first) + " vs " + ms(second);
+    bool direct = decision.route == Route::Direct;
+    double first = direct ? decision.estDirectMs : decision.estViaMs;
+    double second = direct ? decision.estViaMs : decision.estDirectMs;
+    double firstWorst = direct ? decision.estDirectWorstMs : decision.estViaWorstMs;
+    double secondWorst = direct ? decision.estViaWorstMs : decision.estDirectWorstMs;
+    text += " (about " + ms(first) + " vs " + ms(second) + ", worst " + ms(firstWorst) + " vs " + ms(secondWorst);
     if (best != nullptr) {
-        text += "; iMac→PC " + ms(best->medianMs);
+        text += "; iMac→PC " + ms(best->medianMs) + ", worst " + ms(best->maxMs);
     }
     if (facts.macToPc.medianMs >= 0) {
-        text += ", Mac→PC " + ms(facts.macToPc.medianMs);
+        text += "; Mac→PC " + ms(facts.macToPc.medianMs) + ", worst " + ms(facts.macToPc.maxMs);
     }
     bool measured = facts.displayExtendFrames >= k_MinDisplayExtendFrames && facts.displayExtendP50Ms > 0;
-    text += ", DisplayExtend " + ms(measured ? facts.displayExtendP50Ms : k_DefaultDisplayExtendMs);
+    text += "; DisplayExtend " + ms(measured ? facts.displayExtendP50Ms : k_DefaultDisplayExtendMs);
+    if (measured && facts.displayExtendP95Ms > 0) {
+        text += ", worst " + ms(facts.displayExtendP95Ms);
+    }
     if (!measured) {
         text += " assumed";
     }
