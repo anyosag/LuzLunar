@@ -54,6 +54,7 @@
 #include "streaming/session.h"
 #include "settings/streamingpreferences.h"
 #include "gui/sdlgamepadkeynavigation.h"
+#include "fork/forkdebugchannel.h" // [fork]
 #include "fork/forkhelper.h" // [fork]
 
 #if defined(Q_OS_WIN32)
@@ -705,6 +706,11 @@ int main(int argc, char *argv[])
     // racing with object destruction where SDL may be used.
     atexit(SDL_Quit);
 
+    // [fork] So the debug channel can change SDL's log level from its thread later
+    if (forkHelperSlot < 0) {
+        ForkDebugChannel::pinLogPriorities();
+    }
+
     // Avoid the default behavior of changing the timer resolution to 1 ms.
     // We don't want this all the time that Moonlight is open. We will set
     // it manually when we start streaming.
@@ -820,6 +826,9 @@ int main(int argc, char *argv[])
 
     // Restores the loggers and waits for the last log lines; returns err
     auto finishMain = [&](int err) {
+        // [fork] While the loggers are still ours
+        ForkDebugChannel::stop();
+
         // Give worker tasks time to properly exit. Fixes PendingQuitTask
         // sometimes freezing and blocking process exit.
         QThreadPool::globalInstance()->waitForDone(30000);
@@ -1101,6 +1110,14 @@ int main(int argc, char *argv[])
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));
         if (engine.rootObjects().isEmpty())
             return -1;
+
+        // [fork] Tools on this Mac can follow the app from here on (scripts/fork/luz-debug.py)
+#ifdef LOG_TO_FILE
+        ForkDebugChannel::start(s_LoggerFile != nullptr && s_LoggerFile->isOpen() ? s_LoggerFile->fileName() : QString(),
+                                [] { return static_cast<uint64_t>(s_LogBytesWritten.loadRelaxed()); }, k_MaxLogSizeBytes);
+#else
+        ForkDebugChannel::start(QString(), nullptr, 0);
+#endif
     }
 
     return finishMain(app.exec());

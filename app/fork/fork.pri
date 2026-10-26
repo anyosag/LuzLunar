@@ -28,6 +28,7 @@ SOURCES += \
     $$PWD/clipfiles.cpp \
     $$PWD/forkaspect.cpp \
     $$PWD/forkaspectratios.cpp \
+    $$PWD/forkdebugchannel.cpp \
     $$PWD/forkdisplaycoordinator.cpp \
     $$PWD/forkdisplayextend.cpp \
     $$PWD/forkdisplaygroup.cpp \
@@ -84,6 +85,8 @@ HEADERS += \
     $$PWD/clipfiles.h \
     $$PWD/forkaspect.h \
     $$PWD/forkaspectratios.h \
+    $$PWD/forkdebugchannel.h \
+    $$PWD/forkdebugrules.h \
     $$PWD/forkdisplaycoordinator.h \
     $$PWD/forkdisplayextend.h \
     $$PWD/forkdisplaygroup.h \
