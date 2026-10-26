@@ -5,7 +5,7 @@
 // its signature. Apollo has the same rules (anyosag/Apollo src/fork/update_manifest.h).
 //
 // A manifest is the update.json CI publishes with each master build (FORK.md, "Updates"):
-//   {"product": "luzlunar", "channel": "master", "run": 123, "version": "6.2.0-fork.ee5b3ba",
+//   {"product": "luzlunar", "channel": "master", "run": 123, "version": "1.16",
 //    "commit": "<40 hex>", "published": "2026-10-18T20:00:00Z", "notes": "<commit subject>",
 //    "asset": {"name": "LuzLunar-macOS-arm64.zip", "url": "https://github.com/...",
 //              "sha256": "<64 hex>", "size": 12345678}}

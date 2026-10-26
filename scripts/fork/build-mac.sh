@@ -38,12 +38,13 @@ APP_NAME=LuzLunar
 QMAKE=${QMAKE:-$(command -v qmake || command -v qmake6)}
 [ -n "$QMAKE" ] || fail "qmake not found! Put Qt's bin folder on PATH."
 
-# The build ID, like 6.2.0-fork.ee5b3ba: the version plus the commit. CI sets it; local builds make
-# the same. The app shows it in Settings and as the bundle version, so copies can be told apart.
+# LuzLunar's version, like 1.16, or 1.16-dev.ee5b3ba for a build that isn't a published update. CI
+# works it out from the updates published before (scripts/fork/version.sh); a local build is
+# local.<commit>. The app shows it in Settings and About, so copies can be told apart.
 if [ -n "$CI_VERSION" ]; then
   VERSION=$CI_VERSION
 else
-  VERSION="$(cat "$SOURCE_ROOT/app/version.txt")-fork.$(git -C "$SOURCE_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo local)"
+  VERSION="local.$(git -C "$SOURCE_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 fi
 
 echo Updating dependencies
@@ -122,8 +123,13 @@ PLIST="$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_NAME" -c "Set :CFBundleDisplayName $APP_NAME" "$PLIST" || fail "Updating Info.plist failed!"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$PLIST" 2>/dev/null || \
   /usr/libexec/PlistBuddy -c "Add :CFBundleName string $APP_NAME" "$PLIST" || fail "Setting CFBundleName failed!"
-# The build ID as the bundle version, shown by Finder's Get Info and the About panel
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST" || fail "Setting CFBundleVersion failed!"
+# LuzLunar's version for Finder's Get Info and the About panel ("Version 1.16 (202)"), with the CI
+# run as the build number: it only goes up, so when copies share the bundle ID, macOS opens the
+# newest. A local build is 0. Moonlight's own version stays in app/version.txt for upstream's code.
+BUNDLE_BUILD=0
+if [[ "$FORK_BUILD_RUN" =~ ^[0-9]+$ ]]; then BUNDLE_BUILD=$FORK_BUILD_RUN; fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $BUNDLE_BUILD" "$PLIST" ||
+  fail "Setting the bundle's version failed!"
 
 # No macOS Game Mode. Upstream's Info.plist opts in (ae1c6580: the games category and the
 # Game Mode keys), so a fullscreen stream turned Game Mode on. The game controller keys stay.
