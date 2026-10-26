@@ -21,6 +21,9 @@
 #include "streaming/session.h"
 #include "updatekey.h"
 
+// This build's run and channel, generated in the build folder by fork.pri
+#include "forkbuildinfo.h"
+
 // CI sets these for the build (scripts/fork/build-mac.sh); a local build is a branch build
 #ifndef FORK_BUILD_RUN
 #define FORK_BUILD_RUN 0

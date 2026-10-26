@@ -63,6 +63,14 @@ export CFLAGS=-flto=thin
 export CXXFLAGS=-flto=thin
 export LDFLAGS=-flto=thin
 
+# A compiler cache, when ccache is installed, through qmake's ccache feature: CI keeps one between
+# runs (fork-macos.yml), so a build compiles again only what changed
+CACHE_ARGS=()
+if command -v ccache > /dev/null; then
+  CACHE_ARGS+=(CONFIG+=ccache)
+  echo "Compiling through $(ccache --version | head -n1)"
+fi
+
 # Over-the-air updates order builds by CI run and only replace master builds by themselves
 # (app/fork/forkupdater.cpp). CI sets both; a local build is run 0 on the "local" channel.
 UPDATE_ARGS=()
@@ -71,13 +79,16 @@ if [[ "$FORK_BUILD_CHANNEL" =~ ^[a-z]+$ ]]; then UPDATE_ARGS+=(FORK_BUILD_CHANNE
 
 echo Configuring the project for arm64
 pushd "$BUILD_FOLDER"
-"$QMAKE" "$SOURCE_ROOT/moonlight-qt.pro" QMAKE_APPLE_DEVICE_ARCHS="arm64" FORK_BUILD_ID="$VERSION" "${UPDATE_ARGS[@]}" || fail "Qmake failed!"
+"$QMAKE" "$SOURCE_ROOT/moonlight-qt.pro" QMAKE_APPLE_DEVICE_ARCHS="arm64" FORK_BUILD_ID="$VERSION" "${UPDATE_ARGS[@]}" "${CACHE_ARGS[@]}" || fail "Qmake failed!"
 popd
 
 echo Compiling Moonlight in $BUILD_CONFIG configuration
 pushd "$BUILD_FOLDER"
 make -j$(sysctl -n hw.logicalcpu) $(echo "$BUILD_CONFIG" | tr '[:upper:]' '[:lower:]') || fail "Make failed!"
 popd
+if command -v ccache > /dev/null; then
+  ccache --show-stats
+fi
 
 echo Saving dSYM file
 pushd "$BUILD_FOLDER"
