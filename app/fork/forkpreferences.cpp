@@ -64,6 +64,9 @@ ForkPreferences* ForkPreferences::get()
     return s_Instance;
 }
 
+// This build's ID, generated in the build folder by fork.pri
+#include "forkbuildinfo.h"
+
 QString ForkPreferences::buildId() const
 {
 #ifdef FORK_BUILD_ID

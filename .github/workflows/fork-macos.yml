@@ -146,6 +146,131 @@ jobs:
             echo "FORK_BUILD_CHANNEL=branch" >> "$GITHUB_ENV"
           fi
 
+      # A self-signed certificate (secret LUZLUNAR_SIGNING_P12, a base64 .p12, and
+      # LUZLUNAR_SIGNING_P12_PASSWORD) gives every build the same signing identity, so macOS keeps
+      # the Accessibility permission (trackpad passthrough's gesture blocker) across updates. Without
+      # the secret, as in pull requests from other repositories, the app is signed ad-hoc.
+      - name: Import the signing certificate
+        shell: bash
+        env:
+          P12: ${{ secrets.LUZLUNAR_SIGNING_P12 }}
+          P12_PASSWORD: ${{ secrets.LUZLUNAR_SIGNING_P12_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then
+            echo "::warning::No LUZLUNAR_SIGNING_P12 secret, so this build is signed ad-hoc and Accessibility must be granted again after installing it"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/luzlunar-signing.keychain-db"
+          keychain_password=$(openssl rand -hex 24)
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/signing.p12"
+          # Let codesign use the key without a prompt
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          # Search the new keychain too, keeping the existing ones
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
+          # A self-signed certificate isn't trusted, so it's listed without -v (valid only)
+          identity=$(security find-identity -p codesigning "$keychain" | grep -oE '[0-9A-F]{40}' | head -n1)
+          if [ -z "$identity" ]; then
+            echo "::error::The LUZLUNAR_SIGNING_P12 certificate has no code-signing identity"
+            exit 1
+          fi
+          echo "LUZLUNAR_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "LUZLUNAR_SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "Signing with certificate $identity"
+
+      # The compiler cache, kept between runs: most commits change a few files, so most of the build
+      # comes from it (build-mac.sh compiles through ccache when it's installed). Each run saves its own
+      # copy; the next run starts from the newest one its branch, or master, has. The link isn't
+      # cached: ThinLTO's own cache would cost about as much to move as the link takes.
+      - name: Restore the compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-${{ needs.setup.outputs.os }}-arm64-${{ github.run_id }}
+          restore-keys: ccache-${{ needs.setup.outputs.os }}-arm64-
+
+      - name: Install ccache
+        shell: bash
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ccache
+          {
+            echo "CCACHE_DIR=$RUNNER_TEMP/ccache"
+            echo "CCACHE_MAXSIZE=2G"
+          } >> "$GITHUB_ENV"
+          # This run's hits and misses only (build-mac.sh prints them after the build)
+          CCACHE_DIR="$RUNNER_TEMP/ccache" ccache --zero-stats
+
+      - name: Build (arm64)
+        run: bash scripts/fork/build-mac.sh Release
+
+      - name: Remove the signing keychain
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "$LUZLUNAR_SIGN_KEYCHAIN" ]; then
+            security delete-keychain "$LUZLUNAR_SIGN_KEYCHAIN" || true
+          fi
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
+          path: build/installer-Release/*.dmg
+          compression-level: 0
+          if-no-files-found: error
+
+      # The signed app zipped for over-the-air updates (build-mac.sh); the publish job releases it
+      - name: Upload the update zip
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: LuzLunar-update-${{ env.CI_VERSION }}
+          path: build/installer-Release/LuzLunar-macOS-arm64.zip
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload Symbols
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: zDevDbgSyms-LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
+          path: build/installer-Release/*.dsym/*
+          if-no-files-found: error
+
+  # Fork unit tests, beside the build rather than before it, so they don't hold up the update
+  tests:
+    name: Fork unit tests
+    needs: setup
+    runs-on: ${{ needs.setup.outputs.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      # The same Xcode as the build (see its step)
+      - name: Use Xcode 26 or later
+        shell: bash
+        run: |
+          # Read the whole output first: xcodebuild crashes if a pipe closes early (head)
+          version=$(xcodebuild -version)
+          major=$(echo "$version" | grep -oE '[0-9]+' | head -n1)
+          if [ "${major:-0}" -lt 26 ]; then
+            xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
+            [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+            sudo xcode-select -s "$xcode"
+          fi
+          xcodebuild -version
+
+      # The version the build job names its artifacts with, for the trackpad probe's
+      - name: Set version
+        shell: bash
+        run: echo "CI_VERSION=$(cat app/version.txt)-fork.$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+
       - name: Fork unit tests
         shell: bash
         run: |
@@ -303,78 +428,7 @@ jobs:
             echo "$reads"
           fi
 
-      # A self-signed certificate (secret LUZLUNAR_SIGNING_P12, a base64 .p12, and
-      # LUZLUNAR_SIGNING_P12_PASSWORD) gives every build the same signing identity, so macOS keeps
-      # the Accessibility permission (trackpad passthrough's gesture blocker) across updates. Without
-      # the secret, as in pull requests from other repositories, the app is signed ad-hoc.
-      - name: Import the signing certificate
-        shell: bash
-        env:
-          P12: ${{ secrets.LUZLUNAR_SIGNING_P12 }}
-          P12_PASSWORD: ${{ secrets.LUZLUNAR_SIGNING_P12_PASSWORD }}
-        run: |
-          if [ -z "$P12" ]; then
-            echo "::warning::No LUZLUNAR_SIGNING_P12 secret, so this build is signed ad-hoc and Accessibility must be granted again after installing it"
-            exit 0
-          fi
-          keychain="$RUNNER_TEMP/luzlunar-signing.keychain-db"
-          keychain_password=$(openssl rand -hex 24)
-          echo "$P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
-          rm -f "$RUNNER_TEMP/signing.p12"
-          # Let codesign use the key without a prompt
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
-          # Search the new keychain too, keeping the existing ones
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
-          # A self-signed certificate isn't trusted, so it's listed without -v (valid only)
-          identity=$(security find-identity -p codesigning "$keychain" | grep -oE '[0-9A-F]{40}' | head -n1)
-          if [ -z "$identity" ]; then
-            echo "::error::The LUZLUNAR_SIGNING_P12 certificate has no code-signing identity"
-            exit 1
-          fi
-          echo "LUZLUNAR_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
-          echo "LUZLUNAR_SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-          echo "Signing with certificate $identity"
-
-      - name: Build (arm64)
-        run: bash scripts/fork/build-mac.sh Release
-
-      - name: Remove the signing keychain
-        if: always()
-        shell: bash
-        run: |
-          if [ -n "$LUZLUNAR_SIGN_KEYCHAIN" ]; then
-            security delete-keychain "$LUZLUNAR_SIGN_KEYCHAIN" || true
-          fi
-
-      - name: Upload DMG
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
-        with:
-          name: LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
-          path: build/installer-Release/*.dmg
-          compression-level: 0
-          if-no-files-found: error
-
-      # The signed app zipped for over-the-air updates (build-mac.sh); the publish job releases it
-      - name: Upload the update zip
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
-        with:
-          name: LuzLunar-update-${{ env.CI_VERSION }}
-          path: build/installer-Release/LuzLunar-macOS-arm64.zip
-          compression-level: 0
-          if-no-files-found: error
-
-      - name: Upload Symbols
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
-        with:
-          name: zDevDbgSyms-LuzLunar-macOS-arm64-${{ env.CI_VERSION }}
-          path: build/installer-Release/*.dsym/*
-          if-no-files-found: error
-
-      # scripts/fork/trackpad-probe.mm, built in the unit test step
+      # scripts/fork/trackpad-probe.mm, built in the unit test step above
       - name: Upload the trackpad probe
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
@@ -382,25 +436,39 @@ jobs:
           path: ${{ runner.temp }}/probe/trackpad-probe
           if-no-files-found: warn
 
+
+  # Screenshots of the built app, beside publishing rather than before it
+  screenshots:
+    name: UI screenshots
+    needs: [setup, build]
+    runs-on: ${{ needs.setup.outputs.os }}
+    steps:
+      - name: Download the update zip
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
+        with:
+          name: LuzLunar-update-${{ needs.build.outputs.version }}
+          path: artifacts
+
       # Screenshots of the main views and dialogs in dark and light mode, taken by the app itself
       # (app/fork/screenshotharness.cpp), so UI changes can be reviewed without a Mac.
       - name: UI screenshots
         shell: bash
         continue-on-error: true
         run: |
-          app=build/build-Release/app/LuzLunar.app/Contents/MacOS/LuzLunar
+          ditto -x -k artifacts/LuzLunar-macOS-arm64.zip "$RUNNER_TEMP/app"
+          app="$RUNNER_TEMP/app/LuzLunar.app/Contents/MacOS/LuzLunar"
           for scheme in dark light; do
             LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
               perl -e 'alarm 120; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
           done
           # The app icon as older macOS shows it (actool's flattened .icns)
-          sips -s format png build/build-Release/app/LuzLunar.app/Contents/Resources/LuzLunar.icns --out "$RUNNER_TEMP/screenshots/app-icon.png" || true
+          sips -s format png "$RUNNER_TEMP/app/LuzLunar.app/Contents/Resources/LuzLunar.icns" --out "$RUNNER_TEMP/screenshots/app-icon.png" || true
           ls -R "$RUNNER_TEMP/screenshots" || true
 
       - name: Upload UI screenshots
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
-          name: LuzLunar-screenshots-${{ env.CI_VERSION }}
+          name: LuzLunar-screenshots-${{ needs.build.outputs.version }}
           path: ${{ runner.temp }}/screenshots
           if-no-files-found: warn
 
@@ -409,7 +477,7 @@ jobs:
   # key is the FORK_UPDATE_KEY secret of the `release` environment, which only master may use.
   publish:
     name: Publish update
-    needs: build
+    needs: [build, tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment: release

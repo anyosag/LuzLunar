@@ -6,17 +6,17 @@
     error("LuzLunar needs Qt 6.8 or later (found $$QT_VERSION)")
 }
 
-# The build ID from scripts/fork/build-mac.sh (qmake FORK_BUILD_ID=...), shown in Settings
-!isEmpty(FORK_BUILD_ID) {
-    DEFINES += FORK_BUILD_ID=\\\"$$FORK_BUILD_ID\\\"
-}
-
-# Which CI run built this, and whether from master, for over-the-air updates (forkupdater.cpp)
-!isEmpty(FORK_BUILD_RUN) {
-    DEFINES += FORK_BUILD_RUN=$$FORK_BUILD_RUN
-}
-!isEmpty(FORK_BUILD_CHANNEL) {
-    DEFINES += FORK_BUILD_CHANNEL=\\\"$$FORK_BUILD_CHANNEL\\\"
+# The build ID from scripts/fork/build-mac.sh (qmake FORK_BUILD_ID=...), shown in Settings, and
+# which CI run built this and whether from master, for over-the-air updates (forkupdater.cpp). They
+# go in forkbuildinfo.h in the build folder, which only forkpreferences.cpp and forkupdater.cpp
+# include: as defines for the whole app they changed every file's compile command at each build, so
+# the compiler cache (build-mac.sh) could never reuse anything.
+FORK_BUILD_INFO = "// This build's ID, run and channel, written by app/fork/fork.pri"
+!isEmpty(FORK_BUILD_ID): FORK_BUILD_INFO += "$${LITERAL_HASH}define FORK_BUILD_ID \"$$FORK_BUILD_ID\""
+!isEmpty(FORK_BUILD_RUN): FORK_BUILD_INFO += "$${LITERAL_HASH}define FORK_BUILD_RUN $$FORK_BUILD_RUN"
+!isEmpty(FORK_BUILD_CHANNEL): FORK_BUILD_INFO += "$${LITERAL_HASH}define FORK_BUILD_CHANNEL \"$$FORK_BUILD_CHANNEL\""
+!write_file($$OUT_PWD/forkbuildinfo.h, FORK_BUILD_INFO) {
+    error("Couldn't write forkbuildinfo.h")
 }
 
 SOURCES += \
