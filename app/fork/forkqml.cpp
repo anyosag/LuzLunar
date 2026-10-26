@@ -7,6 +7,7 @@
 
 #include "clienthardware.h"
 #include "forkaspectratios.h"
+#include "forkhostpower.h"
 #include "forkhostupdates.h"
 #include "forkimacsetup.h"
 #include "forkpreferences.h"
@@ -73,6 +74,13 @@ namespace
             ForkHostUpdates* updates = ForkHostUpdates::get();
             QQmlEngine::setObjectOwnership(updates, QQmlEngine::CppOwnership);
             return updates;
+        });
+        // Sleep PC, the pair to Wake PC, for Apollo PCs (FORK.md, "Sleep PC")
+        qmlRegisterSingletonType<ForkHostPower>("ForkHostPower", 1, 0, "ForkHostPower",
+                                                [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkHostPower* power = ForkHostPower::get();
+            QQmlEngine::setObjectOwnership(power, QQmlEngine::CppOwnership);
+            return power;
         });
         // Multi-display streams: the iMac behind DisplayExtend, and pairing it with Apollo PCs
         qmlRegisterSingletonType<ForkImacSetup>("ForkImacSetup", 1, 0, "ForkImacSetup",

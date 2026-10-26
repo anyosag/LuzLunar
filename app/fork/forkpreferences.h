@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QObject>
 #include <QVariantList>
+#include <QVariantMap>
 
 #include "forkkeymap.h"
 
@@ -78,6 +79,12 @@ public:
     // point (120 a notch), 0.25 to 3
     Q_PROPERTY(double trackpadScrollSpeed READ trackpadScrollSpeed WRITE setTrackpadScrollSpeed NOTIFY trackpadScrollSpeedChanged)
 
+    // On LAN streams, have Apollo show this Mac's disk on the PC as a network drive (macdrive.*)
+    Q_PROPERTY(bool macDrive READ macDrive WRITE setMacDrive NOTIFY macDriveChanged)
+
+    // Lower the stream's bitrate while the network struggles, and raise it back (adaptivebitrate.*)
+    Q_PROPERTY(bool adaptiveBitrate READ adaptiveBitrate WRITE setAdaptiveBitrate NOTIFY adaptiveBitrateChanged)
+
     static ForkPreferences* get();
 
     bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
@@ -85,6 +92,25 @@ public:
 
     double trackpadScrollSpeed() const { return m_TrackpadScrollSpeed; }
     void setTrackpadScrollSpeed(double speed);
+
+    bool macDrive() const { return m_MacDrive; }
+    void setMacDrive(bool enabled);
+
+    bool adaptiveBitrate() const { return m_AdaptiveBitrate; }
+    void setAdaptiveBitrate(bool enabled);
+
+    // What the Mac drive needs from macOS, for Settings › This Mac: { "fileSharing": bool,
+    // "windowsSharing": "on" | "off" | "unknown", "diskShare": the startup disk's share or "",
+    // "admin": bool, "volumeName", "userName", "passwordSaved": bool, "last": the last LAN
+    // stream's outcome or "" }. Reading it never asks the user anything.
+    Q_INVOKABLE QVariantMap macDriveSetup() const;
+
+    // Keeps the account's password in the login keychain, if it opens the account
+    Q_INVOKABLE bool saveMacDrivePassword(const QString& password);
+    Q_INVOKABLE void forgetMacDrivePassword();
+
+    // System Settings › General › Sharing
+    Q_INVOKABLE void openSharingSettings();
 
     // Whether macOS lets LuzLunar hold back its trackpad gestures (Privacy & Security › Accessibility)
     Q_INVOKABLE bool accessibilityTrusted() const;
@@ -114,6 +140,16 @@ public:
 
     bool notchBar() const { return m_NotchBar; }
     void setNotchBar(bool enabled);
+
+    // The notch bar's stream stats beside the notch, or only their icon: Stream Control Center's
+    // Notch Stats switch, during a stream. No signal, as QML isn't running then.
+    bool notchBarStats() const { return m_NotchBarStats; }
+    void setNotchBarStats(bool shown);
+
+    // The streams that have shown how to reach the notch bar while the PC has the mouse (⌃⌥⇧N); the
+    // bar stops after a few, and once ⌃⌥⇧N has been used. No signal, as QML isn't running then.
+    int notchBarHints() const { return m_NotchBarHints; }
+    void setNotchBarHints(int count);
 
     bool describeDisplay() const { return m_DescribeDisplay; }
     void setDescribeDisplay(bool enabled);
@@ -145,6 +181,8 @@ signals:
     void macShortcutsChanged();
     void trackpadPauseMacSettingsChanged();
     void trackpadScrollSpeedChanged();
+    void macDriveChanged();
+    void adaptiveBitrateChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -155,12 +193,16 @@ private:
     int m_ClipboardSyncMode;
     bool m_ClipboardFiles;
     bool m_NotchBar;
+    bool m_NotchBarStats;
+    int m_NotchBarHints;
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;
     int m_ImacRoute;
     bool m_MacShortcutsAll;
     bool m_TrackpadPauseMacSettings;
     double m_TrackpadScrollSpeed;
+    bool m_MacDrive;
+    bool m_AdaptiveBitrate;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };

@@ -38,6 +38,7 @@ NavigableDialog {
             Repeater {
                 model: [
                     { "key": "Q", "text": qsTr("End the stream") },
+                    { "key": "N", "text": qsTr("Open the menus beside the notch") },
                     { "key": "S", "text": qsTr("Show or hide performance stats") },
                     { "key": "Z", "text": qsTr("Let go of a held pointer") },
                     { "key": "M", "text": qsTr("Switch mouse mode") },

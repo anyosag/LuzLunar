@@ -22,6 +22,7 @@
 
 #include "forkdisplayextend.h"
 #include "forkdisplayroute.h"
+#include "forkevents.h"
 
 #ifdef Q_OS_DARWIN
 #include "mac/multidisplay_mac.h"
@@ -53,9 +54,10 @@ namespace
         CodeMessage = 2,
     };
 
+    // Never SDL_USEREVENT, which Moonlight's session takes as its own (forkevents.h)
     Uint32 eventType()
     {
-        static Uint32 type = SDL_RegisterEvents(1);
+        static Uint32 type = ForkEvents::registerType();
         return type;
     }
 

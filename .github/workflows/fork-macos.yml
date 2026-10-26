@@ -194,6 +194,59 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/forklinkrules_test.cpp app/fork/forklinkrules.cpp -o "$RUNNER_TEMP/forklinkrules_test"
           "$RUNNER_TEMP/forklinkrules_test"
+          # The fork's SDL event types are never SDL_USEREVENT, which Moonlight's session uses as is
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/forkevents_test.cpp -o "$RUNNER_TEMP/forkevents_test"
+          "$RUNNER_TEMP/forkevents_test"
+          # This Mac as a drive on the PC: the shares asked for, when a stream asks, and Apollo's answers
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/macdriverules_test.cpp app/fork/macdriverules.cpp -o "$RUNNER_TEMP/macdriverules_test"
+          "$RUNNER_TEMP/macdriverules_test"
+          # How evenly the PC sends frames: the score, its window, what breaks it, and Even or Uneven
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/hostcadence_test.cpp -o "$RUNNER_TEMP/hostcadence_test"
+          "$RUNNER_TEMP/hostcadence_test"
+          # The notch bar's menus: keyboard movement and the items right of the notch
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/notchmenus_test.cpp -o "$RUNNER_TEMP/notchmenus_test"
+          "$RUNNER_TEMP/notchmenus_test"
+          # Stream status's latency in four parts and the last two minutes of it
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/streamhistory_test.cpp -o "$RUNNER_TEMP/streamhistory_test"
+          "$RUNNER_TEMP/streamhistory_test"
+          # Stream status's graph scale, summary, latency bar, pointer, health and the bar item's text
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/notchstatus_test.cpp -o "$RUNNER_TEMP/notchstatus_test"
+          "$RUNNER_TEMP/notchstatus_test"
+          # Adaptive bitrate's controller: cuts on losses and queues, holds, the climb back, the floor,
+          # turned on below the user's bitrate, and why it last changed it
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/bitraterules_test.cpp app/fork/bitraterules.cpp -o "$RUNNER_TEMP/bitraterules_test"
+          "$RUNNER_TEMP/bitraterules_test"
+          # What the PC's answers say about changing the bitrate during the stream
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/bitratestate_test.cpp -o "$RUNNER_TEMP/bitratestate_test"
+          "$RUNNER_TEMP/bitratestate_test"
+          # The notch bar's Quality menu: its line, caption, "ago" and the slider's range and steps
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/notchquality_test.cpp -o "$RUNNER_TEMP/notchquality_test"
+          "$RUNNER_TEMP/notchquality_test"
+          # The notch bar's battery: its glyph, Battery's texts, Stream Battery Saver and the Low Power Mode message
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/powerrules_test.cpp -o "$RUNNER_TEMP/powerrules_test"
+          "$RUNNER_TEMP/powerrules_test"
+          # Reconnecting from the notch bar: the new stream's settings, Quality's frame rates and resolutions
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/reconnectrules_test.cpp -o "$RUNNER_TEMP/reconnectrules_test"
+          "$RUNNER_TEMP/reconnectrules_test"
+          # The notch bar's Stream Settings: presets, what changed, what reconnects
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/streamsettingsrules_test.cpp -o "$RUNNER_TEMP/streamsettingsrules_test"
+          "$RUNNER_TEMP/streamsettingsrules_test"
+          # Mac trackpad mode's pointer up into the notch bar: following the PC's, when to ask it, handing over
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/barreach_test.cpp -o "$RUNNER_TEMP/barreach_test"
+          "$RUNNER_TEMP/barreach_test"
           # Trackpad passthrough frames, also shared with anyosag/Apollo (the same test runs in its CI)
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"
@@ -232,6 +285,12 @@ jobs:
             tests/fork/networklink_mac_test.mm app/fork/mac/networklink_mac.mm app/fork/forklinkrules.cpp \
             -framework Foundation -framework SystemConfiguration -framework CoreWLAN -o "$RUNNER_TEMP/networklink_mac_test"
           "$RUNNER_TEMP/networklink_mac_test"
+          # The Mac drive's macOS side on the CI Mac: the account, File Sharing, its shares, and a keychain item
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/macdrivesetup_mac_test.mm app/fork/mac/macdrivesetup_mac.mm \
+            -framework Foundation -framework AppKit -framework OpenDirectory -framework Security \
+            -framework SystemConfiguration -o "$RUNNER_TEMP/macdrivesetup_mac_test"
+          "$RUNNER_TEMP/macdrivesetup_mac_test"
 
       # Stream profiles give each Session its own StreamingPreferences copy. Streaming code that
       # reads the global settings directly would bypass the profile, so flag any new such read.

@@ -65,6 +65,21 @@ static void testBadge()
     CHECK(badge(link(Kind::Unknown), true).empty());
 }
 
+static void testConnection()
+{
+    CHECK(bandText(5) == "5 GHz");
+    CHECK(bandText(2.4) == "2.4 GHz");
+    CHECK(bandText(0).empty());
+
+    CHECK(connectionText(link(Kind::WiFi, 866, 5), true) == "Wi-Fi 5 GHz · LAN");
+    CHECK(connectionText(link(Kind::WiFi), true) == "Wi-Fi · LAN");     // no band without Location access
+    CHECK(connectionText(link(Kind::Ethernet, 1000), false) == "Ethernet · not via LAN");
+    CHECK(connectionText(link(Kind::ThunderboltBridge, 10000), true) == "Thunderbolt Bridge · LAN");
+    CHECK(connectionText(link(Kind::Vpn, 0, 0, Kind::WiFi), false) == "VPN over Wi-Fi · not via LAN");
+    CHECK(connectionText(link(Kind::Other, 0, 0, Kind::Unknown, "iPhone USB"), false) == "iPhone USB · not via LAN");
+    CHECK(connectionText(link(Kind::Unknown), true).empty());
+}
+
 static void testWhenShown()
 {
     // Moonlight's answer stands when it has one
@@ -119,6 +134,7 @@ int main()
 {
     testSpeed();
     testBadge();
+    testConnection();
     testWhenShown();
     testRemembered();
 

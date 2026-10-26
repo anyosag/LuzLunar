@@ -40,7 +40,7 @@ namespace
         std::string address;    // the PC's address as Moonlight has it, maybe a name
         ForkLinkRules::Reachability reachability = ForkLinkRules::Reachability::NotChecked;
         std::shared_ptr<Monitor> monitor;
-        QString badge;
+        Current current;
     };
 
     // Never destroyed: a probing thread may still be finishing as the app exits
@@ -109,7 +109,8 @@ namespace
     }
 
     void probeUntilStopped(std::shared_ptr<Monitor> monitor, QString hostUuid, std::string host,
-                           ForkLinkRules::Reachability reachability, bool refresh)
+                           ForkLinkRules::Reachability reachability, bool refresh,
+                           std::function<void(bool)> onFirstProbe)
     {
         // Once: a name the PC is known by could take a DNS lookup
         std::string address = MacNetworkLink::numericAddress(host);
@@ -133,10 +134,7 @@ namespace
                 saveRemembered(hostUuid, remembered);
             }
 
-            QString text;
-            if (ForkLinkRules::shouldShow(lan, known)) {
-                text = QString::fromStdString(ForkLinkRules::badge(probe.link, !lan));
-            }
+            bool shown = ForkLinkRules::shouldShow(lan, known);
 
             if (first) {
                 std::string link = ForkLinkRules::badge(probe.link, false);
@@ -151,14 +149,20 @@ namespace
                             probe.interfaceName.empty() ? "" : ")",
                             lan ? "over the LAN" : "not over the LAN",
                             about,
-                            !refresh ? "no notch bar" : (text.isEmpty() ? "not shown in the notch bar" : "shown in the notch bar"));
+                            !refresh ? "no notch bar" : (shown ? "shown in the notch bar" : "not shown in the notch bar"));
+                if (onFirstProbe) {
+                    onFirstProbe(lan);
+                }
             }
 
             {
                 std::lock_guard<std::mutex> lock(state().mutex);
-                // A later stream's monitor owns the badge otherwise
+                // A later stream's monitor owns it otherwise
                 if (state().monitor == monitor) {
-                    state().badge = text;
+                    state().current.known = true;
+                    state().current.link = probe.link;
+                    state().current.viaLan = lan;
+                    state().current.shown = shown;
                 }
             }
 
@@ -189,7 +193,7 @@ void noteStreamStart(NvComputer* computer, int reachability)
     state().reachability = fromMoonlight(reachability);
 }
 
-void start(bool refresh)
+void start(bool refresh, std::function<void(bool viaLan)> onFirstProbe)
 {
     auto monitor = std::make_shared<Monitor>();
     std::shared_ptr<Monitor> previous;
@@ -199,7 +203,7 @@ void start(bool refresh)
     {
         std::lock_guard<std::mutex> lock(state().mutex);
         previous.swap(state().monitor);
-        state().badge.clear();
+        state().current = Current();
         if (!state().hostUuid.isEmpty() && !state().address.empty()) {
             state().monitor = monitor;
             hostUuid = state().hostUuid;
@@ -209,7 +213,7 @@ void start(bool refresh)
     }
     stopMonitor(previous);
     if (!hostUuid.isEmpty()) {
-        std::thread(probeUntilStopped, monitor, hostUuid, address, reachability, refresh).detach();
+        std::thread(probeUntilStopped, monitor, hostUuid, address, reachability, refresh, std::move(onFirstProbe)).detach();
     }
 }
 
@@ -219,7 +223,7 @@ void stop()
     {
         std::lock_guard<std::mutex> lock(state().mutex);
         monitor.swap(state().monitor);
-        state().badge.clear();
+        state().current = Current();
         // The next stream notes its own
         state().hostUuid.clear();
         state().address.clear();
@@ -228,9 +232,9 @@ void stop()
     stopMonitor(monitor);
 }
 
-QString badge()
+Current current()
 {
     std::lock_guard<std::mutex> lock(state().mutex);
-    return state().badge;
+    return state().current;
 }
 }

@@ -874,5 +874,13 @@ CenteredGridView {
         onClosed: appGrid.forkProfileRevision++ // [fork] the tiles' chips
     }
 
+    // [fork] The notch bar's Stream Settings saved a profile during a stream: the tiles' chips
+    Connections {
+        target: StreamProfiles
+        function onProfileSaved() {
+            appGrid.forkProfileRevision++
+        }
+    }
+
     ScrollBar.vertical: ScrollBar {}
 }

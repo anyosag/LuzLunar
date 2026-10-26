@@ -225,6 +225,13 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     // and Nvidia's software don't, so the redesign can say which host software a PC runs
     this->isApolloServerSoftware = !NvHTTP::getXmlString(serverInfo, "Permission").isEmpty();
 
+    // [fork] LuzLunar's Apollo starts a stream at the bitrate in luzBitrate, so the stream can launch
+    // above it and be raised later (Session::startConnectionAsync()). Not saved: serverinfo says it.
+    this->apolloBitrateStart = NvHTTP::getXmlString(serverInfo, "LuzBitrateStart") == "1";
+    // [fork] It says where its pointer is (GET /actions/cursor), so Mac trackpad mode's pointer can
+    // move up into the notch bar (ForkBarReach). Not saved either.
+    this->apolloCursor = NvHTTP::getXmlString(serverInfo, "LuzCursor") == "1";
+
     // [fork] anyosag/Apollo's multi-display app and device pairing (forkmultidisplay.*)
     this->forkDisplayGroupSlots = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroup").toInt();
     this->forkDisplayGroupAppId = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroupApp").toInt();
@@ -613,6 +620,8 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(isSupportedServerVersion);
     ASSIGN_IF_CHANGED(isNvidiaServerSoftware);
     ASSIGN_IF_CHANGED(isApolloServerSoftware); // [fork]
+    ASSIGN_IF_CHANGED(apolloBitrateStart); // [fork]
+    ASSIGN_IF_CHANGED(apolloCursor); // [fork]
     ASSIGN_IF_CHANGED(forkDisplayGroupSlots); // [fork]
     ASSIGN_IF_CHANGED(forkDisplayGroupAppId); // [fork]
     ASSIGN_IF_CHANGED(forkPairDevice); // [fork]

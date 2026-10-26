@@ -121,6 +121,8 @@ public:
     QVector<NvApp> appList;
     bool isNvidiaServerSoftware;
     bool isApolloServerSoftware = false; // [fork] reports this client's <Permission> bits, as Apollo does
+    bool apolloBitrateStart = false;     // [fork] <LuzBitrateStart>: starts a stream at luzBitrate, below its launch bitrate (BitrateRules::launchKbps())
+    bool apolloCursor = false;           // [fork] <LuzCursor>: GET /actions/cursor says where the PC's pointer is (ForkBarReach)
     // Remember to update isEqualSerialized() when adding fields here!
 
     // Synchronization

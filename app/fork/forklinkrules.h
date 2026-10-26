@@ -51,6 +51,13 @@ namespace ForkLinkRules
     // "866 Mb/s", "1 Gb/s", "2.5 Gb/s"; empty when unknown
     std::string speedText(double mbps);
 
+    // "5 GHz", "2.4 GHz"; empty when unknown (without Location access macOS may leave it out)
+    std::string bandText(double ghz);
+
+    // Stream status's Connection row: "Wi-Fi 5 GHz · LAN", "Ethernet · not via LAN", "VPN over
+    // Wi-Fi · not via LAN". The speed has a row of its own. Empty for an unknown link.
+    std::string connectionText(const Link& link, bool viaLan);
+
     // The networks a PC was streamed over the LAN on, newest first. Ids are opaque (hashes of
     // macOS's identity for the network).
     constexpr std::size_t k_MaxRememberedNetworks = 32;

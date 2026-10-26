@@ -2,6 +2,7 @@
 #include "ffmpeg.h"
 #include "utils.h"
 #include "streaming/session.h"
+#include "fork/hostpacing.h" // [fork]
 #include "fork/streamstats.h" // [fork]
 
 #include <h264_stream.h>
@@ -2117,6 +2118,9 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
         m_LastFrameNumber = du->frameNumber;
     }
 
+    // [fork] How evenly the PC sends frames, for the stats overlay
+    ForkHostPacing::observe(du->frameNumber, du->rtpTimestamp);
+
     m_BwTracker.AddBytes(du->fullLength);
 
     // Flip stats windows roughly every second
@@ -2130,6 +2134,8 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
             stringifyVideoStats(lastTwoWndStats,
                                 Session::get()->getOverlayManager().getOverlayText(Overlay::OverlayDebug),
                                 Session::get()->getOverlayManager().getOverlayMaxTextLength());
+            ForkHostPacing::appendOverlayLine(Session::get()->getOverlayManager().getOverlayText(Overlay::OverlayDebug),
+                                              Session::get()->getOverlayManager().getOverlayMaxTextLength()); // [fork]
             Session::get()->getOverlayManager().setOverlayTextUpdated(Overlay::OverlayDebug);
         }
 

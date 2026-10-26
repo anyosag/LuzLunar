@@ -1,17 +1,25 @@
 #include "notchbar.h"
+#include "notchmenus_mac.h"
+#include "notchreach_mac.h"
 
+#include "fork/forklinkrules.h"
 #include "fork/forknetworklink.h"
 #include "fork/forkpolicy.h"
+#include "fork/forkpreferences.h"
+#include "fork/hostcadence.h"
+#include "fork/notchstatus.h"
 #include "fork/streamstats.h"
 #include "SDL_compat.h"
 
 #include <atomic>
+#include <functional>
 
 #include <QCoreApplication>
 
 #include <SDL_syswm.h>
 
 #import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <QuartzCore/QuartzCore.h>
 
 namespace
@@ -21,7 +29,15 @@ namespace
     const CGFloat k_IconGap = 6;      // between the message icon and its text
     const CGFloat k_TitleGap = 8;     // between the title and a message beside it
     const CGFloat k_DotSize = 8;
+    const CGFloat k_ItemGap = 2;      // between the items right of the notch
     const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
+    const int64_t k_NoticeDurationNs = 6 * NSEC_PER_SEC;   // a power notice or a hint is longer to read
+    const int64_t k_ActionNoticeDurationNs = 10 * NSEC_PER_SEC; // and longer still with a button to press
+    const CGFloat k_ButtonGap = 9;    // between a message and its button
+    const CGFloat k_ButtonInset = 11; // between a message's button and the pill's end
+    const CGFloat k_ButtonHeight = 19;
+    const int k_ReachHintStreams = 3; // the streams that say how to reach the bar while the PC has the mouse
+    const int k_ReachHintTries = 5;   // a second apart, for the stream to take the mouse
 
     // The message pill in the bottom-left corner of a windowed stream
     const CGFloat k_CornerMargin = 16;      // from the window's left and bottom edges
@@ -47,6 +63,127 @@ namespace
 }
 @end
 
+// What a message is, which picks its icon
+typedef NS_ENUM(NSInteger, ForkMessageKind) {
+    ForkMessageKindClipboard,   // a clipboard message: a clipboard
+    ForkMessageKindWarning,     // the connection warning: a yellow warning sign
+    ForkMessageKindPower,       // Low Power Mode: a yellow dot, as on the canvas
+    ForkMessageKindHint,        // how to reach the bar: a keyboard
+};
+
+// A message's button, in the canvas's blue capsule: "Reconnect at 60 fps". It answers the first click
+// without taking focus from the stream, as the bar's items do.
+@interface ForkPillButton : NSView
+@property (nonatomic, copy) void (^onPress)(void);
+- (void)setTitle:(NSString*)title;
+- (CGFloat)naturalWidth;
+@end
+
+@implementation ForkPillButton
+{
+    NSTextField* m_Label;
+    NSSize m_LabelSize;     // the title's own size: layout widens the label to the whole button
+    BOOL m_Pressed;
+}
+
+@synthesize onPress = _onPress;
+
+- (instancetype)initWithFrame:(NSRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self == nil) {
+        return nil;
+    }
+    self.wantsLayer = YES;
+    m_Label = [[NSTextField labelWithString:@""] retain];
+    m_Label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    m_Label.textColor = NSColor.whiteColor;
+    m_Label.alignment = NSTextAlignmentCenter;
+    [self addSubview:m_Label];
+    [self setAccessibilityElement:YES];
+    [self setAccessibilityRole:NSAccessibilityButtonRole];
+    [self updateLayer];
+    return self;
+}
+
+- (void)dealloc
+{
+    [_onPress release];
+    [m_Label release];
+    [super dealloc];
+}
+
+- (void)setTitle:(NSString*)title
+{
+    m_Label.stringValue = title != nil ? title : @"";
+    [m_Label sizeToFit];
+    m_LabelSize = m_Label.frame.size;
+    [self setAccessibilityLabel:title];
+    self.needsLayout = YES;
+}
+
+- (CGFloat)naturalWidth
+{
+    return ceil(m_LabelSize.width + 16);
+}
+
+- (void)layout
+{
+    [super layout];
+    NSSize size = self.bounds.size;
+    m_Label.frame = NSMakeRect(0, round((size.height - m_LabelSize.height) / 2), size.width, m_LabelSize.height);
+    // A capsule at whatever height it's given
+    self.needsDisplay = YES;
+}
+
+- (BOOL)wantsUpdateLayer
+{
+    return YES;
+}
+
+- (void)updateLayer
+{
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    NSColor* blue = [NSColor colorWithSRGBRed:0x0a / 255.0 green:0x84 / 255.0 blue:1 alpha:1];
+    self.layer.backgroundColor = (m_Pressed ? [blue blendedColorWithFraction:0.25 ofColor:NSColor.blackColor] : blue).CGColor;
+    self.layer.cornerRadius = NSHeight(self.bounds) / 2;
+    [CATransaction commit];
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event
+{
+    (void)event;
+    return YES;
+}
+
+- (void)mouseDown:(NSEvent*)event
+{
+    (void)event;
+    m_Pressed = YES;
+    self.needsDisplay = YES;
+}
+
+- (void)mouseUp:(NSEvent*)event
+{
+    BOOL inside = NSPointInRect([self convertPoint:event.locationInWindow fromView:nil], self.bounds);
+    m_Pressed = NO;
+    self.needsDisplay = YES;
+    if (inside && _onPress != nil) {
+        _onPress();
+    }
+}
+
+- (BOOL)accessibilityPerformPress
+{
+    if (_onPress != nil) {
+        _onPress();
+        return YES;
+    }
+    return NO;
+}
+@end
+
 // Messages in the bottom-left corner of a windowed stream, in a pill like the notch bar's. It's in a
 // child window of the stream window, so it moves, resizes and changes Spaces with it.
 @interface ForkCornerMessage : NSObject
@@ -57,12 +194,12 @@ namespace
     NSImageView* m_Icon;
     NSTextField* m_Label;
     NSString* m_Text;           // the message shown or appearing; nil while hidden or hiding
-    BOOL m_Warning;
+    ForkMessageKind m_Kind;
     unsigned m_Generation;      // completion handlers of older animations do nothing
 }
 - (instancetype)initWithStreamWindow:(NSWindow*)window;
 // Shows the message, or another one in its place, or hides it for nil
-- (void)showMessage:(NSString*)text warning:(BOOL)warning;
+- (void)showMessage:(NSString*)text kind:(ForkMessageKind)kind;
 - (void)hideNow;
 // Follows the stream window's size
 - (void)layout;
@@ -78,14 +215,34 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     ForkMessageCollapsing,  // the pill shrinks away
 };
 
-@interface ForkNotchBarController : NSObject
+@interface ForkNotchBarController : NSObject <ForkNotchMenusHost>
 {
     NSWindow* m_StreamWindow;   // retained: SDL destroys the window before the stream's fork extensions go away
     ForkNotchPanel* m_Panel;
-    NSView* m_LeftPill;
-    NSView* m_RightPill;
-    NSTextField* m_LeftLabel;
-    NSTextField* m_RightLabel;
+    ForkBarItem* m_SessionItem;     // the app and the PC, left of the notch: the Session menu
+    ForkBarItem* m_StatsItem;       // the stream's stats, right of the notch: Stream status
+    ForkBarItem* m_QualityItem;     // the bitrate, after the stats: Quality
+    ForkBarItem* m_BatteryItem;     // the Mac's battery, after the bitrate: Battery
+    ForkBarItem* m_ControlItem;     // Stream Control Center, at the right edge
+    NSString* m_AppName;
+    NSString* m_HostName;
+    int m_VideoWidth;
+    int m_VideoHeight;
+    BOOL m_NotchStatsShown;         // the stats' text beside their icon (Control Center's Notch Stats)
+    unsigned m_StatusTickGeneration; // the tick that keeps an open Stream status or Quality current
+    int m_QualityKbps;              // what the Quality item shows
+    BOOL m_QualityLowered;
+    BOOL m_HasBattery;              // the Battery item is on the bar
+    NSString* m_BatteryShown;       // what the Battery item shows, to tell when it changes
+
+    // The menus under the items, and what they do (MacNotchBar::setActions())
+    ForkNotchMenus* m_Menus;
+    std::function<void(NotchMenus::Action, int)> m_Actions;
+    std::function<NotchBar::MenuState()> m_State;
+    NotchBar::StreamSettingsSource m_StreamSettings;
+    NotchMenus::Menu m_OpenMenu;    // the menu open now, Stream Settings (no item of its own) included
+    NSRect m_StripFrame;            // the strip beside the notch on screen, from the last layout
+    ForkReachOverlay* m_Reach;      // Mac trackpad mode's pointer up into the strip and back, drawn over it all
 
     // Messages beside the notch, in a pill that grows out of a blinking red dot
     NSView* m_MessagePill;
@@ -93,10 +250,16 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     NSTextField* m_MessageLabel;
     NSView* m_Dot;
     NSString* m_Warning;            // the connection warning, until the connection recovers
-    NSString* m_Toast;              // a clipboard message, shown for a few seconds
+    NSString* m_Toast;              // a clipboard message or a power notice, shown for a few seconds
+    ForkMessageKind m_ToastKind;
+    // A power notice's button (showNotice()): its title, nil for none, and what it does
+    NSString* m_ToastActionTitle;
+    NotchMenus::Action m_ToastAction;
+    int m_ToastActionValue;
+    ForkPillButton* m_MessageButton;
     unsigned m_ToastGeneration;
     unsigned m_ToastTimerGeneration;
-    BOOL m_ShowsWarning;            // the pill holds the warning rather than a clipboard message
+    ForkMessageKind m_ShownKind;    // what the pill holds
     ForkMessageState m_MessageState;
     unsigned m_AnimationGeneration; // completion handlers of older animations do nothing
     ForkCornerMessage* m_Corner;    // shows the messages instead while the stream is windowed
@@ -106,6 +269,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     std::atomic<bool> m_ShowsMessages; // the bar or the corner pill is on screen
     BOOL m_FullScreenTransition;    // the stream window is entering or leaving its fullscreen Space
     unsigned m_TransitionGeneration;
+    BOOL m_ReachHintOffered;        // this stream had its chance to say how to reach the bar
 
     // The area left of the notch and the pill size, in panel coordinates, from the last refresh
     BOOL m_HasGeometry;
@@ -113,10 +277,32 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     CGFloat m_PillHeight;
     CGFloat m_PillY;
 }
-- (instancetype)initWithStreamWindow:(NSWindow*)window title:(NSString*)title;
-- (void)setStatsText:(NSString*)text;
+- (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName
+                          videoWidth:(int)videoWidth videoHeight:(int)videoHeight;
+- (void)setActions:(std::function<void(NotchMenus::Action, int)>)actions state:(std::function<NotchBar::MenuState()>)state;
+- (void)setStreamSettings:(NotchBar::StreamSettingsSource)source;
+- (BOOL)toggleMenusByKeyboard;
+- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift;
+- (BOOL)menuOpen;
+- (BOOL)barOnScreen;
+- (void)projectUpFromWindowX:(CGFloat)windowX y:(CGFloat)windowY;
+- (void)pullHomeFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
+                    pcPoint:(std::function<std::optional<std::pair<double, double>>()>)pcPoint
+                      lagMs:(double)lagMs
+                   arriving:(std::function<void()>)arriving;
+- (void)pulseAtWindowX:(CGFloat)windowX y:(CGFloat)windowY count:(int)count size:(CGFloat)size;
+- (void)settlePulse;
+- (void)refreshMenus;
+- (void)bitrateChanged;
+- (void)powerChanged;
+- (void)updateQualityItem;
+- (void)updateBatteryItem;
+- (void)statsArrived;
 - (void)setWarning:(NSString*)text;
 - (void)showToast:(NSString*)text;
+- (void)showToast:(NSString*)text kind:(ForkMessageKind)kind;
+- (void)showNotice:(NSString*)text actionTitle:(NSString*)actionTitle action:(NotchMenus::Action)action value:(int)value;
+- (void)pressedMessageButton;
 - (BOOL)showsMessages;
 - (void)invalidate;
 @end
@@ -221,22 +407,114 @@ static ForkNotchPanel* makePanel(NSWindowLevel level, NSWindowCollectionBehavior
 }
 
 // The panel over the strip beside the notch: above the stream window's level, and allowed into its
-// fullscreen Space. Returns a +1 reference.
+// fullscreen Space. Its items take clicks; the strip is outside the stream window, so nothing meant
+// for the PC lands there. Returns a +1 reference.
 static ForkNotchPanel* makeNotchPanel()
 {
-    return makePanel(NSMainMenuWindowLevel + 2,
-                     NSWindowCollectionBehaviorFullScreenAuxiliary |
-                     NSWindowCollectionBehaviorStationary |
-                     NSWindowCollectionBehaviorIgnoresCycle);
+    ForkNotchPanel* panel = makePanel(NSMainMenuWindowLevel + 2,
+                                      NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                      NSWindowCollectionBehaviorStationary |
+                                      NSWindowCollectionBehaviorIgnoresCycle);
+    panel.ignoresMouseEvents = NO;
+    panel.acceptsMouseMovedEvents = YES;
+    return panel;
+}
+
+// The Session item's title: the app, then the PC in the secondary color
+static NSAttributedString* sessionTitle(NSString* appName, NSString* hostName)
+{
+    NSMutableAttributedString* title = [[[NSMutableAttributedString alloc] init] autorelease];
+    [title appendAttributedString:[[[NSAttributedString alloc] initWithString:appName
+                                                                    attributes:@{ NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold],
+                                                                                  NSForegroundColorAttributeName: NSColor.labelColor }] autorelease]];
+    if (hostName.length > 0) {
+        [title appendAttributedString:[[[NSAttributedString alloc] initWithString:[@"  " stringByAppendingString:hostName]
+                                                                        attributes:@{ NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightMedium],
+                                                                                      NSForegroundColorAttributeName: NSColor.secondaryLabelColor }] autorelease]];
+    }
+    return title;
+}
+
+// The battery as macOS's menu bar draws it, from the canvas: 27 by 13, filled by the level, yellow in
+// Low Power Mode, red at 10% or less on battery, with a bolt on a power adapter
+static NSImage* batteryImage(const PowerRules::Glyph& glyph)
+{
+    NSColor* fill = glyph.fill == PowerRules::Fill::Yellow ? [NSColor colorWithSRGBRed:1 green:0xd6 / 255.0 blue:0x0a / 255.0 alpha:1] :
+                    glyph.fill == PowerRules::Fill::Red    ? [NSColor colorWithSRGBRed:1 green:0x45 / 255.0 blue:0x3a / 255.0 alpha:1] :
+                                                             NSColor.whiteColor;
+    CGFloat fillWidth = glyph.fillWidth;
+    BOOL bolt = glyph.bolt;
+    return [NSImage imageWithSize:NSMakeSize(27, 13) flipped:YES drawingHandler:^BOOL(NSRect rect) {
+        (void)rect;
+        NSColor* outline = [NSColor colorWithWhite:1 alpha:0.45];
+        NSBezierPath* body = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0.75, 0.75, 22, 11.5) xRadius:3.6 yRadius:3.6];
+        body.lineWidth = 1;
+        [outline setStroke];
+        [body stroke];
+        [fill setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(2.4, 2.4, fillWidth, 8.2) xRadius:2 yRadius:2] fill];
+        [outline setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(23.9, 4.3, 1.7, 4.4) xRadius:0.85 yRadius:0.85] fill];
+        if (bolt) {
+            NSBezierPath* path = [NSBezierPath bezierPath];
+            [path moveToPoint:NSMakePoint(12.6, 1.6)];
+            [path lineToPoint:NSMakePoint(8.4, 7.2)];
+            [path lineToPoint:NSMakePoint(11.4, 7.2)];
+            [path lineToPoint:NSMakePoint(10.3, 11.6)];
+            [path lineToPoint:NSMakePoint(14.6, 5.9)];
+            [path lineToPoint:NSMakePoint(11.5, 5.9)];
+            [path closePath];
+            [NSColor.whiteColor setFill];
+            [path fill];
+            path.lineWidth = 0.8;
+            path.lineJoinStyle = NSLineJoinStyleRound;
+            [NSColor.blackColor setStroke];
+            [path stroke];
+        }
+        return YES;
+    }];
+}
+
+// The stats' text, with its "·" separators dimmed as on the canvas
+static NSAttributedString* statsTitle(NSString* text)
+{
+    NSMutableAttributedString* title =
+        [[[NSMutableAttributedString alloc] initWithString:text
+                                                attributes:@{ NSFontAttributeName: [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
+                                                              NSForegroundColorAttributeName: NSColor.labelColor }] autorelease];
+    NSColor* dimmed = [NSColor colorWithSRGBRed:0x6e / 255.0 green:0x6e / 255.0 blue:0x75 / 255.0 alpha:1];
+    NSRange search = NSMakeRange(0, text.length);
+    for (;;) {
+        NSRange dot = [text rangeOfString:@"·" options:0 range:search];
+        if (dot.location == NSNotFound) {
+            break;
+        }
+        [title addAttribute:NSForegroundColorAttributeName value:dimmed range:dot];
+        search = NSMakeRange(NSMaxRange(dot), text.length - NSMaxRange(dot));
+    }
+    return title;
+}
+
+// The canvas's 7 pt yellow dot, for Low Power Mode
+static NSImage* yellowDot()
+{
+    static NSImage* dot = [[NSImage imageWithSize:NSMakeSize(7, 7) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+        [[NSColor colorWithSRGBRed:1 green:0xd6 / 255.0 blue:0x0a / 255.0 alpha:1] setFill];
+        [[NSBezierPath bezierPathWithOvalInRect:rect] fill];
+        return YES;
+    }] retain];
+    return dot;
 }
 
 // Puts a message in a pill's icon and label: a yellow warning sign for the connection warning, a
-// clipboard for clipboard messages
-static void setMessageContent(NSImageView* icon, NSTextField* label, NSString* text, BOOL warning)
+// clipboard for clipboard messages, a yellow dot for Low Power Mode, a keyboard for a hint
+static void setMessageContent(NSImageView* icon, NSTextField* label, NSString* text, ForkMessageKind kind)
 {
     label.stringValue = text != nil ? text : @"";
-    icon.image = symbolImage(warning ? @"wifi.exclamationmark" : @"doc.on.clipboard");
-    icon.contentTintColor = warning ? NSColor.systemYellowColor : NSColor.labelColor;
+    icon.image = kind == ForkMessageKindPower   ? yellowDot() :
+                 kind == ForkMessageKindWarning ? symbolImage(@"wifi.exclamationmark") :
+                 kind == ForkMessageKindHint    ? symbolImage(@"keyboard") : symbolImage(@"doc.on.clipboard");
+    icon.contentTintColor = kind == ForkMessageKindWarning ? NSColor.systemYellowColor : NSColor.labelColor;
     [icon setFrameSize:icon.image != nil ? icon.image.size : NSZeroSize];
 }
 
@@ -272,7 +550,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return message.toNSString();
 }
 
-- (instancetype)initWithStreamWindow:(NSWindow*)window title:(NSString*)title
+- (instancetype)initWithStreamWindow:(NSWindow*)window appName:(NSString*)appName hostName:(NSString*)hostName
+                          videoWidth:(int)videoWidth videoHeight:(int)videoHeight
 {
     self = [super init];
     if (self == nil) {
@@ -282,16 +561,60 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_StreamWindow = [window retain];
     m_Panel = makeNotchPanel();
     m_Corner = [[ForkCornerMessage alloc] initWithStreamWindow:window];
+    m_Reach = [[ForkReachOverlay alloc] initWithStreamWindow:window];
+    m_AppName = [appName copy];
+    m_HostName = [hostName copy];
+    m_VideoWidth = videoWidth;
+    m_VideoHeight = videoHeight;
+    m_NotchStatsShown = ForkPreferences::get()->notchBarStats();
 
-    m_LeftLabel = makeLabel(title);
-    m_RightLabel = makeLabel(@"—");
-    m_LeftPill = makePill(@[ m_LeftLabel ]);
-    m_RightPill = makePill(@[ m_RightLabel ]);
+    m_SessionItem = [[ForkBarItem alloc] initWithSymbol:@"moon"];
+    [m_SessionItem setTitle:sessionTitle(appName, hostName)];
+    [m_SessionItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Session menu: %1 on %2")
+                                             .arg(QString::fromNSString(appName), QString::fromNSString(hostName)).toNSString()];
+    m_StatsItem = [[ForkBarItem alloc] initWithSymbol:@"network"];
+    [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? @"—" : @"")];
+    [m_StatsItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Stream status").toNSString()];
+    // Its arrow and bitrate come with the menus' state (updateQualityItem)
+    m_QualityItem = [[ForkBarItem alloc] initWithSymbol:nil];
+    [m_QualityItem setTitle:statsTitle(@"—")];
+    [m_QualityItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Bitrate").toNSString()];
+    // Its level and glyph too (updateBatteryItem); off the bar until a battery turns up
+    m_BatteryItem = [[ForkBarItem alloc] initWithSymbol:nil];
+    [m_BatteryItem setTitle:statsTitle(@"")];
+    [m_BatteryItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Battery").toNSString()];
+    // Control Center's own icon, or sliders on a macOS without it
+    m_ControlItem = [[ForkBarItem alloc] initWithSymbol:symbolImage(@"switch.2") != nil ? @"switch.2" : @"slider.horizontal.3"];
+    [m_ControlItem setTitle:[[[NSAttributedString alloc] initWithString:@""] autorelease]];
+    [m_ControlItem setAccessibilityLabel:QCoreApplication::translate("NotchBar", "Control Center").toNSString()];
+    m_Menus = [[ForkNotchMenus alloc] initWithHost:self appName:appName hostName:hostName];
+    // Not retained by the blocks' captures beyond the items' life: the items go in dealloc
+    __block ForkNotchBarController* controller = self;
+    m_SessionItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Session];
+    };
+    m_StatsItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Status];
+    };
+    m_QualityItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Quality];
+    };
+    m_BatteryItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::Battery];
+    };
+    m_ControlItem.onPress = ^{
+        [controller pressedItemForMenu:NotchMenus::Menu::ControlCenter];
+    };
 
     m_MessageLabel = makeLabel(@"");
     m_MessageIcon = [[NSImageView alloc] initWithFrame:NSZeroRect];
     m_MessageIcon.imageScaling = NSImageScaleNone;
-    m_MessagePill = makePill(@[ m_MessageIcon, m_MessageLabel ]);
+    m_MessageButton = [[ForkPillButton alloc] initWithFrame:NSZeroRect];
+    m_MessageButton.hidden = YES;
+    m_MessageButton.onPress = ^{
+        [controller pressedMessageButton];
+    };
+    m_MessagePill = makePill(@[ m_MessageIcon, m_MessageLabel, m_MessageButton ]);
     m_MessagePill.alphaValue = 0;
 
     // A layer-hosting view, so AppKit leaves the layer's color and shape alone
@@ -306,8 +629,11 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_MessageState = ForkMessageHidden;
     m_ShowsMessages = false;
 
-    [m_Panel.contentView addSubview:m_LeftPill];
-    [m_Panel.contentView addSubview:m_RightPill];
+    [m_Panel.contentView addSubview:m_SessionItem];
+    [m_Panel.contentView addSubview:m_StatsItem];
+    [m_Panel.contentView addSubview:m_QualityItem];
+    [m_Panel.contentView addSubview:m_BatteryItem];
+    [m_Panel.contentView addSubview:m_ControlItem];
     // The dot sits under the pill that grows out of it
     [m_Panel.contentView addSubview:m_Dot];
     [m_Panel.contentView addSubview:m_MessagePill];
@@ -331,6 +657,9 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         [center addObserver:self selector:@selector(streamWindowFrameChanged:) name:name object:m_StreamWindow];
     }
     [center addObserver:self selector:@selector(stateChanged:) name:NSApplicationDidChangeScreenParametersNotification object:nil];
+    // Another app came forward (Command-Tab, a notification's click): its clicks don't reach the
+    // menus' click monitor, so a menu would stay open over it
+    [center addObserver:self selector:@selector(applicationResignedActive:) name:NSApplicationDidResignActiveNotification object:nil];
     [NSWorkspace.sharedWorkspace.notificationCenter addObserver:self
                                                        selector:@selector(stateChanged:)
                                                            name:NSWorkspaceActiveSpaceDidChangeNotification
@@ -344,17 +673,25 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     [m_StreamWindow release];
     [m_Panel release];
-    [m_LeftPill release];
-    [m_RightPill release];
-    [m_LeftLabel release];
-    [m_RightLabel release];
+    [m_SessionItem release];
+    [m_StatsItem release];
+    [m_QualityItem release];
+    [m_BatteryItem release];
+    [m_BatteryShown release];
+    [m_ControlItem release];
+    [m_AppName release];
+    [m_HostName release];
+    [m_Menus release];
     [m_MessagePill release];
     [m_MessageIcon release];
     [m_MessageLabel release];
+    [m_MessageButton release];
+    [m_ToastActionTitle release];
     [m_Dot release];
     [m_Warning release];
     [m_Toast release];
     [m_Corner release];
+    [m_Reach release];
     [super dealloc];
 }
 
@@ -362,10 +699,24 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
+    // Quietly: the stream is ending, and its event loop with it
+    m_Actions = nullptr;
+    m_State = nullptr;
+    m_StreamSettings = NotchBar::StreamSettingsSource();
+    [m_Menus invalidate];
+    m_SessionItem.onPress = nil;
+    m_StatsItem.onPress = nil;
+    m_QualityItem.onPress = nil;
+    m_BatteryItem.onPress = nil;
+    m_MessageButton.onPress = nil;
+    m_ControlItem.onPress = nil;
+    m_StatusTickGeneration++;
     // Animations and timers still queued find the controller invalidated and do nothing
     m_AnimationGeneration++;
     m_ShowsMessages = false;
     [m_Corner invalidate];
+    // Shows the Mac's pointer if a ghost was on its way up
+    [m_Reach invalidate];
     [m_Dot.layer removeAllAnimations];
     [m_Panel orderOut:nil];
     [m_Panel close];
@@ -376,9 +727,17 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 - (void)stateChanged:(NSNotification*)notification
 {
     (void)notification;
+    // A menu would hang from where the bar was
+    [m_Menus close];
     // The geometry may change under a running animation, so jump to where it was heading
     [self finishMessageAnimation];
     [self refresh];
+}
+
+- (void)applicationResignedActive:(NSNotification*)notification
+{
+    (void)notification;
+    [m_Menus close];
 }
 
 - (void)streamWindowFrameChanged:(NSNotification*)notification
@@ -415,7 +774,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNotchPanel* panel = makeNotchPanel();
     [panel setFrame:m_Panel.frame display:NO];
     // In their order in the old panel, so the dot stays under the message pill
-    for (NSView* view in @[ m_LeftPill, m_RightPill, m_Dot, m_MessagePill ]) {
+    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_Dot, m_MessagePill ]) {
         [panel.contentView addSubview:view];
     }
 
@@ -463,14 +822,114 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkStreamStats::setConnectionWarningInOverlay(!take);
 }
 
-- (void)setStatsText:(NSString*)text
+// A new snapshot: the stats item's text, and an open Stream status
+- (void)statsArrived
 {
     if (m_StreamWindow == nil) {
         return;
     }
 
-    m_RightLabel.stringValue = text;
+    ForkStreamStats::Snapshot stats;
+    if (!ForkStreamStats::latest(&stats)) {
+        return;
+    }
+    // The Wi-Fi band where the bar shows the link (ForkLinkRules::shouldShow())
+    ForkNetworkLink::Current link = ForkNetworkLink::current();
+    BOOL wifi = link.known && link.link.kind == ForkLinkRules::Kind::WiFi;
+    std::string band = wifi && link.shown ? ForkLinkRules::bandText(link.link.bandGHz) : std::string();
+    NSString* text = [NSString stringWithUTF8String:NotchStatus::barText(band, stats.fps, stats.rttMs).c_str()];
+    [m_StatsItem setSymbol:wifi ? @"wifi" : @"network"];
+    [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? text : @"")];
+    [m_StatsItem setAccessibilityValue:text];
+    [self updateQualityItem];
     [self refresh];
+    [m_Menus statusChanged];
+}
+
+// "18 Mb/s", after an orange arrow while that's below the user's bitrate
+- (void)updateQualityItem
+{
+    if (m_StreamWindow == nil || !m_State) {
+        return;
+    }
+    NotchQuality::State state = m_State().bitrate;
+    int kbps = NotchQuality::shownKbps(state);
+    BOOL lowered = NotchQuality::lowered(state);
+    if (kbps == m_QualityKbps && lowered == m_QualityLowered) {
+        return;
+    }
+    m_QualityKbps = kbps;
+    m_QualityLowered = lowered;
+
+    QString mbps = QString::fromStdString(NotchQuality::mbps(kbps));
+    [m_QualityItem setSymbol:lowered ? @"arrow.down" : nil
+                        tint:[NSColor colorWithSRGBRed:1 green:0x9f / 255.0 blue:0x0a / 255.0 alpha:1]];
+    [m_QualityItem setTitle:statsTitle(QCoreApplication::translate("NotchBar", "%1 Mb/s").arg(mbps).toNSString())];
+    QString label = QCoreApplication::translate("NotchBar", "Bitrate: %1 megabits per second").arg(mbps);
+    if (lowered) {
+        label = QCoreApplication::translate("NotchBar", "%1, below your %2").arg(label, QString::fromStdString(NotchQuality::mbps(state.ownKbps)));
+    }
+    [m_QualityItem setAccessibilityLabel:label.toNSString()];
+    [self refresh];
+}
+
+// "76%" and the glyph, as macOS's menu bar shows the battery
+- (void)updateBatteryItem
+{
+    if (m_StreamWindow == nil || !m_State) {
+        return;
+    }
+    NotchBar::MenuState state = m_State();
+    BOOL hasBattery = state.powerKnown && state.power.present;
+    const PowerRules::Reading& power = state.power;
+    PowerRules::Glyph glyph = PowerRules::glyph(power, state.lowPowerMode);
+    NSString* shown = [NSString stringWithFormat:@"%d %d %d %d %d %.1f", hasBattery, power.level, (int)glyph.fill, glyph.bolt,
+                                                 power.charging, glyph.fillWidth];
+    if (hasBattery == m_HasBattery && [shown isEqualToString:m_BatteryShown]) {
+        return;
+    }
+    m_HasBattery = hasBattery;
+    [m_BatteryShown release];
+    m_BatteryShown = [shown copy];
+
+    if (hasBattery) {
+        [m_BatteryItem setTitle:statsTitle([NSString stringWithFormat:@"%d%%", power.level])];
+        [m_BatteryItem setTrailingImage:batteryImage(glyph)];
+        QString label = QCoreApplication::translate("NotchBar", "Battery %1%").arg(power.level);
+        if (power.charging) {
+            label += QCoreApplication::translate("NotchBar", ", charging");
+        }
+        if (state.lowPowerMode) {
+            label += QCoreApplication::translate("NotchBar", ", Low Power Mode on");
+        }
+        [m_BatteryItem setAccessibilityLabel:label.toNSString()];
+    }
+    [self refresh];
+}
+
+// While Stream status, Quality or Battery is open, once a second, so it moves on even when no frames
+// come (a still desktop): the graph, how long ago the bitrate changed, how long the stream has run
+- (void)tickStatus:(unsigned)generation
+{
+    NotchMenus::Menu open = [m_Menus openMenu];
+    if (generation != m_StatusTickGeneration || m_StreamWindow == nil ||
+            (open != NotchMenus::Menu::Status && open != NotchMenus::Menu::Quality && open != NotchMenus::Menu::Battery)) {
+        return;
+    }
+    if (open == NotchMenus::Menu::Status) {
+        [m_Menus statusChanged];
+    }
+    else if (open == NotchMenus::Menu::Quality) {
+        [m_Menus qualityChanged];
+    }
+    else {
+        [m_Menus powerChanged];
+    }
+    [self retain];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self tickStatus:generation];
+        [self release];
+    });
 }
 
 - (void)setWarning:(NSString*)text
@@ -486,14 +945,51 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)showToast:(NSString*)text
 {
+    [self showToast:text kind:ForkMessageKindClipboard];
+}
+
+- (void)showToast:(NSString*)text kind:(ForkMessageKind)kind
+{
+    [self showNotice:text kind:kind actionTitle:nil action:NotchMenus::Action::None value:0];
+}
+
+- (void)showNotice:(NSString*)text actionTitle:(NSString*)actionTitle action:(NotchMenus::Action)action value:(int)value
+{
+    [self showNotice:text kind:ForkMessageKindPower actionTitle:actionTitle action:action value:value];
+}
+
+- (void)showNotice:(NSString*)text kind:(ForkMessageKind)kind actionTitle:(NSString*)actionTitle action:(NotchMenus::Action)action value:(int)value
+{
     if (m_StreamWindow == nil) {
         return;
     }
 
     [m_Toast release];
     m_Toast = [text copy];
+    m_ToastKind = kind;
+    [m_ToastActionTitle release];
+    m_ToastActionTitle = actionTitle.length > 0 ? [actionTitle copy] : nil;
+    m_ToastAction = action;
+    m_ToastActionValue = value;
     m_ToastGeneration++;
     [self updateMessage];
+}
+
+// The message's button: does its action, and the message goes
+- (void)pressedMessageButton
+{
+    if (m_StreamWindow == nil || m_Toast == nil || m_ToastActionTitle == nil) {
+        return;
+    }
+    NotchMenus::Action action = m_ToastAction;
+    int value = m_ToastActionValue;
+    [m_Toast release];
+    m_Toast = nil;
+    m_ToastGeneration++;
+    [self updateMessage];
+    if (m_Actions) {
+        m_Actions(action, value);
+    }
 }
 
 - (BOOL)showsMessages
@@ -501,20 +997,379 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_ShowsMessages.load();
 }
 
-- (void)layoutPill:(NSView*)pill label:(NSTextField*)label area:(NSRect)area alignRight:(BOOL)alignRight height:(CGFloat)height y:(CGFloat)y
+// Menus
+
+- (void)setActions:(std::function<void(NotchMenus::Action, int)>)actions state:(std::function<NotchBar::MenuState()>)state
 {
-    [label sizeToFit];
-    CGFloat maxWidth = MAX(NSWidth(area) - 2 * k_Margin, 0);
-    CGFloat width = MIN(NSWidth(label.frame) + 2 * k_Padding, maxWidth);
-    CGFloat x = alignRight ? NSMaxX(area) - k_Margin - width : NSMinX(area) + k_Margin;
+    m_Actions = std::move(actions);
+    m_State = std::move(state);
+    [self updateQualityItem];
+    [self updateBatteryItem];
+    if (m_BarOnScreen && m_Actions) {
+        // Already up: the pointer mustn't be held to the picture
+        m_Actions(NotchMenus::Action::BarShownOrHidden, 0);
+    }
+    [self offerReachHint];
+}
 
-    pill.frame = NSMakeRect(x, y, width, height);
-    setCapsuleShape(pill, height);
+// While the PC has the mouse (a game's, or the trackpad as a touchpad), the pointer on screen is the
+// PC's, drawn in the picture, and it can't leave it for the bar: say how to reach the bar instead,
+// pushing past the top in Mac trackpad mode, else Control-Option-Shift-N. Once a stream, when the bar
+// first comes up with the mouse held, in the first few streams, and not once either has been used.
+// The remote desktop's mouse is the Mac's own pointer, which moves up into the bar.
+- (void)offerReachHint
+{
+    [self offerReachHint:0];
+}
 
-    NSView* container = label.superview;
-    container.frame = pill.bounds;
-    CGFloat labelHeight = NSHeight(label.frame);
-    label.frame = NSMakeRect(k_Padding, (height - labelHeight) / 2, MAX(width - 2 * k_Padding, 0), labelHeight);
+- (void)offerReachHint:(int)tries
+{
+    ForkPreferences* prefs = ForkPreferences::get();
+    if (m_ReachHintOffered || !m_BarOnScreen || !m_State || m_StreamWindow == nil || prefs->notchBarHints() >= k_ReachHintStreams) {
+        return;
+    }
+    NotchBar::MenuState state = m_State();
+    if (state.mouseAbsolute) {
+        return;
+    }
+    if (!state.mouseCaptured) {
+        // The stream takes the mouse once its picture is up, which can be just after the bar is
+        if (tries + 1 < k_ReachHintTries) {
+            [self retain];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                [self offerReachHint:tries + 1];
+                [self release];
+            });
+        }
+        return;
+    }
+    m_ReachHintOffered = YES;
+
+    // Not over a message already up, as a clipboard or Low Power Mode one is the stream's own news
+    if (m_Toast != nil) {
+        return;
+    }
+    prefs->setNotchBarHints(prefs->notchBarHints() + 1);
+    // Mac trackpad mode's pointer comes up into the bar by itself, past the top
+    NSString* text = state.pointerReachesBar ?
+                         QCoreApplication::translate("NotchBar", "Keep moving up past the top to use this bar").toNSString() :
+                         QCoreApplication::translate("NotchBar", "Press ⌃⌥⇧N to use this bar while the PC has the mouse").toNSString();
+    [self showToast:text kind:ForkMessageKindHint];
+}
+
+- (BOOL)barOnScreen
+{
+    return m_BarOnScreen;
+}
+
+// A point of the stream window, in its points from its top left, on the screen
+- (NSPoint)screenPointAtWindowX:(CGFloat)windowX y:(CGFloat)windowY
+{
+    NSRect content = [m_StreamWindow contentRectForFrameRect:m_StreamWindow.frame];
+    return NSMakePoint(NSMinX(content) + windowX, NSMaxY(content) - windowY);
+}
+
+// Mac trackpad mode's pointer came up past the top of the picture: the Mac's own goes on from there,
+// half way up the strip, and the ghost of the PC's floats up to it
+- (void)projectUpFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
+{
+    if (m_StreamWindow == nil || !m_BarOnScreen || !m_HasGeometry) {
+        return;
+    }
+    // No more hints: this is how
+    ForkPreferences::get()->setNotchBarHints(MAX(ForkPreferences::get()->notchBarHints(), k_ReachHintStreams));
+
+    NSPoint from = [self screenPointAtWindowX:windowX y:windowY];
+    CGFloat x = MIN(MAX(from.x, NSMinX(m_StripFrame) + 1), NSMaxX(m_StripFrame) - 1);
+    CGFloat y = NSMinY(m_StripFrame) + NSHeight(m_StripFrame) / 2;
+    // Quartz's coordinates go down from the top of the primary display
+    NSScreen* primary = NSScreen.screens.firstObject;
+    if (primary == nil) {
+        return;
+    }
+    CGWarpMouseCursorPosition(CGPointMake(x, NSMaxY(primary.frame) - y));
+    // Else macOS holds the pointer still for a moment after the warp
+    CGAssociateMouseAndMouseCursorPosition(true);
+    [m_Reach projectFrom:from to:NSMakePoint(x, y)];
+}
+
+// The Mac's pointer came back down into the picture: its ghost is sucked into the PC's
+- (void)pullHomeFromWindowX:(CGFloat)windowX y:(CGFloat)windowY
+                    pcPoint:(std::function<std::optional<std::pair<double, double>>()>)pcPoint
+                      lagMs:(double)lagMs
+                   arriving:(std::function<void()>)arriving
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+    std::function<std::optional<NSPoint>()> target;
+    if (pcPoint) {
+        // The overlay is invalidated with the controller, so this never outlives it
+        ForkNotchBarController* controller = self;
+        target = [controller, pcPoint]() -> std::optional<NSPoint> {
+            std::optional<std::pair<double, double>> point = pcPoint();
+            if (!point) {
+                return std::nullopt;
+            }
+            return [controller screenPointAtWindowX:point->first y:point->second];
+        };
+    }
+    [m_Reach pullFrom:[self screenPointAtWindowX:windowX y:windowY] target:std::move(target) lagMs:lagMs arriving:std::move(arriving)];
+}
+
+- (void)pulseAtWindowX:(CGFloat)windowX y:(CGFloat)windowY count:(int)count size:(CGFloat)size
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+    [m_Reach pulseAt:[self screenPointAtWindowX:windowX y:windowY] count:count size:size];
+}
+
+- (void)settlePulse
+{
+    [m_Reach settlePulse];
+}
+
+- (void)pressedItemForMenu:(NotchMenus::Menu)menu
+{
+    if (m_StreamWindow == nil) {
+        return;
+    }
+    if ([m_Menus openMenu] == menu) {
+        [m_Menus close];
+    }
+    else {
+        [m_Menus open:menu keyboard:NO];
+    }
+}
+
+- (BOOL)toggleMenusByKeyboard
+{
+    if (m_StreamWindow == nil || !m_BarOnScreen) {
+        return NO;
+    }
+    // Known now: no more hints
+    ForkPreferences::get()->setNotchBarHints(MAX(ForkPreferences::get()->notchBarHints(), k_ReachHintStreams));
+    if ([m_Menus openMenu] != NotchMenus::Menu::None) {
+        [m_Menus close];
+    }
+    else {
+        [m_Menus open:NotchMenus::Menu::Session keyboard:YES];
+    }
+    return YES;
+}
+
+- (BOOL)handleMenuKey:(int)scancode pressed:(BOOL)pressed shift:(BOOL)shift
+{
+    return [m_Menus handleKey:scancode pressed:pressed shift:shift];
+}
+
+- (BOOL)menuOpen
+{
+    return [m_Menus openMenu] != NotchMenus::Menu::None;
+}
+
+- (void)refreshMenus
+{
+    [self updateQualityItem];
+    [m_Menus refresh];
+}
+
+- (void)bitrateChanged
+{
+    [self updateQualityItem];
+    [m_Menus bitrateChanged];
+}
+
+- (void)powerChanged
+{
+    [self updateBatteryItem];
+    [m_Menus powerChanged];
+}
+
+- (void)menusPerform:(NotchMenus::Action)action
+{
+    if (action == NotchMenus::Action::OpenBatterySettings) {
+        // The bar's own: System Settings comes forward, and the stream loses focus as with Command-Tab
+        NSURL* url = [NSURL URLWithString:@"x-apple.systempreferences:com.apple.Battery-Settings.extension"];
+        if (![NSWorkspace.sharedWorkspace openURL:url]) {
+            [NSWorkspace.sharedWorkspace openURL:[NSURL fileURLWithPath:@"/System/Library/PreferencePanes/Battery.prefPane"]];
+        }
+        return;
+    }
+    if (action == NotchMenus::Action::ToggleNotchStats) {
+        // The bar's own, and remembered
+        m_NotchStatsShown = !m_NotchStatsShown;
+        ForkPreferences::get()->setNotchBarStats(m_NotchStatsShown);
+        NSString* text = m_StatsItem.accessibilityValue;
+        [m_StatsItem setTitle:statsTitle(m_NotchStatsShown ? (text.length > 0 ? text : @"—") : @"")];
+        [self refresh];
+        [m_Menus refresh];
+        return;
+    }
+    [self menusPerform:action value:0];
+}
+
+- (void)menusPerform:(NotchMenus::Action)action value:(int)value
+{
+    if (m_Actions) {
+        m_Actions(action, value);
+    }
+}
+
+- (NotchBar::MenuState)menusState
+{
+    NotchBar::MenuState state = m_State ? m_State() : NotchBar::MenuState();
+    state.notchStatsShown = m_NotchStatsShown;
+    return state;
+}
+
+- (void)setStreamSettings:(NotchBar::StreamSettingsSource)source
+{
+    m_StreamSettings = std::move(source);
+}
+
+- (BOOL)menusStreamSettings:(ForkStreamSettings::View*)view open:(BOOL)open
+{
+    if (!m_StreamSettings.view) {
+        return NO;
+    }
+    *view = m_StreamSettings.view(open);
+    return YES;
+}
+
+- (void)menusStreamSettingsPick:(int)row choice:(int)choice
+{
+    if (m_StreamSettings.pick) {
+        m_StreamSettings.pick(row, choice);
+    }
+}
+
+- (void)menusStreamSettingsPreset:(int)preset
+{
+    if (m_StreamSettings.preset) {
+        m_StreamSettings.preset(preset);
+    }
+}
+
+- (void)menusStreamSettingsReset
+{
+    if (m_StreamSettings.reset) {
+        m_StreamSettings.reset();
+    }
+}
+
+- (void)menusStatus:(ForkStatusModel*)model
+{
+    model->now = ForkStreamStats::nowSeconds();
+    model->samples = ForkStreamStats::history();
+    ForkStreamStats::Snapshot stats;
+    model->haveLatest = ForkStreamStats::latest(&stats);
+    if (model->haveLatest) {
+        model->latest.seconds = stats.seconds;
+        model->latest.parts = stats.latencyMs;
+    }
+    bool suggestLowerBitrate;
+    model->health = NotchStatus::health(model->haveLatest, ForkStreamStats::connectionPoor(&suggestLowerBitrate),
+                                        model->samples, model->now);
+
+    ForkNetworkLink::Current link = ForkNetworkLink::current();
+    if (link.known) {
+        model->connection = QString::fromStdString(ForkLinkRules::connectionText(link.link, link.viaLan));
+        model->linkSpeed = QString::fromStdString(ForkLinkRules::speedText(link.link.mbps));
+    }
+
+    QString resolution = QStringLiteral("%1×%2").arg(m_VideoWidth).arg(m_VideoHeight);
+    if (model->haveLatest) {
+        model->frameRate = QCoreApplication::translate("NotchBar", "%1 fps").arg(stats.fps, 0, 'f', 0);
+        switch (pacingVerdict(stats.pacingLowest, stats.fps)) {
+        case PacingVerdict::Even:
+            model->pacing = QCoreApplication::translate("NotchBar", "Even");
+            break;
+        case PacingVerdict::Uneven:
+            model->pacing = QCoreApplication::translate("NotchBar", "Uneven");
+            break;
+        case PacingVerdict::Unknown:
+            break;
+        }
+        model->framesLost = QStringLiteral("%1%").arg(stats.dropPercent, 0, 'f', 1);
+        model->video = stats.codec + QStringLiteral(" · ") + resolution;
+    }
+    else {
+        model->video = resolution;
+    }
+}
+
+- (NSRect)menusAnchorFor:(NotchMenus::Menu)menu alignRight:(BOOL*)alignRight
+{
+    if (menu == NotchMenus::Menu::StreamSettings) {
+        // Centred under the notch, which is at the middle of the screen: a point-wide anchor there
+        if (!m_BarOnScreen || !m_StreamSettings.view) {
+            return NSZeroRect;
+        }
+        *alignRight = NO;
+        return NSMakeRect(NSMidX(m_StripFrame) - 0.5, NSMinY(m_StripFrame), 1, NSHeight(m_StripFrame));
+    }
+    ForkBarItem* item = menu == NotchMenus::Menu::Session ? m_SessionItem :
+                        menu == NotchMenus::Menu::Status ? m_StatsItem :
+                        menu == NotchMenus::Menu::Quality ? m_QualityItem :
+                        menu == NotchMenus::Menu::Battery ? m_BatteryItem :
+                        menu == NotchMenus::Menu::ControlCenter ? m_ControlItem : nil;
+    if (item == nil || item.hidden || !m_BarOnScreen) {
+        return NSZeroRect;
+    }
+    // Right of the notch, menus line up with their item's right edge, which stays put as the stats change
+    *alignRight = item != m_SessionItem;
+    // The item's left and right edges, and the bottom of the strip, so the menu hangs below the bar
+    NSRect frame = [m_Panel convertRectToScreen:[item convertRect:item.bounds toView:nil]];
+    return NSMakeRect(NSMinX(frame), NSMinY(m_StripFrame), NSWidth(frame), NSHeight(m_StripFrame));
+}
+
+- (void)menusChanged:(NotchMenus::Menu)menu
+{
+    BOOL wasOpen = m_OpenMenu != NotchMenus::Menu::None;
+    m_OpenMenu = menu;
+    BOOL tickedOpen = m_StatsItem.open || m_QualityItem.open || m_BatteryItem.open;
+    m_SessionItem.open = menu == NotchMenus::Menu::Session;
+    m_StatsItem.open = menu == NotchMenus::Menu::Status;
+    m_QualityItem.open = menu == NotchMenus::Menu::Quality;
+    m_BatteryItem.open = menu == NotchMenus::Menu::Battery;
+    m_ControlItem.open = menu == NotchMenus::Menu::ControlCenter;
+    if ((m_StatsItem.open || m_QualityItem.open || m_BatteryItem.open) && !tickedOpen) {
+        // From one of them to another, the tick goes on
+        [self tickStatus:++m_StatusTickGeneration];
+    }
+    BOOL isOpen = menu != NotchMenus::Menu::None;
+    if (isOpen != wasOpen && m_Actions) {
+        m_Actions(isOpen ? NotchMenus::Action::MenusOpened : NotchMenus::Action::MenusClosed, 0);
+    }
+}
+
+- (NSWindow*)menusBarWindow
+{
+    return m_Panel;
+}
+
+// The Session item at the left edge of the area left of the notch; the stats, the bitrate, the battery
+// and Control Center from the right edge of the area right of it, the stats giving way when they don't fit
+- (void)layoutItemsLeft:(NSRect)leftArea right:(NSRect)rightArea height:(CGFloat)height y:(CGFloat)y
+{
+    CGFloat sessionWidth = MIN([m_SessionItem naturalWidth], MAX(NSWidth(leftArea) - 2 * k_Margin, 0));
+    m_SessionItem.frame = NSMakeRect(NSMinX(leftArea) + k_Margin, y, sessionWidth, height);
+    m_SessionItem.hidden = sessionWidth <= 0;
+
+    // The stats shrink, down to their icon alone
+    std::vector<NotchMenus::Placed> placed = NotchMenus::layoutRight(NSWidth(rightArea), k_Margin, k_ItemGap,
+                                                                     { [m_StatsItem naturalWidth], [m_QualityItem naturalWidth],
+                                                                       m_HasBattery ? [m_BatteryItem naturalWidth] : 0,
+                                                                       [m_ControlItem naturalWidth] },
+                                                                     0, [m_StatsItem iconOnlyWidth]);
+    NSArray<ForkBarItem*>* items = @[ m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem ];
+    for (NSUInteger i = 0; i < items.count; i++) {
+        ForkBarItem* item = items[i];
+        item.hidden = placed[i].width <= 0;
+        item.frame = NSMakeRect(NSMinX(rightArea) + placed[i].x, y, placed[i].width, height);
+    }
 }
 
 // Shows the bar while the stream window is fullscreen on the active Space of a display with a notch,
@@ -546,7 +1401,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, covers ? "[fork] Stream window covers the screen" : "[fork] Stream window no longer covers the screen");
     }
     m_CoversScreen = covers;
-    if (show != m_BarOnScreen) {
+    BOOL barChanged = show != m_BarOnScreen;
+    if (barChanged) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, show ? "[fork] Notch bar shown" : "[fork] Notch bar hidden");
     }
     if (corner != m_CornerOnScreen) {
@@ -564,6 +1420,8 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     }
 
     if (!show) {
+        // Nothing for a menu to hang from
+        [m_Menus close];
         // A clipboard message that hasn't appeared yet would be stale by the time it could
         if (!showsMessages && m_MessageState == ForkMessageHidden && m_Toast != nil) {
             [m_Toast release];
@@ -579,6 +1437,14 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         [self takeConnectionWarning:showsMessages];
     }
 
+    // The pointer is held to the picture only while there's no bar above it to reach
+    if (barChanged && m_Actions) {
+        m_Actions(NotchMenus::Action::BarShownOrHidden, 0);
+    }
+    if (barChanged && show) {
+        [self offerReachHint];
+    }
+
     // Shows a message that arrived while neither was on screen, or moves one between them
     [self updateMessage];
 }
@@ -589,15 +1455,13 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     NSRect strip = NSMakeRect(NSMinX(screenFrame), NSMaxY(screenFrame) - inset, NSWidth(screenFrame), inset);
     [m_Panel setFrame:strip display:NO];
 
-    // Left pill at the left screen edge, right pill at the right edge, each kept to its side of the notch
+    // Items at the left and right screen edges, each kept to its side of the notch
     m_PillHeight = MAX(inset - 8, 16);
     m_PillY = (inset - m_PillHeight) / 2;
     m_LeftArea = NSOffsetRect(leftArea, -NSMinX(strip), 0);
     m_HasGeometry = YES;
-    [self layoutPill:m_LeftPill label:m_LeftLabel area:m_LeftArea
-          alignRight:NO height:m_PillHeight y:m_PillY];
-    [self layoutPill:m_RightPill label:m_RightLabel area:NSOffsetRect(rightArea, -NSMinX(strip), 0)
-          alignRight:YES height:m_PillHeight y:m_PillY];
+    m_StripFrame = strip;
+    [self layoutItemsLeft:m_LeftArea right:NSOffsetRect(rightArea, -NSMinX(strip), 0) height:m_PillHeight y:m_PillY];
     [self layoutMessage];
 
     [m_Panel orderFrontRegardless];
@@ -617,24 +1481,41 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return m_Toast != nil ? m_Toast : m_Warning;
 }
 
+- (ForkMessageKind)currentKind
+{
+    return m_Toast != nil ? m_ToastKind : ForkMessageKindWarning;
+}
+
 - (BOOL)pillShowsCurrentMessage
 {
     NSString* message = [self currentMessage];
-    return message != nil && m_ShowsWarning == (m_Toast == nil) && [message isEqualToString:m_MessageLabel.stringValue];
+    return message != nil && m_ShownKind == [self currentKind] && [message isEqualToString:m_MessageLabel.stringValue];
 }
 
-// Puts the current message in the pill: the clipboard message if there is one, else the warning
+// Puts the current message in the pill: the clipboard message or power notice if there is one, else
+// the warning
 - (void)applyMessageContent
 {
-    BOOL warning = m_Toast == nil;
-    setMessageContent(m_MessageIcon, m_MessageLabel, [self currentMessage], warning);
-    m_ShowsWarning = warning;
+    ForkMessageKind kind = [self currentKind];
+    setMessageContent(m_MessageIcon, m_MessageLabel, [self currentMessage], kind);
+    m_ShownKind = kind;
+
+    // A power notice's button, on the bar's pill
+    BOOL button = m_Toast != nil && m_ToastActionTitle != nil;
+    m_MessageButton.hidden = !button;
+    if (button) {
+        [m_MessageButton setTitle:m_ToastActionTitle];
+    }
 }
 
 // The pill hugs the notch and grows away from it, up to the whole area left of the notch
 - (NSRect)messageFrame
 {
     CGFloat width = messageWidth(m_MessageIcon, m_MessageLabel);
+    if (!m_MessageButton.hidden) {
+        // In place of the text's own padding at the end
+        width += k_ButtonGap + [m_MessageButton naturalWidth] + k_ButtonInset - k_Padding;
+    }
     width = MAX(MIN(width, NSWidth(m_LeftArea) - 2 * k_Margin), m_PillHeight);
     return NSMakeRect(NSMaxX(m_LeftArea) - k_Margin - width, m_PillY, width, m_PillHeight);
 }
@@ -647,13 +1528,22 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (BOOL)titleFitsBesideMessageWidth:(CGFloat)width
 {
-    return NSWidth(m_LeftPill.frame) + k_TitleGap + width <= NSWidth(m_LeftArea) - 2 * k_Margin;
+    return NSWidth(m_SessionItem.frame) + k_TitleGap + width <= NSWidth(m_LeftArea) - 2 * k_Margin;
 }
 
 // Lays out the icon and text for the pill's final size. They're hidden whenever the size animates.
 - (void)layoutMessageContentForFrame:(NSRect)frame
 {
     layoutMessageContent(m_MessageIcon, m_MessageLabel, frame.size);
+    if (!m_MessageButton.hidden) {
+        // At the right end, the text giving way before it
+        CGFloat buttonWidth = [m_MessageButton naturalWidth];
+        CGFloat x = frame.size.width - k_ButtonInset - buttonWidth;
+        m_MessageButton.frame = NSMakeRect(x, round((frame.size.height - k_ButtonHeight) / 2), buttonWidth, k_ButtonHeight);
+        NSRect label = m_MessageLabel.frame;
+        label.size.width = MAX(x - k_ButtonGap - NSMinX(label), 0);
+        m_MessageLabel.frame = label;
+    }
 }
 
 // Keeps the pill in place between animations; the animations place it themselves
@@ -664,10 +1554,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         m_MessagePill.frame = frame;
         setCapsuleShape(m_MessagePill, m_PillHeight);
         [self layoutMessageContentForFrame:frame];
-        m_LeftPill.alphaValue = [self titleFitsBesideMessageWidth:NSWidth(frame)] ? 1 : 0;
+        m_SessionItem.alphaValue = [self titleFitsBesideMessageWidth:NSWidth(frame)] ? 1 : 0;
     }
     else if (m_MessageState == ForkMessageHidden) {
-        m_LeftPill.alphaValue = 1;
+        m_SessionItem.alphaValue = 1;
     }
 }
 
@@ -682,7 +1572,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
     // While the stream is windowed, the corner pill shows the message instead of the bar
     if (m_CornerOnScreen) {
-        [m_Corner showMessage:message warning:m_Toast == nil];
+        [m_Corner showMessage:message kind:[self currentKind]];
         if (m_Toast != nil) {
             // The clipboard message is on screen, so its time starts now
             [self startToastTimer];
@@ -721,7 +1611,10 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     unsigned generation = m_ToastTimerGeneration = m_ToastGeneration;
 
     [self retain];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, k_ToastDurationNs), dispatch_get_main_queue(), ^{
+    int64_t duration = m_ToastActionTitle != nil ? k_ActionNoticeDurationNs :
+                       (m_ToastKind == ForkMessageKindPower || m_ToastKind == ForkMessageKindHint) ? k_NoticeDurationNs : k_ToastDurationNs;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, duration),
+                   dispatch_get_main_queue(), ^{
         if (generation == m_ToastGeneration && m_StreamWindow != nil) {
             [m_Toast release];
             m_Toast = nil;
@@ -742,6 +1635,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_MessagePill.alphaValue = 0;
     m_MessageIcon.alphaValue = 0;
     m_MessageLabel.alphaValue = 0;
+    m_MessageButton.alphaValue = 0;
 
     if (reduceMotion()) {
         [self expandWithGeneration:generation];
@@ -789,6 +1683,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         m_MessagePill.frame = target;
         m_MessageIcon.alphaValue = 1;
         m_MessageLabel.alphaValue = 1;
+        m_MessageButton.alphaValue = 1;
     }
     else {
         setLayerOpacity(m_Dot.layer, 0, 0.35);
@@ -808,7 +1703,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         }
         m_MessagePill.animator.alphaValue = 1;
         if (hideTitle) {
-            m_LeftPill.animator.alphaValue = 0;
+            m_SessionItem.animator.alphaValue = 0;
         }
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
@@ -829,6 +1724,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.1;
         m_MessageIcon.animator.alphaValue = 0;
         m_MessageLabel.animator.alphaValue = 0;
+        m_MessageButton.animator.alphaValue = 0;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self resizeWithGeneration:generation];
@@ -854,7 +1750,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.2;
         context.allowsImplicitAnimation = YES;
         m_MessagePill.animator.frame = target;
-        m_LeftPill.animator.alphaValue = hideTitle ? 0 : 1;
+        m_SessionItem.animator.alphaValue = hideTitle ? 0 : 1;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self enterShown];
@@ -879,6 +1775,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.12;
         m_MessageIcon.animator.alphaValue = 0;
         m_MessageLabel.animator.alphaValue = 0;
+        m_MessageButton.animator.alphaValue = 0;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self shrinkWithGeneration:generation];
@@ -904,7 +1801,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
             m_MessagePill.animator.frame = circle;
         }
         m_MessagePill.animator.alphaValue = 0;
-        m_LeftPill.animator.alphaValue = 1;
+        m_SessionItem.animator.alphaValue = 1;
     } completionHandler:^{
         if (generation == m_AnimationGeneration && m_StreamWindow != nil) {
             [self enterHidden];
@@ -921,6 +1818,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         context.duration = 0.15;
         m_MessageIcon.animator.alphaValue = 1;
         m_MessageLabel.animator.alphaValue = 1;
+        m_MessageButton.animator.alphaValue = 1;
     } completionHandler:nil];
 
     // The message may have changed or ended during the animation
@@ -932,7 +1830,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_MessageState = ForkMessageHidden;
     m_Dot.hidden = YES;
     m_MessagePill.alphaValue = 0;
-    m_LeftPill.alphaValue = 1;
+    m_SessionItem.alphaValue = 1;
 
     // Another message may have arrived during the animation
     [self updateMessage];
@@ -951,7 +1849,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         if ([self currentMessage] == nil) {
             m_MessageState = ForkMessageHidden;
             m_MessagePill.alphaValue = 0;
-            m_LeftPill.alphaValue = 1;
+            m_SessionItem.alphaValue = 1;
         }
         else {
             [self applyMessageContent];
@@ -959,13 +1857,14 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
             m_MessagePill.alphaValue = 1;
             m_MessageIcon.alphaValue = 1;
             m_MessageLabel.alphaValue = 1;
+            m_MessageButton.alphaValue = 1;
         }
         break;
     case ForkMessageCollapsing:
         m_AnimationGeneration++;
         m_MessageState = ForkMessageHidden;
         m_MessagePill.alphaValue = 0;
-        m_LeftPill.alphaValue = 1;
+        m_SessionItem.alphaValue = 1;
         break;
     default:
         break;
@@ -1032,7 +1931,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     return NSMakeRect(0, k_CornerRise, width, k_CornerHeight);
 }
 
-- (void)showMessage:(NSString*)text warning:(BOOL)warning
+- (void)showMessage:(NSString*)text kind:(ForkMessageKind)kind
 {
     if (m_StreamWindow == nil) {
         return;
@@ -1041,14 +1940,14 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         [self hide];
         return;
     }
-    if (m_Text != nil && warning == m_Warning && [text isEqualToString:m_Text]) {
+    if (m_Text != nil && kind == m_Kind && [text isEqualToString:m_Text]) {
         return;
     }
 
     BOOL replacing = m_Text != nil;
     [m_Text release];
     m_Text = [text copy];
-    m_Warning = warning;
+    m_Kind = kind;
     if (replacing) {
         [self change];
     }
@@ -1062,7 +1961,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 {
     ++m_Generation;
 
-    setMessageContent(m_Icon, m_Label, m_Text, m_Warning);
+    setMessageContent(m_Icon, m_Label, m_Text, m_Kind);
     m_Icon.alphaValue = 1;
     m_Label.alphaValue = 1;
     [self layoutPanel];
@@ -1111,7 +2010,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 
 - (void)resizeWithGeneration:(unsigned)generation
 {
-    setMessageContent(m_Icon, m_Label, m_Text, m_Warning);
+    setMessageContent(m_Icon, m_Label, m_Text, m_Kind);
     NSRect target = [self pillFrame];
     layoutMessageContent(m_Icon, m_Label, target.size);
 
@@ -1206,19 +2105,13 @@ namespace
         explicit MacNotchBar(ForkNotchBarController* controller)
             : m_Controller(controller)
         {
-            ForkStreamStats::setListener([controller](const ForkStreamStats::Snapshot& stats) {
-                // Runs on the decode thread, which has no autorelease pool of its own
+            ForkStreamStats::setListener([controller](const ForkStreamStats::Snapshot&) {
+                // Runs on the decode thread, which has no autorelease pool of its own. The main thread
+                // reads the snapshot itself (ForkStreamStats::latest()), with the link and the history.
                 @autoreleasepool {
-                    // First the connection the stream uses, like "Ethernet 1 Gb/s", where it's shown
-                    QString link = ForkNetworkLink::badge();
-                    NSString* text = [[NSString alloc] initWithFormat:@"%@%.0f fps · %u ms · %.1f Mb/s · %@ · %.1f%% loss",
-                                                                      link.isEmpty() ? @"" : [link.toNSString() stringByAppendingString:@" · "],
-                                                                      stats.fps, stats.rttMs, stats.mbps,
-                                                                      stats.codec.toNSString(), stats.dropPercent];
                     [controller retain];
                     dispatch_async(dispatch_get_main_queue(), ^{
-                        [controller setStatsText:text];
-                        [text release];
+                        [controller statsArrived];
                         [controller release];
                     });
                 }
@@ -1251,8 +2144,10 @@ namespace
             // No listener runs after these return; queued updates hold their own reference
             ForkStreamStats::setListener(nullptr);
             ForkStreamStats::setConnectionListener(nullptr);
-            [m_Controller invalidate];
-            [m_Controller release];
+            @autoreleasepool {
+                [m_Controller invalidate];
+                [m_Controller release];
+            }
         }
 
         bool showToast(const QString& text) override
@@ -1267,12 +2162,115 @@ namespace
             return true;
         }
 
+        bool showNotice(const QString& text, const QString& actionTitle, NotchMenus::Action action, int value) override
+        {
+            if (![m_Controller showsMessages]) {
+                return false;
+            }
+
+            @autoreleasepool {
+                [m_Controller showNotice:text.toNSString() actionTitle:actionTitle.isEmpty() ? nil : actionTitle.toNSString()
+                                  action:action value:value];
+            }
+            return true;
+        }
+
+        void setActions(std::function<void(NotchMenus::Action, int)> actions, std::function<MenuState()> state) override
+        {
+            [m_Controller setActions:std::move(actions) state:std::move(state)];
+        }
+
+        void setStreamSettings(StreamSettingsSource source) override
+        {
+            [m_Controller setStreamSettings:std::move(source)];
+        }
+
+        bool toggleMenus() override
+        {
+            @autoreleasepool {
+                return [m_Controller toggleMenusByKeyboard];
+            }
+        }
+
+        bool handleMenuKey(int scancode, bool pressed, bool shift) override
+        {
+            @autoreleasepool {
+                return [m_Controller handleMenuKey:scancode pressed:pressed shift:shift];
+            }
+        }
+
+        bool menuOpen() const override
+        {
+            return [m_Controller menuOpen];
+        }
+
+        bool onScreen() const override
+        {
+            return [m_Controller barOnScreen];
+        }
+
+        void projectUp(double windowX, double windowY) override
+        {
+            @autoreleasepool {
+                [m_Controller projectUpFromWindowX:windowX y:windowY];
+            }
+        }
+
+        void pullHome(double windowX, double windowY, std::function<std::optional<std::pair<double, double>>()> pcPoint,
+                      double lagMs, std::function<void()> arriving) override
+        {
+            @autoreleasepool {
+                [m_Controller pullHomeFromWindowX:windowX y:windowY pcPoint:std::move(pcPoint) lagMs:lagMs arriving:std::move(arriving)];
+            }
+        }
+
+        void pulseAt(double windowX, double windowY, int pulses, double size) override
+        {
+            @autoreleasepool {
+                [m_Controller pulseAtWindowX:windowX y:windowY count:pulses size:size];
+            }
+        }
+
+        void settlePulse() override
+        {
+            @autoreleasepool {
+                [m_Controller settlePulse];
+            }
+        }
+
+        void refreshMenus() override
+        {
+            @autoreleasepool {
+                [m_Controller refreshMenus];
+            }
+        }
+
+        void bitrateChanged() override
+        {
+            @autoreleasepool {
+                [m_Controller bitrateChanged];
+            }
+        }
+
+        void powerChanged() override
+        {
+            @autoreleasepool {
+                [m_Controller powerChanged];
+            }
+        }
+
     private:
         ForkNotchBarController* m_Controller;
     };
 }
 
-std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& title)
+bool NotchBar::reduceMotion()
+{
+    return ::reduceMotion();
+}
+
+std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& appName, const QString& hostName,
+                                           int width, int height)
 {
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);
@@ -1283,7 +2281,10 @@ std::unique_ptr<NotchBar> NotchBar::create(SDL_Window* window, const QString& ti
 
     @autoreleasepool {
         ForkNotchBarController* controller = [[ForkNotchBarController alloc] initWithStreamWindow:info.info.cocoa.window
-                                                                                             title:title.toNSString()];
+                                                                                           appName:appName.toNSString()
+                                                                                          hostName:hostName.toNSString()
+                                                                                        videoWidth:width
+                                                                                       videoHeight:height];
         return std::unique_ptr<NotchBar>(new MacNotchBar(controller));
     }
 }

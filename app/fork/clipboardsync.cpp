@@ -18,6 +18,7 @@
 
 #include "clipbundle.h"
 #include "clipfiles.h"
+#include "forkevents.h"
 #include "forkpreferences.h"
 #include "mac/macintegration.h"
 #include "mac/pasteboard.h"
@@ -64,7 +65,7 @@ namespace
 
     Uint32 eventType()
     {
-        static Uint32 type = SDL_RegisterEvents(1);
+        static Uint32 type = ForkEvents::registerType();
         return type;
     }
 
@@ -978,6 +979,36 @@ void ClipboardSync::handleEvent(const SDL_Event& event)
 void ClipboardSync::sendToHost()
 {
     upload(true);
+}
+
+void ClipboardSync::setAutomatic(bool automatic)
+{
+    if (automatic == m_Automatic) {
+        return;
+    }
+    m_Automatic = automatic;
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Clipboard sync: automatic %s for this stream", automatic ? "on" : "off");
+    if (automatic && m_HasFocus) {
+        upload(false);
+    }
+}
+
+ClipboardSync::Availability ClipboardSync::availability() const
+{
+    if (!m_HostSupportsSync) {
+        return Availability::NeedsApollo;
+    }
+    if (!m_PermissionsKnown) {
+        return Availability::Unknown;
+    }
+    return m_CanSend || m_CanReceive ? Availability::Available : Availability::NotAllowed;
+}
+
+void ClipboardSync::localClipboardChanged()
+{
+    if (m_Automatic) {
+        upload(false);
+    }
 }
 
 void ClipboardSync::receiveFromHost()

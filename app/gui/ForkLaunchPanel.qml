@@ -11,6 +11,8 @@ Item {
     property string appName: ""
     property string hostName: ""
     property bool isResume: false
+    // The stream follows a reconnect from the notch bar, or is ending for one
+    property bool reconnect: false
     // Upstream's "Starting RTSP handshake..." line
     property string stageText: ""
     // Connection stages begun so far, of moonlight-common-c's 11 (platform setup to input stream)
@@ -77,7 +79,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 kind: "eyebrow"
                 pixelSize: 13
-                text: panel.isResume ? qsTr("Resuming") : qsTr("Starting")
+                text: panel.reconnect ? qsTr("Reconnecting") : panel.isResume ? qsTr("Resuming") : qsTr("Starting")
             }
 
             ForkText {

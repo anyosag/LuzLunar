@@ -9,6 +9,7 @@
 #include "backend/nvcomputer.h"
 #include "forkaspect.h"
 #include "forkmultidisplay.h"
+#include "reconnectrules.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/session.h"
 #include "SDL_compat.h"
@@ -212,6 +213,47 @@ Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, Streami
 
     // The multi-display app plans its group from this Mac's displays; any other app clears it
     ForkMultiDisplay::prepareSession(computer, app, prefs);
+
+    Session* session = new Session(computer, app, prefs);
+    prefs->setParent(session);
+    return session;
+}
+
+static_assert(StreamingPreferences::TM_MAC_MOUSE == ReconnectRules::k_TrackpadMacMouse &&
+                  StreamingPreferences::TM_WINDOWS_TOUCHPAD == ReconnectRules::k_TrackpadWindowsTouchpad &&
+                  StreamingPreferences::TM_MAC_TRACKPAD == ReconnectRules::k_TrackpadMacTrackpad,
+              "ReconnectRules numbers the trackpad modes as StreamingPreferences does");
+
+Session* StreamProfiles::createReconnectSession(NvComputer* computer, NvApp& app, const StreamingPreferences* from,
+                                                const ReconnectRules::Overrides& overrides)
+{
+    StreamingPreferences* prefs = new StreamingPreferences(nullptr);
+    copyPreferences(from, prefs);
+
+    ReconnectRules::Settings settings;
+    settings.width = prefs->width;
+    settings.height = prefs->height;
+    settings.fps = prefs->fps;
+    settings.bitrateKbps = prefs->bitrateKbps;
+    settings.hdr = prefs->enableHdr;
+    settings.yuv444 = prefs->enableYUV444;
+    settings.trackpadMode = prefs->trackpadMode;
+    settings.absoluteMouse = prefs->absoluteMouseMode;
+    settings.codec = prefs->videoCodecConfig;
+    settings = ReconnectRules::apply(settings, overrides);
+    prefs->width = settings.width;
+    prefs->height = settings.height;
+    prefs->fps = settings.fps;
+    prefs->bitrateKbps = settings.bitrateKbps;
+    prefs->enableHdr = settings.hdr;
+    prefs->enableYUV444 = settings.yuv444;
+    prefs->trackpadMode = static_cast<StreamingPreferences::TrackpadMode>(settings.trackpadMode);
+    prefs->absoluteMouseMode = settings.absoluteMouse;
+    prefs->videoCodecConfig = static_cast<StreamingPreferences::VideoCodecConfig>(settings.codec);
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Reconnecting \"%s\" at %dx%d, %d fps, %d kbps%s%s, trackpad mode %d",
+                qPrintable(app.name), prefs->width, prefs->height, prefs->fps, prefs->bitrateKbps,
+                prefs->enableHdr ? ", HDR" : "", prefs->enableYUV444 ? ", 4:4:4" : "", prefs->trackpadMode);
 
     Session* session = new Session(computer, app, prefs);
     prefs->setParent(session);

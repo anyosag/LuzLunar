@@ -40,6 +40,13 @@ namespace
             }
             return true;
         }
+        if (matches(event, SDLK_n, SDL_SCANCODE_N)) {
+            // The notch bar's menus, for when the pointer can't get to them (a game holds it)
+            if (stream != nullptr) {
+                stream->toggleBarMenus();
+            }
+            return true;
+        }
 
         return false;
     }
@@ -50,6 +57,12 @@ bool preprocessKeyEvent(SDL_KeyboardEvent* event, bool& forceGui)
     forceGui = false;
 
     if (handleForkKeyCombo(event)) {
+        return true;
+    }
+
+    // While a notch bar menu is open, the keys that move through it are the menu's
+    ForkStreamExtensions* stream = ForkStreamExtensions::active();
+    if (stream != nullptr && stream->handleBarMenuKey(event)) {
         return true;
     }
 

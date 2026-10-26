@@ -1,6 +1,10 @@
 #pragma once
 
+#include <functional>
+
 #include <QString>
+
+#include "forklinkrules.h"
 
 class NvComputer;
 
@@ -19,12 +23,18 @@ namespace ForkNetworkLink
 
     // From ForkStreamExtensions, on the main thread. Probes the link on a thread of its own,
     // remembers the network when the stream goes over the LAN, and logs it. With refresh (the notch
-    // bar is up) it probes again every 5 seconds, so the badge follows a stream that moves to
-    // another interface, until stop().
-    void start(bool refresh);
+    // bar is up) it probes again every 5 seconds, so the bar follows a stream that moves to
+    // another interface, until stop(). onFirstProbe, when given, hears once, on the probing thread,
+    // whether the stream goes over the LAN (the Mac drive asks the PC only then).
+    void start(bool refresh, std::function<void(bool viaLan)> onFirstProbe = {});
     void stop();
 
-    // The notch bar's text for the link, like "Ethernet 1 Gb/s"; empty while it isn't shown.
-    // Any thread.
-    QString badge();
+    // The last probe, for the notch bar: its stats item and Stream status. Any thread.
+    struct Current {
+        bool known = false;             // probed during this stream
+        ForkLinkRules::Link link;
+        bool viaLan = false;
+        bool shown = false;             // on a network the bar shows the link on (ForkLinkRules::shouldShow())
+    };
+    Current current();
 }

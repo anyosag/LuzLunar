@@ -2,12 +2,16 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
+#include "fork/bitraterules.h" // [fork]
+#include "fork/forkhostpower.h" // [fork]
 #include "fork/forkhelper.h" // [fork]
 #include "fork/forklaunchargs.h" // [fork]
 #include "fork/forkmultidisplay.h" // [fork]
 #include "fork/forknetworklink.h" // [fork]
+#include "fork/forkreconnect.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
 #include "fork/forkvideoscaling.h" // [fork]
+#include "fork/streamprofiles.h" // [fork]
 #include "fork/streamstats.h" // [fork]
 
 #include <Limelight.h>
@@ -46,6 +50,7 @@
 #include <QImage>
 #include <QGuiApplication>
 #include <QCursor>
+#include <QReadLocker> // [fork]
 #include <QScreen>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -188,7 +193,7 @@ void Session::clConnectionStatusUpdate(int connectionStatus)
 
     // [fork] LuzLunar's notch bar shows the warning beside the notch while it's on screen
     if (ForkStreamStats::reportConnectionStatus(connectionStatus == CONN_STATUS_POOR,
-                                                s_ActiveSession->m_StreamConfig.bitrate > 5000)) {
+                                                s_ActiveSession->m_ForkOwnBitrateKbps > 5000)) {
         return;
     }
 
@@ -201,7 +206,7 @@ void Session::clConnectionStatusUpdate(int connectionStatus)
     {
     case CONN_STATUS_POOR:
         s_ActiveSession->m_OverlayManager.updateOverlayText(Overlay::OverlayStatusUpdate,
-                                                            s_ActiveSession->m_StreamConfig.bitrate > 5000 ?
+                                                            s_ActiveSession->m_ForkOwnBitrateKbps > 5000 ? // [fork] not the launch bitrate
                                                                 "Slow connection to PC\nReduce your bitrate" : "Poor connection to PC");
         s_ActiveSession->m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, true);
         break;
@@ -662,6 +667,11 @@ bool Session::initialize(QQuickWindow* qtWindow)
 #endif
 
     ForkLaunchArgs::capture(m_QtWindow, m_Preferences->trackpadMode == StreamingPreferences::TM_MAC_TRACKPAD); // [fork]
+    {
+        // [fork] Read here, on the main thread; the stream launches on another (startConnectionAsync())
+        QReadLocker lock(&m_Computer->lock);
+        m_ForkBitrateHeadroom = m_Computer->apolloBitrateStart;
+    }
 
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -1297,9 +1307,15 @@ private:
                 !m_Session->m_UnexpectedTermination &&
                 m_Session->m_Preferences->quitAppAfter;
 
+        // [fork] A reconnect from the notch bar never quits the app, and the stream doesn't end for the UI
+        bool forkReconnect = m_Session->m_ForkReconnect.has_value() && !m_Session->m_UnexpectedTermination;
+
         // Notify the UI
         if (shouldQuit) {
             emit m_Session->quitStarting();
+        }
+        else if (forkReconnect) { // [fork]
+            emit m_Session->forkReconnectStarting();
         }
         else {
             emit m_Session->sessionFinished(m_Session->m_PortTestResults);
@@ -1326,6 +1342,19 @@ private:
 
             // Session is finished now
             emit m_Session->sessionFinished(m_Session->m_PortTestResults);
+        }
+
+        // [fork] "Quit <app> and Sleep PC": now that the stream is gone, the PC quits the app and sleeps
+        if (m_Session->m_ForkSleepHostAfter && !m_Session->m_UnexpectedTermination) {
+            QString uuid;
+            {
+                QReadLocker lock(&m_Session->m_Computer->lock);
+                uuid = m_Session->m_Computer->uuid;
+            }
+            QString app = m_Session->m_App.name;
+            QMetaObject::invokeMethod(ForkHostPower::get(), [uuid, app]() {
+                ForkHostPower::get()->sleep(uuid, app, true);
+            }, Qt::QueuedConnection);
         }
 
         // Exit the entire program if requested
@@ -1646,9 +1675,49 @@ bool Session::startConnectionAsync()
 
     QString rtspSessionUrl;
 
+    // [fork] Moved up from just before LiStartConnection(): the launch request below says the
+    // stream's own bitrate (luzBitrate)
+    // If the user has chosen YUV444 without adjusting the bitrate but the host doesn't
+    // support YUV444 streaming, use the default non-444 bitrate for the stream instead.
+    // This should provide equivalent image quality for YUV420 as the stream would have
+    // had if the host supported YUV444 (though obviously with 4:2:0 subsampling).
+    // If the user has adjusted the bitrate from default, we'll assume they really wanted
+    // that value and not second guess them.
+    if (m_Preferences->enableYUV444 &&
+        !(m_StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_YUV444) &&
+        m_StreamConfig.bitrate == StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
+                                                                          m_StreamConfig.height,
+                                                                          m_StreamConfig.fps,
+                                                                          true)) {
+        m_StreamConfig.bitrate = StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
+                                                                         m_StreamConfig.height,
+                                                                         m_StreamConfig.fps,
+                                                                         false);
+    }
+
+    // [fork] Room to raise the bitrate while streaming: Apollo never raises a stream above the bitrate
+    // it launched with, so with an Apollo that starts it at luzBitrate, the stream launches a quarter
+    // above its own and the encoder starts at its own, from the first frame
+    QString forkLaunchArgs = ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware);
+    m_ForkOwnBitrateKbps = m_StreamConfig.bitrate;
+    if (m_ForkBitrateHeadroom) {
+        m_StreamConfig.bitrate = BitrateRules::launchKbps(m_ForkOwnBitrateKbps);
+        forkLaunchArgs += QStringLiteral("&luzBitrate=") + QString::number(m_ForkOwnBitrateKbps);
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] Bitrate: the PC starts the stream at %d kbps; it launches at %d kbps, so it can be raised that far",
+                    m_ForkOwnBitrateKbps, m_StreamConfig.bitrate);
+    }
+
+    // [fork] After a reconnect from the notch bar, Apollo has to have let the old stream go: it applies
+    // a new resolution to its virtual display only while no stream runs
+    if (m_ForkReconnecting) {
+        ForkReconnect::waitForHostToDrop(m_Computer);
+    }
+
     try {
         NvHTTP http(m_Computer);
-        http.startApp(m_Computer->currentGameId != 0 ? "resume" : "launch",
+        // [fork] A reconnect's app runs on, but currentGameId may not know (polling stops while streaming)
+        http.startApp(m_ForkReconnecting ? ForkReconnect::startVerb(m_Computer) : m_Computer->currentGameId != 0 ? "resume" : "launch",
                       m_Computer->isNvidiaServerSoftware,
                       m_App.id, &m_StreamConfig,
                       enableGameOptimizations,
@@ -1656,7 +1725,7 @@ bool Session::startConnectionAsync()
                       ForkMultiDisplay::isHelper() ? 0 : m_InputHandler->getAttachedGamepadMask(), // [fork] video only
                       !m_Preferences->multiController,
                       rtspSessionUrl,
-                      ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware)); // [fork]
+                      forkLaunchArgs); // [fork]
     } catch (const GfeHttpResponseException& e) {
         emit displayLaunchError(tr("Host returned error: %1").arg(e.toQString()));
         return false;
@@ -1726,24 +1795,6 @@ bool Session::startConnectionAsync()
         }
     }
 
-    // If the user has chosen YUV444 without adjusting the bitrate but the host doesn't
-    // support YUV444 streaming, use the default non-444 bitrate for the stream instead.
-    // This should provide equivalent image quality for YUV420 as the stream would have
-    // had if the host supported YUV444 (though obviously with 4:2:0 subsampling).
-    // If the user has adjusted the bitrate from default, we'll assume they really wanted
-    // that value and not second guess them.
-    if (m_Preferences->enableYUV444 &&
-        !(m_StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_YUV444) &&
-        m_StreamConfig.bitrate == StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
-                                                                          m_StreamConfig.height,
-                                                                          m_StreamConfig.fps,
-                                                                          true)) {
-        m_StreamConfig.bitrate = StreamingPreferences::getDefaultBitrate(m_StreamConfig.width,
-                                                                         m_StreamConfig.height,
-                                                                         m_StreamConfig.fps,
-                                                                         false);
-    }
-
     int err = LiStartConnection(&hostInfo, &m_StreamConfig, &k_ConnCallbacks,
                                 &m_VideoCallbacks, &m_AudioCallbacks,
                                 NULL, 0, NULL, 0);
@@ -1772,6 +1823,39 @@ void Session::flushWindowEvents()
     flushEvent.type = SDL_USEREVENT;
     flushEvent.user.code = SDL_CODE_FLUSH_WINDOW_EVENT_BARRIER;
     SDL_PushEvent(&flushEvent);
+}
+
+// [fork] The notch bar's "Quit <app> on PC": like setShouldExit(true), but LuzLunar stays open
+void Session::forkQuitHostAppOnEnd()
+{
+    m_Preferences->quitAppAfter = true;
+}
+
+// [fork] The notch bar's reconnects: the app keeps running on the PC, for the stream that follows
+void Session::forkReconnect(const ReconnectRules::Overrides& overrides, const ReconnectRules::Choices& choices)
+{
+    if (!m_ForkReconnect) {
+        m_ForkQuitAppAfter = m_Preferences->quitAppAfter;
+    }
+    m_ForkReconnect = overrides;
+    m_ForkReconnectChoices = choices;
+    m_Preferences->quitAppAfter = false;
+    m_ShouldExit = false;
+    m_ForkSleepHostAfter = false;
+}
+
+// [fork] After readyForDeletion(), on the GUI thread
+Session* Session::forkCreateReconnectSession()
+{
+    if (!m_ForkReconnect) {
+        return nullptr;
+    }
+    Session* next = StreamProfiles::createReconnectSession(m_Computer, m_App, m_Preferences, *m_ForkReconnect);
+    // The user's choice to quit the app after a stream holds for the stream that follows
+    next->m_Preferences->quitAppAfter = m_ForkQuitAppAfter;
+    next->m_ForkReconnecting = true;
+    next->m_ForkChoices = ReconnectRules::carried(m_ForkReconnectChoices, *m_ForkReconnect);
+    return next;
 }
 
 void Session::setShouldExit(bool quitHostApp)
@@ -2002,7 +2086,7 @@ void Session::exec()
     RichPresenceManager presence(*m_Preferences, m_App.name);
 
     // [fork] Per-stream fork features (shortcut guard, clipboard sync, notch bar, fullscreen stretch, ...)
-    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences);
+    ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences, m_ForkOwnBitrateKbps, m_ForkChoices);
 
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
