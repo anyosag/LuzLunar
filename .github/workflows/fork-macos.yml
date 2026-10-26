@@ -43,12 +43,15 @@ jobs:
       os: ${{ steps.read.outputs.os }}
       qt_version: ${{ steps.read.outputs.qt_version }}
       aqtsource: ${{ steps.read.outputs.aqtsource }}
+      version: ${{ steps.luzlunar.outputs.version }}
     steps:
       - name: Checkout workflows
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
           ref: ${{ inputs.ref }}
-          sparse-checkout: .github/workflows
+          sparse-checkout: |
+            .github/workflows
+            scripts/fork
           persist-credentials: false
 
       # Follow upstream's macOS runner, Qt version and aqtinstall pin so Qt bumps don't need fork edits.
@@ -76,6 +79,27 @@ jobs:
           echo "qt_version=${qt:-6.11.2}" >> "$GITHUB_OUTPUT"
           echo "aqtsource=$aqt" >> "$GITHUB_OUTPUT"
           echo "Using ${os:-macos-26}, Qt ${qt:-6.11.2}, $aqt"
+
+      # LuzLunar's own version, like 1.16 (scripts/fork/version.sh): the update after the newest one
+      # published, or 1.16-dev.<commit> toward it for a build that isn't a push to master
+      - name: Work out LuzLunar's version
+        id: luzlunar
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_number }}
+          IS_MASTER_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        run: |
+          set -euo pipefail
+          channel=branch
+          if [ "$IS_MASTER_PUSH" = true ]; then
+            channel=master
+          fi
+          version=$(gh release list --repo "$REPO" --limit 200 --json tagName,name --jq '.[] | "\(.tagName)\t\(.name)"' |
+            bash scripts/fork/version.sh "$RUN" "$channel" "$(git rev-parse --short=7 HEAD)")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "LuzLunar $version"
 
   build:
     name: macOS arm64
@@ -127,16 +151,18 @@ jobs:
           # qtimageformats plugin; macdeployqt then bundles it.
           modules: 'qtimageformats'
 
-      # The run number orders builds for over-the-air updates (app/fork/forkupdater.cpp); only a push
-      # to master is a master build, which updates may replace by themselves and the publish job releases.
+      # LuzLunar's version (the setup job) names the build. The run number orders builds for
+      # over-the-air updates (app/fork/forkupdater.cpp); only a push to master is a master build, which
+      # updates may replace by themselves and the publish job releases.
       - name: Set version
         id: version
         shell: bash
         env:
+          LUZLUNAR_VERSION: ${{ needs.setup.outputs.version }}
           FORK_BUILD_RUN: ${{ github.run_number }}
           IS_MASTER_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
         run: |
-          version="$(cat app/version.txt)-fork.$(git rev-parse --short=7 HEAD)"
+          version=$LUZLUNAR_VERSION
           echo "CI_VERSION=$version" >> "$GITHUB_ENV"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "FORK_BUILD_RUN=$FORK_BUILD_RUN" >> "$GITHUB_ENV"
@@ -269,11 +295,15 @@ jobs:
       # The version the build job names its artifacts with, for the trackpad probe's
       - name: Set version
         shell: bash
-        run: echo "CI_VERSION=$(cat app/version.txt)-fork.$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+        env:
+          LUZLUNAR_VERSION: ${{ needs.setup.outputs.version }}
+        run: echo "CI_VERSION=$LUZLUNAR_VERSION" >> "$GITHUB_ENV"
 
       - name: Fork unit tests
         shell: bash
         run: |
+          # LuzLunar's version from the updates published before a build
+          bash tests/fork/version_test.sh
           python3 setup-deps.py
           clang++ -std=c++17 -Wall -Iapp -Ilibs/mac/include/SDL2 \
             tests/fork/keymap_test.cpp app/fork/forkkeymap.cpp -o "$RUNNER_TEMP/keymap_test"
@@ -571,6 +601,12 @@ jobs:
           set -euo pipefail
           cd artifacts
           files=(LuzLunar-macOS-arm64.zip LuzLunar-*.dmg update.json update.json.sig)
+          # Each update has its own number, unless two master builds overlapped (FORK.md, "Versions")
+          taken=$(gh release list --repo "$REPO" --limit 200 --json tagName,name |
+            jq -r --arg name "LuzLunar $VERSION" --arg tag "$TAG" '.[] | select(.name == $name and .tagName != $tag) | .tagName')
+          if [ -n "$taken" ]; then
+            echo "::warning::$taken is LuzLunar $VERSION too; retitle one of them (FORK.md, \"Versions\")"
+          fi
           if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
             gh release upload "$TAG" --repo "$REPO" --clobber "${files[@]}"
           else
