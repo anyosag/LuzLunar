@@ -28,6 +28,14 @@ public:
     };
     Q_ENUM(ClipboardSyncMode)
 
+    // Where the iMac's picture comes from in a multi-display stream (ForkDisplayRoute::Setting)
+    enum ImacRoute {
+        IR_AUTOMATIC,   // the faster of the two, measured at each launch
+        IR_DIRECT,      // straight from the PC: Moonlight on the iMac streams it from Apollo
+        IR_VIA_MAC,     // through this Mac: shown on DisplayExtend's display, which streams it on
+    };
+    Q_ENUM(ImacRoute)
+
     // What the Command (GUI), Control and Option (Alt) keys send to the host
     Q_PROPERTY(int commandKeyTarget READ commandKeyTarget WRITE setCommandKeyTarget NOTIFY keyTargetsChanged)
     Q_PROPERTY(int controlKeyTarget READ controlKeyTarget WRITE setControlKeyTarget NOTIFY keyTargetsChanged)
@@ -47,6 +55,10 @@ public:
 
     // The HDR peak brightness in nits to tell hosts; 0 works it out from the screen
     Q_PROPERTY(int hdrPeakOverride READ hdrPeakOverride WRITE setHdrPeakOverride NOTIFY hdrPeakOverrideChanged)
+
+    // "Desktop (multiple displays)": where the iMac's picture comes from when one of the Mac's
+    // displays is DisplayExtend's (forkdisplayroute.*)
+    Q_PROPERTY(int imacRoute READ imacRoute WRITE setImacRoute NOTIFY imacRouteChanged)
 
     // This build, like "6.2.0-fork.ee5b3ba" (not a preference; shown in Settings)
     Q_PROPERTY(QString buildId READ buildId CONSTANT)
@@ -145,6 +157,9 @@ public:
     int hdrPeakOverride() const { return m_HdrPeakOverride; }
     void setHdrPeakOverride(int nits);
 
+    int imacRoute() const { return m_ImacRoute; }
+    void setImacRoute(int route);
+
     int commandKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalGui]; }
     int controlKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalCtrl]; }
     int optionKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalAlt]; }
@@ -162,6 +177,7 @@ signals:
     void notchBarChanged();
     void describeDisplayChanged();
     void hdrPeakOverrideChanged();
+    void imacRouteChanged();
     void macShortcutsChanged();
     void trackpadPauseMacSettingsChanged();
     void trackpadScrollSpeedChanged();
@@ -181,6 +197,7 @@ private:
     int m_NotchBarHints;
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;
+    int m_ImacRoute;
     bool m_MacShortcutsAll;
     bool m_TrackpadPauseMacSettings;
     double m_TrackpadScrollSpeed;

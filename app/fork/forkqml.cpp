@@ -9,6 +9,7 @@
 #include "forkaspectratios.h"
 #include "forkhostpower.h"
 #include "forkhostupdates.h"
+#include "forkimacsetup.h"
 #include "forkpreferences.h"
 #include "forkupdater.h"
 #include "sfsymbols.h"
@@ -80,6 +81,13 @@ namespace
             ForkHostPower* power = ForkHostPower::get();
             QQmlEngine::setObjectOwnership(power, QQmlEngine::CppOwnership);
             return power;
+        });
+        // Multi-display streams: the iMac behind DisplayExtend, and pairing it with Apollo PCs
+        qmlRegisterSingletonType<ForkImacSetup>("ForkImacSetup", 1, 0, "ForkImacSetup",
+                                                [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkImacSetup* setup = ForkImacSetup::get();
+            QQmlEngine::setObjectOwnership(setup, QQmlEngine::CppOwnership);
+            return setup;
         });
     }
 }

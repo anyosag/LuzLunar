@@ -90,6 +90,12 @@ EXTRA_ARGS=()
 if [ "$BUILD_CONFIG" == "Debug" ]; then EXTRA_ARGS+=(-use-debug-libs); fi
 macdeployqt "$APP" "${EXTRA_ARGS[@]}" -qmldir="$SOURCE_ROOT/app/gui" -appstore-compliant || fail "macdeployqt failed!"
 
+# A multi-display stream's helper processes run Qt offscreen, so they never show a Qt window or
+# take the keyboard (app/fork/forkhelper.cpp). macdeployqt only deploys the cocoa platform plugin.
+echo Adding the offscreen platform plugin
+QT_PLUGINS=$("$QMAKE" -query QT_INSTALL_PLUGINS)
+cp "$QT_PLUGINS/platforms/libqoffscreen.dylib" "$APP/Contents/PlugIns/platforms/" || fail "Copying the offscreen platform plugin failed!"
+
 echo Removing dSYM files from app bundle
 find "$APP" -name '*.dSYM' -print0 | xargs -0 rm -rf
 

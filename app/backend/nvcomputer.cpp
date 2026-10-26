@@ -232,6 +232,11 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     // move up into the notch bar (ForkBarReach). Not saved either.
     this->apolloCursor = NvHTTP::getXmlString(serverInfo, "LuzCursor") == "1";
 
+    // [fork] anyosag/Apollo's multi-display app and device pairing (forkmultidisplay.*)
+    this->forkDisplayGroupSlots = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroup").toInt();
+    this->forkDisplayGroupAppId = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroupApp").toInt();
+    this->forkPairDevice = NvHTTP::getXmlString(serverInfo, "LuzPairDevice") == "1";
+
     this->pairState = NvHTTP::getXmlString(serverInfo, "PairStatus") == "1" ?
                 PS_PAIRED : PS_NOT_PAIRED;
     this->currentGameId = NvHTTP::getCurrentGame(serverInfo);
@@ -617,6 +622,9 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(isApolloServerSoftware); // [fork]
     ASSIGN_IF_CHANGED(apolloBitrateStart); // [fork]
     ASSIGN_IF_CHANGED(apolloCursor); // [fork]
+    ASSIGN_IF_CHANGED(forkDisplayGroupSlots); // [fork]
+    ASSIGN_IF_CHANGED(forkDisplayGroupAppId); // [fork]
+    ASSIGN_IF_CHANGED(forkPairDevice); // [fork]
     ASSIGN_IF_CHANGED(maxLumaPixelsHEVC);
     ASSIGN_IF_CHANGED(gpuModel);
     ASSIGN_IF_CHANGED_AND_NONNULL(serverCert);

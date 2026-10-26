@@ -643,6 +643,7 @@ CenteredGridView {
                     quitAppDialog.segueToStream = true
                     quitAppDialog.nextAppName = model.name
                     quitAppDialog.nextAppIndex = index
+                    quitAppDialog.forkNextAppId = model.appid // [fork] rows can shift meanwhile
                     quitAppDialog.open()
                 }
 
@@ -812,6 +813,7 @@ CenteredGridView {
         property bool segueToStream : false
         property string nextAppName: ""
         property int nextAppIndex: 0
+        property int forkNextAppId: 0 // [fork]
         // [fork] The design's wording: quitting asks "Quit X?" with a red Quit; starting another app
         // says why it has to quit this one (was "Are you sure you want to quit %1? Any unsaved
         // progress will be lost." for both)
@@ -835,11 +837,13 @@ CenteredGridView {
         function quitApp() {
             var component = Qt.createComponent("QuitSegue.qml")
             var params = {"appName": appName, "quitRunningAppFn": function() { appModel.quitRunningApp() }}
-            if (segueToStream) {
+            // [fork] The chosen app's row now: the multi-display app can come or go with the displays
+            var forkNextIndex = segueToStream ? appModel.forkIndexOfApp(forkNextAppId) : -1
+            if (segueToStream && forkNextIndex >= 0) {
                 // Store the session and app name if we're going to stream after
                 // successfully quitting the old app.
                 params.nextAppName = nextAppName
-                params.nextSession = appModel.createSessionForApp(nextAppIndex)
+                params.nextSession = appModel.createSessionForApp(forkNextIndex)
                 params.nextHostName = appGrid.objectName // [fork] for the next app's launch screen
                 params.nextSummary = appGrid.forkStreamSummary(nextAppName) // [fork]
             }

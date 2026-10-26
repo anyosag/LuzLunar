@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QVariantMap>
 
+#include <functional>
+
 class NvApp;
 class NvComputer;
 class Session;
@@ -33,8 +35,10 @@ public:
 
     // Creates the Session for an app with the app's profile applied to a private copy of the
     // settings; the global settings are never changed. Command line flags win over the
-    // profile: pass the preferences the command line changed as cliPreferences.
-    static Session* createSession(NvComputer* computer, NvApp& app, StreamingPreferences* cliPreferences = nullptr);
+    // profile: pass the preferences the command line changed as cliPreferences. adjust, if
+    // given, changes the copy last (a multi-display helper's own size and rate, forkhelper.*).
+    static Session* createSession(NvComputer* computer, NvApp& app, StreamingPreferences* cliPreferences = nullptr,
+                                  const std::function<void(StreamingPreferences*)>& adjust = nullptr);
 
     // The Session that follows a reconnect from the notch bar: the stream's own settings (its
     // profile already in them) with the overrides, sizes even (ReconnectRules::apply())

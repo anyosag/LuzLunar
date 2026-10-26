@@ -54,6 +54,7 @@
 #include "streaming/session.h"
 #include "settings/streamingpreferences.h"
 #include "gui/sdlgamepadkeynavigation.h"
+#include "fork/forkhelper.h" // [fork]
 
 #if defined(Q_OS_WIN32)
 #define IS_UNSPECIFIED_HANDLE(x) ((x) == INVALID_HANDLE_VALUE || (x) == NULL)
@@ -422,6 +423,9 @@ int main(int argc, char *argv[])
 {
     SDL_SetMainReady();
 
+    // [fork] A multi-display stream's helper process (forkhelper.*): the slot it streams, -1 if not one
+    const int forkHelperSlot = ForkHelper::slotFromArguments(argc, argv);
+
     // Set the app version for the QCommandLineParser's showVersion() command
     QCoreApplication::setApplicationVersion(VERSION_STR);
 
@@ -464,7 +468,11 @@ int main(int argc, char *argv[])
     if (IS_UNSPECIFIED_HANDLE(oldConErr))
 #endif
     {
-        s_LoggerFile = new QFile(tempDir.filePath(QString("Moonlight-%1.log").arg(QDateTime::currentSecsSinceEpoch())));
+        // [fork] A helper can start in the same second as the main stream or another helper: its own name
+        QString logName = forkHelperSlot >= 0 ? QString("Moonlight-%1-slot%2-%3.log").arg(QDateTime::currentSecsSinceEpoch())
+                                                    .arg(forkHelperSlot).arg(QCoreApplication::applicationPid())
+                                              : QString("Moonlight-%1.log").arg(QDateTime::currentSecsSinceEpoch());
+        s_LoggerFile = new QFile(tempDir.filePath(logName));
         if (s_LoggerFile->open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream(stderr) << "Redirecting log output to " << s_LoggerFile->fileName() << Qt::endl;
             s_LoggerStream.setDevice(s_LoggerFile);
@@ -496,8 +504,10 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef LOG_TO_FILE
-    // Prune the oldest existing logs if there are more than 10
-    QStringList existingLogNames = tempDir.entryList(QStringList("Moonlight-*.log"), QDir::NoFilter, QDir::SortFlag::Time);
+    // Prune the oldest existing logs if there are more than 10 ([fork] not from a helper: the main
+    // stream does that)
+    QStringList existingLogNames = forkHelperSlot >= 0 ? QStringList()
+                                                       : tempDir.entryList(QStringList("Moonlight-*.log"), QDir::NoFilter, QDir::SortFlag::Time);
     for (int i = 10; i < existingLogNames.size(); i++) {
         qInfo() << "Removing old log file:" << existingLogNames.at(i);
         QFile(tempDir.filePath(existingLogNames.at(i))).remove();
@@ -753,6 +763,11 @@ int main(int argc, char *argv[])
         SDL_SetHint("SDL_VIDEO_WAYLAND_MODE_SCALING", "aspect");
     }
 
+    // [fork] A helper runs Qt offscreen, so it never shows a window or takes the keyboard
+    if (forkHelperSlot >= 0) {
+        ForkHelper::prepareProcess(argc, argv);
+    }
+
     QGuiApplication app(argc, argv);
 
 #ifdef Q_OS_DARWIN
@@ -802,6 +817,45 @@ int main(int argc, char *argv[])
         }
     }
 #endif
+
+    // Restores the loggers and waits for the last log lines; returns err
+    auto finishMain = [&](int err) {
+        // Give worker tasks time to properly exit. Fixes PendingQuitTask
+        // sometimes freezing and blocking process exit.
+        QThreadPool::globalInstance()->waitForDone(30000);
+
+        // Restore the default logger for all libraries before shutting down ours
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+        SDL_SetLogOutputFunction(SDL_GetDefaultLogOutputFunction(), nullptr);
+#else
+        SDL_LogSetOutputFunction(oldSdlLogFn, oldSdlLogUserdata);
+#endif
+        qInstallMessageHandler(nullptr);
+#ifdef HAVE_FFMPEG
+        av_log_set_callback(av_log_default_callback);
+#endif
+
+        // We should not be in async logging mode anymore
+        Q_ASSERT(g_AsyncLoggingEnabled == 0);
+
+        // Wait for pending log messages to be printed
+        s_LoggerThread.waitForDone();
+
+#ifdef Q_OS_WIN32
+        // Without an explicit flush, console redirection for the list command
+        // doesn't work reliably (sometimes the target file contains no text).
+        fflush(stderr);
+        fflush(stdout);
+#endif
+
+        return err;
+    };
+
+    // [fork] A multi-display stream's helper streams one display's video and nothing else; the
+    // command line parser below would reject its arguments
+    if (forkHelperSlot >= 0) {
+        return finishMain(ForkHelper::run(app));
+    }
 
     GlobalCommandLineParser parser;
     GlobalCommandLineParser::ParseResult commandLineParserResult = parser.parse(app.arguments());
@@ -1049,35 +1103,5 @@ int main(int argc, char *argv[])
             return -1;
     }
 
-    int err = app.exec();
-
-    // Give worker tasks time to properly exit. Fixes PendingQuitTask
-    // sometimes freezing and blocking process exit.
-    QThreadPool::globalInstance()->waitForDone(30000);
-
-    // Restore the default logger for all libraries before shutting down ours
-#if SDL_VERSION_ATLEAST(3, 0, 0)
-    SDL_SetLogOutputFunction(SDL_GetDefaultLogOutputFunction(), nullptr);
-#else
-    SDL_LogSetOutputFunction(oldSdlLogFn, oldSdlLogUserdata);
-#endif
-    qInstallMessageHandler(nullptr);
-#ifdef HAVE_FFMPEG
-    av_log_set_callback(av_log_default_callback);
-#endif
-
-    // We should not be in async logging mode anymore
-    Q_ASSERT(g_AsyncLoggingEnabled == 0);
-
-    // Wait for pending log messages to be printed
-    s_LoggerThread.waitForDone();
-
-#ifdef Q_OS_WIN32
-    // Without an explicit flush, console redirection for the list command
-    // doesn't work reliably (sometimes the target file contains no text).
-    fflush(stderr);
-    fflush(stdout);
-#endif
-
-    return err;
+    return finishMain(app.exec());
 }

@@ -17,6 +17,7 @@
 class AdaptiveBitrate;
 class BitrateClient;
 class ClipboardSync;
+class ForkDisplayCoordinator;
 class ForkBarReach;
 class ForkPower;
 class MacDrive;
@@ -46,6 +47,10 @@ public:
 
     // Observes events only; never consumes upstream's events
     void handleEvent(const SDL_Event& event);
+
+    // The stream's event loop ended: the other displays of a multi-display stream end now, before
+    // SDL shuts down, rather than when this goes out of scope
+    void stopDisplayGroup();
 
     // Null when clipboard sync is off
     ClipboardSync* clipboard() { return m_Clipboard.get(); }
@@ -129,6 +134,7 @@ private:
     void applyStreamSettings();
     void saveStreamSettings();
 
+    bool m_Helper;                  // a multi-display stream's helper: video only (forkhelper.*)
     QString m_AppName;
     int m_Width;
     int m_Height;
@@ -174,4 +180,6 @@ private:
     std::unique_ptr<ForkStreamSettings> m_StreamSettings;
     // Mac trackpad mode's pointer up into the bar, with a PC that says where its pointer is
     std::unique_ptr<ForkBarReach> m_BarReach;
+    // Slot 0 of a multi-display stream brings up the other displays
+    std::unique_ptr<ForkDisplayCoordinator> m_DisplayGroup;
 };

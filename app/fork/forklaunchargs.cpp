@@ -2,6 +2,7 @@
 
 #include "clientdisplay.h"
 #include "clienthardware.h"
+#include "forkmultidisplay.h"
 #include "forkpreferences.h"
 #include "forkvideoscaling.h"
 #include "SDL_compat.h"
@@ -56,6 +57,9 @@ void capture(QWindow* qtWindow, bool macTrackpad)
     if (macTrackpad) {
         args += QStringLiteral("&luzTrackpad=mac");
     }
+
+    // A multi-display group: slot 0 declares it, the other slots join it (forkmultidisplay.*)
+    args += ForkMultiDisplay::launchArgs();
 
     QMutexLocker lock(&s_Lock);
     s_Args = args;

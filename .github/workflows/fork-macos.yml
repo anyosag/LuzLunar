@@ -165,6 +165,14 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/clientdisplay_test.cpp app/fork/clientdisplay.cpp -o "$RUNNER_TEMP/clientdisplay_test"
           "$RUNNER_TEMP/clientdisplay_test"
+          # Multi-display streams: the slots, the Windows layout and the group's declaration
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/displaygroup_test.cpp app/fork/forkdisplaygroup.cpp app/fork/clientdisplay.cpp -o "$RUNNER_TEMP/displaygroup_test"
+          "$RUNNER_TEMP/displaygroup_test"
+          # Where the iMac's picture comes from: straight from the PC or through this Mac
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/displayroute_test.cpp app/fork/forkdisplayroute.cpp -o "$RUNNER_TEMP/displayroute_test"
+          "$RUNNER_TEMP/displayroute_test"
           # The aspect ratio picker's sizes, the aspect lock and even rounding
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/aspect_test.cpp app/fork/forkaspect.cpp -o "$RUNNER_TEMP/aspect_test"

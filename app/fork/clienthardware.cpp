@@ -84,6 +84,9 @@ void ClientHardware::refresh()
             { "p3", rules.p3 },
             { "edrPotential", rules.edrPotential },
             { "hdrPeak", ClientDisplay::describe(rules, display.isBuiltin, ForkPreferences::get()->hdrPeakOverride()).peakNits },
+            { "isMain", display.isMain },
+            { "isMirror", display.isMirror },
+            { "isDisplayExtend", display.isDisplayExtend },
         });
     }
 

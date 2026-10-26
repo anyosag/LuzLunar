@@ -16,6 +16,9 @@
 #include "forkevents.h"
 #include "forkhostpower.h"
 #include "forkpower.h"
+#include "forkdisplaycoordinator.h"
+#include "forkhelper.h"
+#include "forkmultidisplay.h"
 #include "forknetworklink.h"
 #include "forkpreferences.h"
 #include "forksystemshortcuts.h"
@@ -85,7 +88,8 @@ namespace
 ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& app, SDL_Window* window,
                                            const StreamingPreferences& prefs, int bitrateKbps,
                                            const ReconnectRules::Choices& choices)
-    : m_AppName(app.name),
+    : m_Helper(ForkMultiDisplay::isHelper()),
+      m_AppName(app.name),
       m_Width(prefs.width),
       m_Height(prefs.height),
       m_OwnBitrateKbps(bitrateKbps),
@@ -97,6 +101,13 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
       m_AbsoluteBeforeTouchpad(choices.absoluteBeforeTouchpad),
       m_ShortcutGuard(false)
 {
+    // A multi-display stream's helper only shows video over its display (forkhelper.*): none of the
+    // rest, which belongs to the main stream that has the keyboard
+    if (m_Helper) {
+        ForkHelper::streamWindowCreated(window);
+        return;
+    }
+
     ForkPreferences* forkPrefs = ForkPreferences::get();
 
     // What the PC's Apollo can do with the trackpad, for Control Center's Trackpad, as the
@@ -330,10 +341,28 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         });
     }
     ForkTrackpadPassthrough::activate(window, prefs);
+
+    // Slot 0 of a multi-display stream is connected: bring up the other displays
+    if (std::shared_ptr<const ForkMultiDisplay::Group> group = ForkMultiDisplay::group()) {
+        m_DisplayGroup = std::make_unique<ForkDisplayCoordinator>(group, window);
+        if (m_NotchBar) {
+            NotchBar* notchBar = m_NotchBar.get();
+            m_DisplayGroup->setMessageSink([notchBar](const QString& text) {
+                return notchBar->showToast(text);
+            });
+        }
+    }
 }
 
 ForkStreamExtensions::~ForkStreamExtensions()
 {
+    if (m_Helper) {
+        return;
+    }
+
+    // The other displays' streams end with this one
+    m_DisplayGroup.reset();
+
     ForkNetworkLink::stop();
     ForkTrackpadPassthrough::setMacPointerListener(nullptr);
     ForkTrackpadPassthrough::deactivate();
@@ -363,6 +392,11 @@ ForkStreamExtensions::~ForkStreamExtensions()
 ForkStreamExtensions* ForkStreamExtensions::active()
 {
     return s_Active;
+}
+
+void ForkStreamExtensions::stopDisplayGroup()
+{
+    m_DisplayGroup.reset();
 }
 
 void ForkStreamExtensions::toggleBarMenus()
@@ -1147,6 +1181,14 @@ void ForkStreamExtensions::copyDiagnostics()
 
 void ForkStreamExtensions::handleEvent(const SDL_Event& event)
 {
+    if (m_Helper) {
+        return;
+    }
+
+    if (m_DisplayGroup) {
+        m_DisplayGroup->handleEvent(event);
+    }
+
     if (m_BarReach && m_BarReach->handleEvent(event)) {
         // The PC said where its pointer is
         return;

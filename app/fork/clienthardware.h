@@ -32,7 +32,7 @@ class ClientHardware : public QObject
     // (CGGetActiveDisplayList): name, nativeWidth, nativeHeight, safeWidth, safeHeight,
     // fullRatio, belowNotchRatio, pointWidth, pointHeight, scale, hasNotch, maxRefresh, hdr,
     // isBuiltin, widthMm, heightMm, p3, edrPotential, hdrPeak (what Apollo hosts are told, 0 if
-    // unknown). Sizes are in pixels except the point size. A notched display has two shapes: the
+    // unknown), isMain, isMirror, isDisplayExtend. Sizes are in pixels except the point size. A notched display has two shapes: the
     // full panel (native, e.g. 3024x1964, 1.54:1) and the area below the notch (safe, 3024x1890,
     // 16:10). Without a notch the safe size and belowNotchRatio equal the native ones.
     // maxRefresh is 0 if unknown.
@@ -48,6 +48,14 @@ public:
         ForkHwRules::Display rules;
         int pointWidth = 0, pointHeight = 0;
         bool isBuiltin = false;
+
+        // For multi-display streams (forkmultidisplay.*)
+        uint32_t displayId = 0;                    // CGDirectDisplayID, valid while the display stays connected
+        uint32_t vendor = 0, model = 0, serial = 0;   // from the EDID, or a virtual display's descriptor
+        int originX = 0, originY = 0;              // top-left corner in global points (the main display at 0,0)
+        bool isMain = false;                       // has the menu bar
+        bool isMirror = false;                     // shows another display's picture
+        bool isDisplayExtend = false;              // DisplayExtend's virtual display, which it streams to an iMac
     };
 
     struct Snapshot {

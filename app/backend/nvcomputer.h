@@ -104,6 +104,9 @@ public:
     QString gpuModel;
     bool isSupportedServerVersion;
     bool serverInfoVerified = false;    // [fork] came over HTTPS with the pinned certificate
+    int forkDisplayGroupSlots = 0;      // [fork] <LuzDisplayGroup>: displays Apollo's multi-display app can stream, 0 without it
+    int forkDisplayGroupAppId = 0;      // [fork] <LuzDisplayGroupApp>: that app's ID
+    bool forkPairDevice = false;        // [fork] <LuzPairDevice>: this client can pair another device (the iMac) with a PIN
 
     // Persisted traits
     NvAddress localAddress;

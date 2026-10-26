@@ -29,6 +29,10 @@ public:
 
     Q_INVOKABLE Session* createSessionForApp(int appIndex);
 
+    // [fork] The row of the app with this ID, or -1: rows shift when the multi-display app comes
+    // and goes with the Mac's displays, so a row kept across a dialog can point at another app
+    Q_INVOKABLE int forkIndexOfApp(int appId);
+
     Q_INVOKABLE int getDirectLaunchAppIndex();
 
     Q_INVOKABLE int getRunningAppId();

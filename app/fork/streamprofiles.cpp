@@ -8,6 +8,7 @@
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "forkaspect.h"
+#include "forkmultidisplay.h"
 #include "reconnectrules.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/session.h"
@@ -128,7 +129,8 @@ void StreamProfiles::saveProfile(const QString& hostUuid, const QString& appName
     }
 }
 
-Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, StreamingPreferences* cliPreferences)
+Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, StreamingPreferences* cliPreferences,
+                                      const std::function<void(StreamingPreferences*)>& adjust)
 {
     QString hostUuid;
     {
@@ -204,6 +206,13 @@ Session* StreamProfiles::createSession(NvComputer* computer, NvApp& app, Streami
                     keptFromCommandLine.isEmpty() ? "" : " | command line kept: ",
                     qPrintable(keptFromCommandLine.join(' ')));
     }
+
+    if (adjust) {
+        adjust(prefs);
+    }
+
+    // The multi-display app plans its group from this Mac's displays; any other app clears it
+    ForkMultiDisplay::prepareSession(computer, app, prefs);
 
     Session* session = new Session(computer, app, prefs);
     prefs->setParent(session);
