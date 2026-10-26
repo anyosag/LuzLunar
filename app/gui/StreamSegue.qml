@@ -2,6 +2,7 @@ import QtQuick 2.0
 import QtQuick.Controls 2.2
 import QtQuick.Window 2.2
 
+import ForkGroupLaunch 1.0
 import SdlGamepadKeyNavigation 1.0
 import Session 1.0
 import SystemProperties 1.0
@@ -171,12 +172,33 @@ Item {
         session.forkReconnectStarting.connect(forkReconnectStarting) // [fork]
         session.readyForDeletion.connect(sessionReadyForDeletion)
 
+        // [fork] A multi-display stream's displays, for the launch screen
+        ForkGroupLaunch.refresh()
+
         // Ensure the SystemProperties async thread is finished,
         // since it may currently be using the SDL video subsystem
         SystemProperties.waitForAsyncLoad()
 
         // Kick off the stream
         streamLoader.active = true
+    }
+
+    // [fork] A multi-display stream with DisplayExtend's display times the iMac's two routes first
+    // (ForkGroupLaunch); the stream starts once the launch screen shows which one it takes
+    function forkStartSession() {
+        if (ForkGroupLaunch.active && ForkGroupLaunch.checkNeeded && !ForkGroupLaunch.decided) {
+            ForkGroupLaunch.startCheck()
+        }
+        else {
+            startSessionTimer.start()
+        }
+    }
+
+    Connections {
+        target: ForkGroupLaunch
+        function onCheckFinished() {
+            startSessionTimer.start()
+        }
     }
 
     Timer {
@@ -243,7 +265,7 @@ Item {
             }
 
             // Start the timer to wait for toasts (or start the session immediately)
-            startSessionTimer.start()
+            forkStartSession() // [fork] was startSessionTimer.start()
         }
 
         sourceComponent: Item {}

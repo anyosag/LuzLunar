@@ -62,6 +62,26 @@ namespace
           "appName: \"Desktop\"; hostName: \"GonzaloPC\"; stageText: \"Starting RTSP handshake...\"; stagesDone: 4; started: true; "
           "summary: [\"3024×1890 · 16:10\", \"120 fps\", \"81 Mb/s\", \"HEVC · HDR\"] } }', stackView, 'qrc:/gui/HarnessLaunch.qml'), StackView.Immediate)", 2000 },
         { nullptr, "stackView.pop(null, StackView.Immediate)", 500 },
+        // A multi-display stream's launch screen with the iMac (ForkGroupLaunch's samples): checking its
+        // route, then straight from the PC, then through this Mac
+        { "1d-launch-displays-checking",
+          "stackView.push(Qt.createQmlObject('import QtQuick; import ForkGroupLaunch 1.0; Item { "
+          "Component.onCompleted: ForkGroupLaunch.showSample(0); ForkLaunchPanel { "
+          "appName: \"Desktop (multiple displays)\"; hostName: \"GonzaloPC\"; stagesDone: 0; started: true; "
+          "summary: [\"3024×1890 · 16:10\", \"120 fps\", \"81 Mb/s\", \"HEVC · HDR\"] } }', stackView, 'qrc:/gui/HarnessLaunch.qml'), StackView.Immediate)", 2000 },
+        { nullptr, "stackView.pop(null, StackView.Immediate)", 500 },
+        { "1e-launch-displays-direct",
+          "stackView.push(Qt.createQmlObject('import QtQuick; import ForkGroupLaunch 1.0; Item { "
+          "Component.onCompleted: ForkGroupLaunch.showSample(1); ForkLaunchPanel { "
+          "appName: \"Desktop (multiple displays)\"; hostName: \"GonzaloPC\"; stageText: \"Starting name resolution...\"; stagesDone: 2; started: true; "
+          "summary: [\"3024×1890 · 16:10\", \"120 fps\", \"81 Mb/s\", \"HEVC · HDR\"] } }', stackView, 'qrc:/gui/HarnessLaunch.qml'), StackView.Immediate)", 2000 },
+        { nullptr, "stackView.pop(null, StackView.Immediate)", 500 },
+        { "1f-launch-displays-via-mac",
+          "stackView.push(Qt.createQmlObject('import QtQuick; import ForkGroupLaunch 1.0; Item { "
+          "Component.onCompleted: ForkGroupLaunch.showSample(2); ForkLaunchPanel { "
+          "appName: \"Desktop (multiple displays)\"; hostName: \"GonzaloPC\"; stageText: \"Starting RTSP handshake...\"; stagesDone: 4; started: true; "
+          "summary: [\"3024×1890 · 16:10\", \"120 fps\", \"81 Mb/s\", \"HEVC · HDR\"] } }', stackView, 'qrc:/gui/HarnessLaunch.qml'), StackView.Immediate)", 2000 },
+        { nullptr, "stackView.pop(null, StackView.Immediate)", 500 },
         { "2-settings-display", "settingsButton.clicked()", 2500 },
         { "2b-settings-display-end", "stackView.currentItem.scrollY = stackView.currentItem.scrollMax", 1000 },
         { "2c-settings-video", "stackView.currentItem.showSection('video')", 1500 },

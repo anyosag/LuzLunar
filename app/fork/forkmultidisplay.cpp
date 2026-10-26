@@ -5,8 +5,7 @@
 #include <QRandomGenerator>
 #include <QReadLocker>
 
-#include <condition_variable>
-#include <mutex>
+#include <chrono>
 #include <thread>
 
 #include "backend/nvapp.h"
@@ -30,25 +29,15 @@ namespace
 {
     enum class Role { None, Main, Helper };
 
-    // The route probes' result, filled in by their thread
-    struct Probes {
-        std::mutex lock;
-        std::condition_variable changed;
-        bool done = false;
-        ForkDisplayRoute::Facts facts;
-    };
-
     QMutex s_Lock;
     Role s_Role = Role::None;
     std::shared_ptr<const Group> s_Group;
-    std::shared_ptr<Probes> s_Probes;
+    bool s_RouteDecided = false;
+    ForkDisplayRoute::Decision s_RouteDecision;
+    ForkDisplayRoute::Facts s_RouteFacts;
     uint32_t s_Target = 0;
     QString s_HelperGroupId;
     int s_HelperSlot = 0;
-
-    // Connects each probe times; the iMac's go through DisplayExtend's Host
-    constexpr int k_ProbeConnects = 10;
-    constexpr int k_ProbeConnectTimeoutMs = 1000;
 
     QString newGroupId()
     {
@@ -71,49 +60,6 @@ namespace
                     "[fork] Display group %s for \"%s\": %s",
                     qPrintable(QString::fromStdString(group.plan.id)), qPrintable(group.appName),
                     qPrintable(parts.join("; ")));
-    }
-
-    // DisplayExtend's status and both connects to the PC, on a thread of their own: the iMac's
-    // probe takes a second or so, and the stream is still connecting meanwhile
-    void startProbes(const std::shared_ptr<Probes>& probes, const QStringList& pcAddresses, uint16_t httpsPort,
-                     const QString& macAddress, const QString& hostUuid)
-    {
-        std::thread([probes, pcAddresses, httpsPort, macAddress, hostUuid]() {
-            ForkDisplayRoute::Facts facts;
-
-            std::thread mac([&facts, macAddress, httpsPort]() {
-                facts.macToPc = ForkRouteProbe::tcpConnects(macAddress, httpsPort, k_ProbeConnects, k_ProbeConnectTimeoutMs);
-            });
-
-            if (ForkDisplayExtend::available()) {
-                ForkDisplayExtend bridge;
-                if (bridge.open(1000)) {
-                    ForkDisplayExtend::Status status = bridge.status(2000);
-                    facts.bridge = status.ok;
-                    facts.imacConnected = status.imacConnected;
-                    facts.directSupported = status.directSupported;
-                    facts.moonlightVerified = status.moonlightVerified;
-                    facts.paired = status.pairedHostIds.contains(hostUuid, Qt::CaseInsensitive);
-                    facts.displayExtendP50Ms = status.p50Ms;
-                    facts.displayExtendFrames = status.frames;
-                    if (status.hz > 0) {
-                        facts.virtualRefreshHz = status.hz;
-                    }
-
-                    if (status.ok && status.imacConnected && status.directSupported) {
-                        facts.imacToPc = bridge.probe(pcAddresses, httpsPort, k_ProbeConnects,
-                                                      (k_ProbeConnects + 1) * k_ProbeConnectTimeoutMs * pcAddresses.size() + 2000);
-                    }
-                }
-            }
-
-            mac.join();
-
-            std::lock_guard<std::mutex> lock(probes->lock);
-            probes->facts = facts;
-            probes->done = true;
-            probes->changed.notify_all();
-        }).detach();
     }
 }
 
@@ -179,7 +125,7 @@ void prepareSession(NvComputer* computer, const NvApp& app, StreamingPreferences
 
     s_Role = Role::None;
     s_Group.reset();
-    s_Probes.reset();
+    s_RouteDecided = false;
     s_Target = 0;
 
     if (!isGroupApp(computer, app)) {
@@ -187,7 +133,6 @@ void prepareSession(NvComputer* computer, const NvApp& app, StreamingPreferences
     }
 
     auto group = std::make_shared<Group>();
-    QStringList pcAddresses;
     int slotCount;
     {
         QReadLocker computerLock(&computer->lock);
@@ -200,7 +145,7 @@ void prepareSession(NvComputer* computer, const NvApp& app, StreamingPreferences
     }
     // Takes the computer's lock itself
     for (const NvAddress& address : computer->uniqueAddresses()) {
-        pcAddresses.append(address.address());
+        group->pcAddresses.append(address.address());
     }
     group->appName = app.name;
     group->appId = app.id;
@@ -233,15 +178,6 @@ void prepareSession(NvComputer* computer, const NvApp& app, StreamingPreferences
     s_Role = Role::Main;
     s_Target = group->plan.slotList[0].displayId;
 
-    bool hasExternal = false;
-    for (const ForkDisplayGroup::Slot& slot : group->plan.slotList) {
-        hasExternal = hasExternal || slot.external;
-    }
-    if (hasExternal && group->route != ForkDisplayRoute::Setting::ViaMac) {
-        s_Probes = std::make_shared<Probes>();
-        startProbes(s_Probes, pcAddresses, group->httpsPort, group->address, group->hostUuid);
-    }
-
     s_Group = group;
 }
 
@@ -250,7 +186,7 @@ void setHelper(const QString& groupId, int slot, uint32_t displayId)
     QMutexLocker lock(&s_Lock);
     s_Role = Role::Helper;
     s_Group.reset();
-    s_Probes.reset();
+    s_RouteDecided = false;
     s_Target = displayId;
     s_HelperGroupId = groupId;
     s_HelperSlot = slot;
@@ -338,27 +274,116 @@ QString launchArgs()
     }
 }
 
-ForkDisplayRoute::Facts routeFacts(int timeoutMs, bool* done)
+bool routeCheckNeeded()
 {
-    std::shared_ptr<Probes> probes;
-    {
-        QMutexLocker lock(&s_Lock);
-        probes = s_Probes;
+    std::shared_ptr<const Group> current = group();
+    if (!current || current->route == ForkDisplayRoute::Setting::ViaMac) {
+        return false;
     }
-    if (!probes) {
-        // None were started: nothing to wait for
-        if (done != nullptr) {
-            *done = true;
+    for (const ForkDisplayGroup::Slot& slot : current->plan.slotList) {
+        if (slot.external) {
+            return true;
         }
-        return ForkDisplayRoute::Facts();
+    }
+    return false;
+}
+
+ForkDisplayRoute::Facts checkRoute(const Group& group,
+                                   const std::function<void(const ForkDisplayRoute::Facts&, double)>& progress)
+{
+    ForkDisplayRoute::Facts facts;
+    if (!ForkDisplayExtend::available()) {
+        progress(facts, 1);
+        return facts;
     }
 
-    std::unique_lock<std::mutex> lock(probes->lock);
-    probes->changed.wait_for(lock, std::chrono::milliseconds(timeoutMs), [&probes]() { return probes->done; });
-    if (done != nullptr) {
-        *done = probes->done;
+    ForkDisplayExtend bridge;
+    if (!bridge.open(1000)) {
+        progress(facts, 1);
+        return facts;
     }
-    return probes->facts;
+
+    ForkDisplayExtend::Status status = bridge.status(2000);
+    facts.bridge = status.ok;
+    facts.imacConnected = status.imacConnected;
+    facts.directSupported = status.directSupported;
+    facts.moonlightVerified = status.moonlightVerified;
+    facts.paired = status.pairedHostIds.contains(group.hostUuid, Qt::CaseInsensitive);
+    facts.displayExtendP50Ms = status.p50Ms;
+    facts.displayExtendP95Ms = status.p95Ms;
+    facts.displayExtendFrames = status.frames;
+    if (status.hz > 0) {
+        facts.virtualRefreshHz = status.hz;
+    }
+
+    // Probing only matters when the iMac could go straight from the PC
+    if (!(facts.bridge && facts.imacConnected && facts.directSupported && facts.moonlightVerified && facts.paired) ||
+            group.pcAddresses.isEmpty()) {
+        progress(facts, 1);
+        return facts;
+    }
+    progress(facts, 0.04);
+
+    std::vector<std::vector<ForkDisplayRoute::Probe>> imacRounds(static_cast<size_t>(group.pcAddresses.size()));
+    std::vector<ForkDisplayRoute::Probe> macRounds;
+    for (int round = 0; round < k_RouteRounds; round++) {
+        auto started = std::chrono::steady_clock::now();
+
+        // This Mac's connects at the same moment as the iMac's
+        ForkDisplayRoute::Probe macRound;
+        std::thread mac([&macRound, &group]() {
+            macRound = ForkRouteProbe::tcpConnects(group.address, group.httpsPort, k_RouteRoundConnects, 1000);
+        });
+        std::vector<ForkDisplayRoute::Probe> imac = bridge.probe(group.pcAddresses, group.httpsPort, k_RouteRoundConnects,
+                                                                 (k_RouteRoundConnects + 1) * 1000 + 1000);
+        mac.join();
+
+        macRounds.push_back(macRound);
+        for (int i = 0; i < group.pcAddresses.size(); i++) {
+            ForkDisplayRoute::Probe answer;
+            answer.address = group.pcAddresses[i].toStdString();
+            answer.count = k_RouteRoundConnects;
+            answer.failures = k_RouteRoundConnects;   // no answer for it counts as connects that failed
+            for (const ForkDisplayRoute::Probe& probe : imac) {
+                if (probe.address == answer.address) {
+                    answer = probe;
+                }
+            }
+            imacRounds[static_cast<size_t>(i)].push_back(answer);
+        }
+
+        facts.macToPc = ForkDisplayRoute::combine(macRounds);
+        facts.imacToPc.clear();
+        for (const std::vector<ForkDisplayRoute::Probe>& rounds : imacRounds) {
+            facts.imacToPc.push_back(ForkDisplayRoute::combine(rounds));
+        }
+        progress(facts, 0.04 + 0.96 * (round + 1) / k_RouteRounds);
+
+        std::this_thread::sleep_until(started + std::chrono::milliseconds(k_RouteRoundMs));
+    }
+    return facts;
+}
+
+void setRouteDecision(const ForkDisplayRoute::Decision& decision, const ForkDisplayRoute::Facts& facts)
+{
+    QMutexLocker lock(&s_Lock);
+    s_RouteDecision = decision;
+    s_RouteFacts = facts;
+    s_RouteDecided = true;
+}
+
+bool routeDecision(ForkDisplayRoute::Decision* decision, ForkDisplayRoute::Facts* facts)
+{
+    QMutexLocker lock(&s_Lock);
+    if (s_RouteDecided) {
+        if (decision != nullptr) {
+            *decision = s_RouteDecision;
+        }
+        if (facts != nullptr) {
+            *facts = s_RouteFacts;
+        }
+    }
+    return s_RouteDecided;
 }
 
 }

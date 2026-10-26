@@ -3,6 +3,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -26,6 +27,7 @@ namespace ForkMultiDisplay
         QString hostUuid, hostName;
         QString address;                 // the address and HTTP port slot 0 streams from
         uint16_t httpPort = 0, httpsPort = 0;
+        QStringList pcAddresses;         // every address of the PC, for the iMac's probes
         QString appName;
         int appId = 0;
         int videoCodecConfig = 0;        // slot 0's StreamingPreferences::VideoCodecConfig
@@ -69,8 +71,21 @@ namespace ForkMultiDisplay
     // join; empty outside a group
     QString launchArgs();
 
-    // The route probes for DisplayExtend's slot, started by prepareSession: DisplayExtend's status
-    // and the iMac's and this Mac's connects to the PC. Waits up to timeoutMs for them; done (if
-    // given) says whether they finished, since until then the facts are empty.
-    ForkDisplayRoute::Facts routeFacts(int timeoutMs, bool* done = nullptr);
+    // Whether the group has DisplayExtend's display and the setting lets it go straight from the
+    // PC, so the launch screen checks the route before connecting (ForkGroupLaunch)
+    bool routeCheckNeeded();
+
+    // The check: DisplayExtend's status, then (when the iMac could go straight from the PC)
+    // k_RouteRounds rounds of connects to the PC, from the iMac to each of its addresses and from
+    // this Mac, k_RouteRoundMs apart: typical times and worst cases both count. Blocking, for a
+    // worker thread; progress (0 to 1) is called after each step with the facts so far.
+    constexpr int k_RouteRounds = 10;
+    constexpr int k_RouteRoundConnects = 3;
+    constexpr int k_RouteRoundMs = 250;
+    ForkDisplayRoute::Facts checkRoute(const Group& group,
+                                       const std::function<void(const ForkDisplayRoute::Facts&, double)>& progress);
+
+    // The route chosen for this group, kept for the coordinator; false until chosen
+    void setRouteDecision(const ForkDisplayRoute::Decision& decision, const ForkDisplayRoute::Facts& facts);
+    bool routeDecision(ForkDisplayRoute::Decision* decision, ForkDisplayRoute::Facts* facts);
 }

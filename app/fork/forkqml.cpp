@@ -8,6 +8,7 @@
 #include "clienthardware.h"
 #include "forkaspectratios.h"
 #include "forkhostpower.h"
+#include "forkgrouplaunch.h"
 #include "forkhostupdates.h"
 #include "forkimacsetup.h"
 #include "forkpreferences.h"
@@ -81,6 +82,13 @@ namespace
             ForkHostPower* power = ForkHostPower::get();
             QQmlEngine::setObjectOwnership(power, QQmlEngine::CppOwnership);
             return power;
+        });
+        // Multi-display streams: the launch screen's displays and the iMac's route check
+        qmlRegisterSingletonType<ForkGroupLaunch>("ForkGroupLaunch", 1, 0, "ForkGroupLaunch",
+                                                  [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkGroupLaunch* launch = ForkGroupLaunch::get();
+            QQmlEngine::setObjectOwnership(launch, QQmlEngine::CppOwnership);
+            return launch;
         });
         // Multi-display streams: the iMac behind DisplayExtend, and pairing it with Apollo PCs
         qmlRegisterSingletonType<ForkImacSetup>("ForkImacSetup", 1, 0, "ForkImacSetup",

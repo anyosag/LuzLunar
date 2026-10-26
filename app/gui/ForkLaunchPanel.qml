@@ -1,5 +1,6 @@
 import QtQuick
 
+import ForkGroupLaunch 1.0
 import ForkTheme 1.0
 
 // [fork] StreamSegue's screen while a stream starts: the moon mark, the app and PC, how far the
@@ -35,7 +36,7 @@ Item {
     //   Video      6 video init, 9 video start                   done as stage 10 starts
     //   Audio      3 audio init, 10 audio start                  done as stage 11 starts
     //   Input      7 input init, 11 input start                  done once connected
-    readonly property var steps: [
+    readonly property var connectionSteps: [
         { "label": qsTr("Find PC"), "doneAt": 3 },
         { "label": qsTr("Handshake"), "doneAt": 9 },
         { "label": qsTr("Video"), "doneAt": 10 },
@@ -43,7 +44,16 @@ Item {
         { "label": qsTr("Input"), "doneAt": 0 }
     ]
 
+    // A multi-display stream with DisplayExtend's display first times the iMac's two routes
+    // (ForkGroupLaunch), before the stream connects
+    readonly property bool routeStep: ForkGroupLaunch.active && ForkGroupLaunch.checkNeeded
+    readonly property var steps: routeStep ? [{ "label": qsTr("iMac route"), "route": true }].concat(connectionSteps)
+                                           : connectionSteps
+
     function stepDone(i) {
+        if (steps[i].route === true) {
+            return ForkGroupLaunch.decided
+        }
         return i === steps.length - 1 ? connected : stagesDone >= steps[i].doneAt
     }
 
@@ -62,11 +72,12 @@ Item {
     Column {
         anchors.centerIn: parent
         width: Math.min(parent.width - 32, 640)
-        spacing: 28
+        // [multiple displays] tighter, to make room for the displays' card
+        spacing: ForkGroupLaunch.active ? 20 : 28
 
         ForkMoonMark {
             anchors.horizontalCenter: parent.horizontalCenter
-            size: 148
+            size: ForkGroupLaunch.active ? 96 : 148
             tile: false
             shimmer: panel.started
         }
@@ -86,8 +97,10 @@ Item {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 kind: "title"
-                // 60 in a roomy window, down to 40 in a narrow one
-                pixelSize: Math.max(40, Math.min(60, panel.width * 0.07))
+                // 60 in a roomy window, down to 40 in a narrow one; [multiple displays] 46 down to 34, so
+                // the displays' card fits
+                pixelSize: ForkGroupLaunch.active ? Math.max(34, Math.min(46, panel.width * 0.054))
+                                                  : Math.max(40, Math.min(60, panel.width * 0.07))
                 font.letterSpacing: -0.03 * pixelSize
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
@@ -102,11 +115,14 @@ Item {
                 kind: "body"
                 pixelSize: 17
                 color: ForkTheme.muted
-                text: qsTr("on %1").arg(panel.hostName)
+                // A group always has two displays or more
+                text: ForkGroupLaunch.active ? qsTr("on %1 · %2 displays").arg(panel.hostName).arg(ForkGroupLaunch.displayCount)
+                                             : qsTr("on %1").arg(panel.hostName)
             }
         }
 
-        // Five steps, each a bar that fills as the connection gets there, and the stage in words
+        // Five steps (six with the iMac's route), each a bar that fills as the launch gets there, and
+        // the stage in words
         Column {
             width: parent.width
             spacing: 12
@@ -130,10 +146,12 @@ Item {
 
                         readonly property bool done: panel.stepDone(index)
                         readonly property bool active: panel.currentStep === index
-                        // How full the bar is: the current step's fills over 0.65 s (at once with Reduce Motion)
-                        property real fill: done || active ? 1 : 0
+                        // How full the bar is: the current step's fills over 0.65 s (at once with Reduce Motion);
+                        // the iMac's route as its check goes
+                        property real fill: modelData.route === true ? (done ? 1 : ForkGroupLaunch.progress)
+                                                                     : done || active ? 1 : 0
 
-                        width: (stepRow.width - 4 * stepRow.spacing) / 5
+                        width: (stepRow.width - (panel.steps.length - 1) * stepRow.spacing) / panel.steps.length
                         height: bar.height + 8 + label.implicitHeight
 
                         Accessible.role: Accessible.ListItem
@@ -186,8 +204,15 @@ Item {
                 pixelSize: 13
                 color: ForkTheme.muted
                 elide: Text.ElideRight
-                text: panel.stageText
+                text: ForkGroupLaunch.checking ? ForkGroupLaunch.checkText : panel.stageText
             }
+        }
+
+        // The displays of a multi-display stream, and where the iMac's picture comes from
+        ForkGroupLaunchCard {
+            visible: ForkGroupLaunch.active
+            width: parent.width
+            height: implicitHeight
         }
 
         // What the stream will use: pills centered, wrapping onto more lines when they don't fit
