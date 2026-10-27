@@ -8,7 +8,8 @@
 // from Apollo; DisplayExtend's client runs it) or through this Mac (a LuzLunar helper shows it on the
 // virtual display, which DisplayExtend captures and streams to the iMac as usual). Chosen once per
 // launch, on the launch screen before the stream connects, from what DisplayExtend's Host reports
-// and about 2.5 s of probes: typical times and worst cases both count.
+// and a few seconds of probes: typical times and worst cases both count. A Resume reuses the
+// launch's probes (forkroutememory.h).
 //
 // Kept free of Qt so it can be unit tested on its own (tests/fork/displayroute_test.cpp).
 namespace ForkDisplayRoute
@@ -81,4 +82,9 @@ namespace ForkDisplayRoute
     // Rounds of probes to one address as one: all their connects and failures, the median of their
     // medians, and the worst of their worst
     Probe combine(const std::vector<Probe>& rounds);
+
+    // Which of a first round's addresses to keep probing: those with a connect that went through.
+    // An address the iMac can't reach at all (the PC's home address, away from home) waits out a
+    // timeout on every connect, which made each round about 2 s instead of 250 ms.
+    std::vector<size_t> answering(const std::vector<Probe>& firstRound);
 }

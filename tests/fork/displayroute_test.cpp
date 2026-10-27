@@ -220,9 +220,33 @@ static void testMedian()
     CHECK(median({ 4, 1, 3, 2 }) == 2.5);
 }
 
+// After the first round only the addresses a connect reached are timed again
+static void testAnswering()
+{
+    std::vector<Probe> first = { probe("73.100.235.17", 13, 20), probe("10.0.0.77", -1, -1, 10),
+                                 probe("2601::190f", 40, 60, 3) };
+    std::vector<size_t> kept = answering(first);
+    CHECK(kept.size() == 2);
+    CHECK(kept.size() == 2 && kept[0] == 0 && kept[1] == 2);   // one connect of three getting through is enough
+    CHECK(answering({ probe("10.0.0.77", -1, -1, 10) }).empty());
+    CHECK(answering({}).empty());
+}
+
+// A Resume decides on the launch's connect times with the iMac's state as it is now
+static void testDecideOnRecalledFacts()
+{
+    Facts now = ready();
+    CHECK(decide(Setting::Automatic, now).route == Route::Direct);
+    now.imacConnected = false;   // the iMac left DisplayExtend since the launch
+    Decision d = decide(Setting::Automatic, now);
+    CHECK(d.route == Route::ViaMac);
+}
+
 int main()
 {
     testDirectWins();
+    testAnswering();
+    testDecideOnRecalledFacts();
     testViaMacWhenFaster();
     testViaMacWhenSteadier();
     testIneligible();

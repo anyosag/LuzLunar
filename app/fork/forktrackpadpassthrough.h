@@ -44,6 +44,13 @@ namespace ForkTrackpadPassthrough
     // Mac trackpad mode runs now: macOS's own pointer moves Windows'
     bool macPointerActive();
 
+    // This stream is in Mac trackpad mode, running or not: whenever it has the mouse, macOS's
+    // pointer moves Windows' (by deltas)
+    bool macPointerMode();
+
+    // How many of Mac trackpad mode's pointer moves have gone to Windows; any thread
+    unsigned macPointerMoves();
+
     // For SdlInputHandler: true to drop a mouse event Windows gets otherwise (the fingers, or
     // macOS's own event in Mac trackpad mode). False for anything while passthrough isn't running.
     bool muteMotion(const SDL_MouseMotionEvent* event);

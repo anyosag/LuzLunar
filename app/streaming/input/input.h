@@ -230,6 +230,8 @@ private:
     bool m_PointerRegionLockActive;
     bool m_PointerRegionLockToggledByUser;
     bool m_ForkRegionLockSuspended = false; // [fork] forkSuspendRegionLock()
+    bool m_ForkPointerPlaced = false; // [fork] the stream's first capture placed the PC's pointer (setCaptureActive())
+    void forkPlaceHostPointer(); // [fork]
 
     int m_GamepadMask;
     GamepadState m_GamepadState[MAX_GAMEPADS];

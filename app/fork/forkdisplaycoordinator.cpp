@@ -363,7 +363,7 @@ struct ForkDisplayCoordinator::State
         ForkDisplayRoute::Facts facts;
         ForkDisplayRoute::Decision decision;
         if (!ForkMultiDisplay::routeDecision(&decision, &facts)) {
-            facts = ForkMultiDisplay::checkRoute(*group, [](const ForkDisplayRoute::Facts&, double) {});
+            facts = ForkMultiDisplay::checkRoute(*group, nullptr, [](const ForkDisplayRoute::Facts&, double) {}).facts;
             decision = ForkDisplayRoute::decide(group->route, facts);
             ForkMultiDisplay::setRouteDecision(decision, facts);
         }
@@ -464,6 +464,20 @@ struct ForkDisplayCoordinator::State
                 post(CodeMessage, QStringLiteral("Display %1 (%2) couldn't start its stream")
                                       .arg(slot.slot + 1).arg(QString::fromStdString(slot.name)));
             }
+        }
+
+        // A helper's window, or DisplayExtend parking its display, can still take the keyboard from
+        // the main stream a moment after its display came up: look again 1 s and 3 s on
+        for (int wait : { 1000, 2000 }) {
+            if (!pause(wait)) {
+                break;
+            }
+            for (Helper* helper : helpers) {
+                if (helper->connected) {
+                    post(CodeRefocus, QString(), helper->pid);
+                }
+            }
+            post(CodeRefocus);
         }
 
         // Watch: a helper that stops is started again once; an iMac stream from the PC that stops
@@ -609,13 +623,18 @@ void ForkDisplayCoordinator::handleEvent(const SDL_Event& event)
     if (event.user.data1 == m_State.get()) {
         switch (event.user.code) {
         case CodeRefocus:
-            // Only if that helper is the active app: the user may have switched to another app
-            // on purpose while the displays came up
 #ifdef Q_OS_DARWIN
-            if (SDL_GetKeyboardFocus() != m_Window && event.user.windowID != 0 &&
-                    MultiDisplayMac::activePid() == static_cast<pid_t>(event.user.windowID)) {
-                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] A display group helper took the keyboard; giving it back to the main stream");
-                SDL_RaiseWindow(m_Window);
+            // Only while that helper or this app is the active one: the user may have switched to
+            // another app on purpose while the displays came up. This app in front without its
+            // stream window holding the keyboard happens too, after a helper handed activation back.
+            if (SDL_GetKeyboardFocus() != m_Window) {
+                pid_t active = MultiDisplayMac::activePid();
+                bool helper = event.user.windowID != 0 && active == static_cast<pid_t>(event.user.windowID);
+                if (helper || active == getpid()) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, helper ? "[fork] A display group helper took the keyboard; giving it back to the main stream"
+                                                                     : "[fork] The main stream's window lost the keyboard while the displays came up; taking it back");
+                    SDL_RaiseWindow(m_Window);
+                }
             }
 #endif
             break;

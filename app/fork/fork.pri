@@ -33,6 +33,7 @@ SOURCES += \
     $$PWD/forkdisplayextend.cpp \
     $$PWD/forkdisplaygroup.cpp \
     $$PWD/forkdisplayroute.cpp \
+    $$PWD/forkroutememory.cpp \
     $$PWD/forkevents.cpp \
     $$PWD/forkgrouplaunch.cpp \
     $$PWD/forkhelper.cpp \
@@ -91,6 +92,8 @@ HEADERS += \
     $$PWD/forkdisplayextend.h \
     $$PWD/forkdisplaygroup.h \
     $$PWD/forkdisplayroute.h \
+    $$PWD/forkroutememory.h \
+    $$PWD/forkpointersync.h \
     $$PWD/forkevents.h \
     $$PWD/forkgrouplaunch.h \
     $$PWD/forkhelper.h \

@@ -1,6 +1,7 @@
 #include "forkgrouplaunch.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 
 #include <algorithm>
 #include <cmath>
@@ -109,8 +110,15 @@ void ForkGroupLaunch::startCheck()
     int generation = m_Generation;
     std::shared_ptr<const ForkMultiDisplay::Group> group = m_Group;
     ForkGroupLaunch* self = this;   // the singleton outlives the thread
-    std::thread([self, generation, group]() {
-        ForkDisplayRoute::Facts facts = ForkMultiDisplay::checkRoute(*group, [self, generation](const ForkDisplayRoute::Facts& partial, double progress) {
+
+    // Resume uses the launch's measurements when they still hold, so only a launch waits for them
+    auto remembered = std::make_shared<ForkRouteMemory::Memory>();
+    if (!group->resume || !ForkMultiDisplay::rememberedRoute(group->hostUuid, remembered.get())) {
+        remembered.reset();
+    }
+
+    std::thread([self, generation, group, remembered]() {
+        ForkMultiDisplay::RouteCheck check = ForkMultiDisplay::checkRoute(*group, remembered.get(), [self, generation](const ForkDisplayRoute::Facts& partial, double progress) {
             QMetaObject::invokeMethod(self, [self, generation, partial, progress]() {
                 if (self->m_Generation == generation && self->m_Checking) {
                     self->m_Facts = partial;
@@ -120,15 +128,24 @@ void ForkGroupLaunch::startCheck()
                 }
             }, Qt::QueuedConnection);
         });
-        ForkDisplayRoute::Decision decision = ForkDisplayRoute::decide(group->route, facts);
+        ForkDisplayRoute::Decision decision = ForkDisplayRoute::decide(group->route, check.facts);
 
-        QMetaObject::invokeMethod(self, [self, generation, group, facts, decision]() {
+        QMetaObject::invokeMethod(self, [self, generation, group, check, decision]() {
             // A launch left during its check, and maybe a new one planned since
             if (self->m_Generation != generation || ForkMultiDisplay::group() != group) {
                 return;
             }
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] iMac route: %s",
-                        ForkDisplayRoute::describe(decision, facts).c_str());
+            const ForkDisplayRoute::Facts& facts = check.facts;
+            if (check.recalled) {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] iMac route: %s, as measured at the launch at %s (Resume doesn't measure again)",
+                            ForkDisplayRoute::describe(decision, facts).c_str(),
+                            qPrintable(QDateTime::fromSecsSinceEpoch(check.measuredAt).toString(QStringLiteral("HH:mm"))));
+            }
+            else {
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] iMac route: %s",
+                            ForkDisplayRoute::describe(decision, facts).c_str());
+                ForkMultiDisplay::rememberRoute(check);
+            }
             ForkMultiDisplay::setRouteDecision(decision, facts);
             self->m_Facts = facts;
             self->m_Decision = decision;
@@ -300,12 +317,13 @@ void ForkGroupLaunch::rebuild()
         }
         m_ViaCard["detail"] = via.isEmpty() ? tr("Measuring…") : via.join(QStringLiteral(" · "));
 
-        double seconds = ForkMultiDisplay::k_RouteRounds * ForkMultiDisplay::k_RouteRoundMs / 1000.0;
+        // In rounds, not seconds: a PC address the iMac can't reach makes the first round the long one
+        long round = std::lround((m_Progress - 0.04) / 0.96 * ForkMultiDisplay::k_RouteRounds);
         m_CheckText = m_Progress < 0.04 ? tr("Asking DisplayExtend about the iMac…")
-                                        : tr("Timing both routes to %1… %2 of %3 s")
+                                        : tr("Timing both routes to %1… %2 of %3")
                                               .arg(m_Group->hostName)
-                                              .arg(m_Progress * seconds, 0, 'f', 1)
-                                              .arg(seconds, 0, 'f', 1);
+                                              .arg(std::max(1L, std::min(round, long(ForkMultiDisplay::k_RouteRounds))))
+                                              .arg(ForkMultiDisplay::k_RouteRounds);
         return;
     }
 

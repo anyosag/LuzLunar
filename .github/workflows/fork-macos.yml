@@ -328,6 +328,13 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/displayroute_test.cpp app/fork/forkdisplayroute.cpp -o "$RUNNER_TEMP/displayroute_test"
           "$RUNNER_TEMP/displayroute_test"
+          # The route a launch measured, reused by Resume
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/routememory_test.cpp app/fork/forkroutememory.cpp app/fork/forkdisplayroute.cpp -o "$RUNNER_TEMP/routememory_test"
+          "$RUNNER_TEMP/routememory_test"
+          # Where the PC's pointer starts when the stream takes the Mac's
+          clang++ -std=c++17 -Wall -Wextra -Iapp tests/fork/pointersync_test.cpp -o "$RUNNER_TEMP/pointersync_test"
+          "$RUNNER_TEMP/pointersync_test"
           # The aspect ratio picker's sizes, the aspect lock and even rounding
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/aspect_test.cpp app/fork/forkaspect.cpp -o "$RUNNER_TEMP/aspect_test"

@@ -1,9 +1,12 @@
 #include "forkmultidisplay.h"
 
+#include <QCryptographicHash>
+#include <QDateTime>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QRandomGenerator>
 #include <QReadLocker>
+#include <QSettings>
 
 #include <chrono>
 #include <thread>
@@ -14,6 +17,7 @@
 #include "clienthardware.h"
 #include "forkdisplayextend.h"
 #include "forkpreferences.h"
+#include "mac/networklink.h"
 #include "settings/streamingpreferences.h"
 #include "SDL_compat.h"
 
@@ -21,6 +25,9 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <cmath>
 #endif
+
+// A group with the last launch's iMac route measurements per PC (by uuid), as ForkRouteMemory::encode() writes them
+#define SER_ROUTEMEMORY "fork/imacRouteMemory"
 
 namespace ForkMultiDisplay
 {
@@ -42,6 +49,27 @@ namespace
     QString newGroupId()
     {
         return QString::number(QRandomGenerator::global()->generate64(), 16).rightJustified(16, '0');
+    }
+
+    // What a measurement is for: the PC, the iMac and the Mac's DisplayExtend display as DisplayExtend
+    // reports them, and the network this Mac reaches the PC over (hashed, like ForkNetworkLink's)
+    ForkRouteMemory::Key routeKey(const Group& group, const ForkDisplayExtend::Status& status)
+    {
+        ForkRouteMemory::Key key;
+        if (!status.ok) {
+            return key;
+        }
+        key.hostUuid = group.hostUuid.toStdString();
+        key.imacAddress = status.imacAddress.toStdString();
+        if (status.width > 0 && status.height > 0) {
+            key.display = std::to_string(status.width) + "x" + std::to_string(status.height);
+        }
+        std::string network = MacNetworkLink::probe(MacNetworkLink::numericAddress(group.address.toStdString())).networkId;
+        if (!network.empty()) {
+            key.network = QCryptographicHash::hash(QByteArray::fromStdString(network), QCryptographicHash::Sha256)
+                              .toHex().left(32).toStdString();
+        }
+        return key;
     }
 
     void logPlan(const Group& group)
@@ -142,6 +170,8 @@ void prepareSession(NvComputer* computer, const NvApp& app, StreamingPreferences
         group->address = computer->activeAddress.address();
         group->httpPort = computer->activeAddress.port();
         group->httpsPort = computer->activeHttpsPort;
+        // As AppView decides between Launch and Resume
+        group->resume = computer->currentGameId != 0 && computer->currentGameId == app.id;
     }
     // Takes the computer's lock itself
     for (const NvAddress& address : computer->uniqueAddresses()) {
@@ -288,19 +318,20 @@ bool routeCheckNeeded()
     return false;
 }
 
-ForkDisplayRoute::Facts checkRoute(const Group& group,
-                                   const std::function<void(const ForkDisplayRoute::Facts&, double)>& progress)
+RouteCheck checkRoute(const Group& group, const ForkRouteMemory::Memory* remembered,
+                      const std::function<void(const ForkDisplayRoute::Facts&, double)>& progress)
 {
-    ForkDisplayRoute::Facts facts;
+    RouteCheck check;
+    ForkDisplayRoute::Facts& facts = check.facts;
     if (!ForkDisplayExtend::available()) {
         progress(facts, 1);
-        return facts;
+        return check;
     }
 
     ForkDisplayExtend bridge;
     if (!bridge.open(1000)) {
         progress(facts, 1);
-        return facts;
+        return check;
     }
 
     ForkDisplayExtend::Status status = bridge.status(2000);
@@ -315,18 +346,31 @@ ForkDisplayRoute::Facts checkRoute(const Group& group,
     if (status.hz > 0) {
         facts.virtualRefreshHz = status.hz;
     }
+    check.key = routeKey(group, status);
+
+    // A Resume: the launch measured for the same PC, iMac, display and network, so its connect
+    // times stand; whether the iMac can still go straight from the PC is as DisplayExtend says now
+    if (remembered != nullptr && ForkRouteMemory::reusable(*remembered, check.key)) {
+        facts = ForkRouteMemory::recall(*remembered, facts);
+        check.recalled = true;
+        check.measuredAt = remembered->measuredAt;
+        progress(facts, 1);
+        return check;
+    }
 
     // Probing only matters when the iMac could go straight from the PC
     if (!(facts.bridge && facts.imacConnected && facts.directSupported && facts.moonlightVerified && facts.paired) ||
             group.pcAddresses.isEmpty()) {
         progress(facts, 1);
-        return facts;
+        return check;
     }
     progress(facts, 0.04);
+    check.measuredAt = QDateTime::currentSecsSinceEpoch();
 
     std::vector<std::vector<ForkDisplayRoute::Probe>> imacRounds(static_cast<size_t>(group.pcAddresses.size()));
     std::vector<ForkDisplayRoute::Probe> macRounds;
-    for (int round = 0; round < k_RouteRounds; round++) {
+    QStringList probed = group.pcAddresses;   // the addresses the iMac still tries
+    for (int round = 0; round < k_RouteRounds && !probed.isEmpty(); round++) {
         auto started = std::chrono::steady_clock::now();
 
         // This Mac's connects at the same moment as the iMac's
@@ -334,12 +378,16 @@ ForkDisplayRoute::Facts checkRoute(const Group& group,
         std::thread mac([&macRound, &group]() {
             macRound = ForkRouteProbe::tcpConnects(group.address, group.httpsPort, k_RouteRoundConnects, 1000);
         });
-        std::vector<ForkDisplayRoute::Probe> imac = bridge.probe(group.pcAddresses, group.httpsPort, k_RouteRoundConnects,
+        std::vector<ForkDisplayRoute::Probe> imac = bridge.probe(probed, group.httpsPort, k_RouteRoundConnects,
                                                                  (k_RouteRoundConnects + 1) * 1000 + 1000);
         mac.join();
 
         macRounds.push_back(macRound);
+        std::vector<ForkDisplayRoute::Probe> answers;
         for (int i = 0; i < group.pcAddresses.size(); i++) {
+            if (!probed.contains(group.pcAddresses[i])) {
+                continue;
+            }
             ForkDisplayRoute::Probe answer;
             answer.address = group.pcAddresses[i].toStdString();
             answer.count = k_RouteRoundConnects;
@@ -350,6 +398,23 @@ ForkDisplayRoute::Facts checkRoute(const Group& group,
                 }
             }
             imacRounds[static_cast<size_t>(i)].push_back(answer);
+            answers.push_back(answer);
+        }
+
+        // After the first round, only the addresses that answered: one the iMac can't reach waits
+        // out a timeout on every connect
+        if (round == 0) {
+            QStringList answering;
+            for (size_t i : ForkDisplayRoute::answering(answers)) {
+                answering.append(QString::fromStdString(answers[i].address));
+            }
+            for (const QString& address : probed) {
+                if (!answering.contains(address)) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] iMac route: the iMac can't reach %s, so it isn't timed again",
+                                qPrintable(address));
+                }
+            }
+            probed = answering;
         }
 
         facts.macToPc = ForkDisplayRoute::combine(macRounds);
@@ -361,7 +426,24 @@ ForkDisplayRoute::Facts checkRoute(const Group& group,
 
         std::this_thread::sleep_until(started + std::chrono::milliseconds(k_RouteRoundMs));
     }
-    return facts;
+    progress(facts, 1);
+    return check;
+}
+
+bool rememberedRoute(const QString& hostUuid, ForkRouteMemory::Memory* memory)
+{
+    QString text = QSettings().value(QStringLiteral(SER_ROUTEMEMORY "/") + hostUuid).toString();
+    return !text.isEmpty() && ForkRouteMemory::decode(text.toStdString(), memory) &&
+           memory->key.hostUuid == hostUuid.toStdString();
+}
+
+void rememberRoute(const RouteCheck& check)
+{
+    if (check.recalled || check.key.hostUuid.empty() || !ForkRouteMemory::worthKeeping(check.facts)) {
+        return;
+    }
+    QSettings().setValue(QStringLiteral(SER_ROUTEMEMORY "/") + QString::fromStdString(check.key.hostUuid),
+                         QString::fromStdString(ForkRouteMemory::encode(ForkRouteMemory::remember(check.key, check.facts, check.measuredAt))));
 }
 
 void setRouteDecision(const ForkDisplayRoute::Decision& decision, const ForkDisplayRoute::Facts& facts)

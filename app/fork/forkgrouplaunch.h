@@ -14,9 +14,11 @@
 // displays, and the check of the iMac's route before the stream connects. With DisplayExtend's
 // display in the group and the route not set to go through this Mac, StreamSegue starts the check
 // once the session is initialized and starts the stream when it finishes: DisplayExtend's status,
-// then about 2.5 s of connects from the iMac and from this Mac to the PC
-// (ForkMultiDisplay::checkRoute()). The decision is kept for the coordinator, which hands the
-// iMac over once the main stream is up.
+// then a few seconds of connects from the iMac and from this Mac to the PC
+// (ForkMultiDisplay::checkRoute()). Only a launch measures: Resume reads DisplayExtend's status
+// and reuses the launch's measurements when they were taken for the same iMac, display and
+// network (forkroutememory.h), so it starts at once. The decision is kept for the coordinator,
+// which hands the iMac over once the main stream is up.
 class ForkGroupLaunch : public QObject
 {
     Q_OBJECT
