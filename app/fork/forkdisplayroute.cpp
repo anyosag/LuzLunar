@@ -96,6 +96,17 @@ Probe combine(const std::vector<Probe>& rounds)
     return out;
 }
 
+std::vector<size_t> answering(const std::vector<Probe>& firstRound)
+{
+    std::vector<size_t> kept;
+    for (size_t i = 0; i < firstRound.size(); i++) {
+        if (firstRound[i].failures < firstRound[i].count) {
+            kept.push_back(i);
+        }
+    }
+    return kept;
+}
+
 double median(std::vector<double> values)
 {
     if (values.empty()) {

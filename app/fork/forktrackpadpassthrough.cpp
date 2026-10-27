@@ -1,5 +1,6 @@
 #include "forktrackpadpassthrough.h"
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,6 +20,10 @@
 #include "mac/trackpadcapture_mac.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
+
+#ifdef Q_OS_DARWIN
+#include "mac/multidisplay_mac.h"
+#endif
 
 namespace
 {
@@ -59,6 +64,8 @@ namespace
     std::unique_ptr<State> s_State;
     std::function<bool(const QString&)> s_Sink;
     std::function<void(int, int, double, double)> s_PointerListener;
+    // Mac trackpad mode's pointer moves sent to Windows, ever (macPointerMoves())
+    std::atomic<unsigned> s_MacPointerMoves { 0 };
 
     Uint32 keepaliveEventType()
     {
@@ -160,6 +167,7 @@ namespace
         int y = s.pointerY.take(dy * scaleY);
         if (x != 0 || y != 0) {
             LiSendMouseMoveEvent(static_cast<short>(x), static_cast<short>(y));
+            s_MacPointerMoves++;
         }
         if (s_PointerListener) {
             // Less than a pixel still counts as pushing
@@ -263,7 +271,25 @@ namespace
         c.captured = c.relativeMouse = SDL_GetRelativeMouseMode() == SDL_TRUE;
         c.windowFocused = (SDL_GetWindowFlags(s.window) & SDL_WINDOW_INPUT_FOCUS) != 0;
         c.windowKey = c.appActive = ForkTrackpadCapture::streamWindowIsKey();
-        setActive(ForkTrackpad::shouldBeActive(c));
+        bool active = ForkTrackpad::shouldBeActive(c);
+
+        // Why it stops, so a stretch with two pointers can be explained from the log
+        if (s.active && !active) {
+            std::string why;
+            auto add = [&why](bool failed, const char* reason) {
+                if (failed) {
+                    why += why.empty() ? reason : std::string(", ") + reason;
+                }
+            };
+            add(!c.captured, "the stream let go of the mouse");
+            add(!c.windowFocused, "its window lost the keyboard focus");
+            add(!c.windowKey, "its window isn't the key window of the active app");
+#ifdef Q_OS_DARWIN
+            why += "; in front: " + MultiDisplayMac::activeAppName();
+#endif
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Trackpad passthrough stops: %s", why.c_str());
+        }
+        setActive(active);
     }
 
     // Typing, as palm rejection counts it: a key that types, not a modifier or a shortcut, so a
@@ -292,6 +318,16 @@ void ForkTrackpadPassthrough::setMacPointerListener(std::function<void(int, int,
 bool ForkTrackpadPassthrough::macPointerActive()
 {
     return s_State && s_State->active && s_State->macMode;
+}
+
+bool ForkTrackpadPassthrough::macPointerMode()
+{
+    return s_State && s_State->window != nullptr && s_State->macMode;
+}
+
+unsigned ForkTrackpadPassthrough::macPointerMoves()
+{
+    return s_MacPointerMoves.load();
 }
 
 void ForkTrackpadPassthrough::activate(SDL_Window* window, const StreamingPreferences& prefs)

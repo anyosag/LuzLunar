@@ -9,6 +9,7 @@
 
 #include "forkdisplaygroup.h"
 #include "forkdisplayroute.h"
+#include "forkroutememory.h"
 
 class NvApp;
 class NvComputer;
@@ -32,6 +33,7 @@ namespace ForkMultiDisplay
         int appId = 0;
         int videoCodecConfig = 0;        // slot 0's StreamingPreferences::VideoCodecConfig
         ForkDisplayRoute::Setting route = ForkDisplayRoute::Setting::Automatic;
+        bool resume = false;             // the app runs on the PC already: Resume, not a launch
     };
 
     // Whether app is the host's multi-display app (anyosag/Apollo's <LuzDisplayGroupApp>)
@@ -77,13 +79,27 @@ namespace ForkMultiDisplay
 
     // The check: DisplayExtend's status, then (when the iMac could go straight from the PC)
     // k_RouteRounds rounds of connects to the PC, from the iMac to each of its addresses and from
-    // this Mac, k_RouteRoundMs apart: typical times and worst cases both count. Blocking, for a
-    // worker thread; progress (0 to 1) is called after each step with the facts so far.
+    // this Mac, k_RouteRoundMs apart: typical times and worst cases both count. An address no
+    // connect reached in the first round isn't tried again (ForkDisplayRoute::answering()).
+    // With remembered (a Resume's), the status is read and, when the launch measured for what it
+    // says now (ForkRouteMemory::reusable()), the launch's connect times are used instead of
+    // measuring again. Blocking, for a worker thread; progress (0 to 1) is called after each step
+    // with the facts so far.
     constexpr int k_RouteRounds = 10;
     constexpr int k_RouteRoundConnects = 3;
     constexpr int k_RouteRoundMs = 250;
-    ForkDisplayRoute::Facts checkRoute(const Group& group,
-                                       const std::function<void(const ForkDisplayRoute::Facts&, double)>& progress);
+    struct RouteCheck {
+        ForkDisplayRoute::Facts facts;
+        ForkRouteMemory::Key key;        // what it was measured for; no hostUuid without DisplayExtend's status
+        bool recalled = false;           // the launch's measurements, not measured again
+        long long measuredAt = 0;        // when they were measured, seconds since the epoch
+    };
+    RouteCheck checkRoute(const Group& group, const ForkRouteMemory::Memory* remembered,
+                          const std::function<void(const ForkDisplayRoute::Facts&, double)>& progress);
+
+    // The last launch's measurements for a PC (QSettings), and keeping a check's; main thread
+    bool rememberedRoute(const QString& hostUuid, ForkRouteMemory::Memory* memory);
+    void rememberRoute(const RouteCheck& check);
 
     // The route chosen for this group, kept for the coordinator; false until chosen
     void setRouteDecision(const ForkDisplayRoute::Decision& decision, const ForkDisplayRoute::Facts& facts);

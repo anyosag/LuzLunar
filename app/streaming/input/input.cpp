@@ -6,6 +6,8 @@
 #include "utils.h"
 #include "fork/forksystemshortcuts.h" // [fork]
 #include "fork/forktrackpadpassthrough.h" // [fork]
+#include "fork/forkpointersync.h" // [fork]
+#include "streaming/streamutils.h" // [fork] forkPlaceHostPointer()
 
 #include <QtGlobal>
 #include <QDir>
@@ -356,6 +358,14 @@ bool SdlInputHandler::isSystemKeyCaptureActive()
 void SdlInputHandler::setCaptureActive(bool active)
 {
     if (active) {
+        // [fork] One pointer from the start: Mac trackpad mode moves Windows' pointer by deltas only,
+        // so the stream's first capture puts it where the Mac's is, read before relative mode parks
+        // the Mac's in the middle of the window
+        if (!m_AbsoluteMouseMode && !m_ForkPointerPlaced && ForkTrackpadPassthrough::macPointerMode()) {
+            m_ForkPointerPlaced = true;
+            forkPlaceHostPointer();
+        }
+
         // If we're in relative mode, try to activate SDL's relative mouse mode
         if (m_AbsoluteMouseMode || SDL_SetRelativeMouseMode(SDL_TRUE) < 0) {
             // Relative mouse mode didn't work or was disabled, so we'll just hide the cursor
@@ -408,6 +418,60 @@ void SdlInputHandler::setCaptureActive(bool active)
 
     // [fork] Trackpad passthrough runs only while the stream has the mouse
     ForkTrackpadPassthrough::update();
+}
+
+// [fork] See setCaptureActive()
+void SdlInputHandler::forkPlaceHostPointer()
+{
+    int mouseX, mouseY;
+    int windowX, windowY;
+    int windowWidth, windowHeight;
+
+    // As the absolute capture's sync above: macOS may not report the pointer outside the window otherwise
+    SDL_GetGlobalMouseState(&mouseX, &mouseY);
+    SDL_GetWindowPosition(m_Window, &windowX, &windowY);
+    SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);
+
+    // The picture in the window, as the absolute mouse path finds it (handleMouseMotionEvent())
+    SDL_Rect src, dst;
+    src.x = src.y = 0;
+    src.w = m_StreamWidth;
+    src.h = m_StreamHeight;
+    dst.x = dst.y = 0;
+    dst.w = windowWidth;
+    dst.h = windowHeight;
+    StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+    if (dst.w <= 0 || dst.h <= 0) {
+        return;
+    }
+
+    ForkPointerSync::Point point = ForkPointerSync::place(mouseX - windowX, mouseY - windowY,
+                                                          ForkPointerSync::Rect { dst.x, dst.y, dst.w, dst.h });
+    LiSendMousePositionEvent((short)point.x, (short)point.y, dst.w, dst.h);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] The PC's pointer starts where the Mac's is: %d,%d of the picture's %dx%d points",
+                point.x, point.y, dst.w, dst.h);
+
+    // Apollo drops an absolute move until its capture has the display, which can be after the
+    // stream first takes the mouse: sent again 0.3 s and 1 s on, unless the pointer moved since.
+    // The timer owns its copy, so it's safe after this handler is gone (LiSend*() then refuses).
+    struct Resend {
+        short x, y;
+        int width, height;
+        unsigned moves;
+        int left;
+    };
+    Resend* resend = new Resend { (short)point.x, (short)point.y, dst.w, dst.h, ForkTrackpadPassthrough::macPointerMoves(), 2 };
+    SDL_AddTimer(300, [](Uint32, void* param) -> Uint32 {
+        Resend* r = static_cast<Resend*>(param);
+        if (ForkTrackpadPassthrough::macPointerMoves() == r->moves) {
+            LiSendMousePositionEvent(r->x, r->y, r->width, r->height);
+        }
+        if (--r->left > 0) {
+            return 700;
+        }
+        delete r;
+        return 0;
+    }, resend);
 }
 
 void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)

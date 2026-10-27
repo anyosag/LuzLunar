@@ -96,6 +96,11 @@ void becomeBackgroundApp()
             NSRunningApplication* main = [NSRunningApplication runningApplicationWithProcessIdentifier:mainPid];
             if (main != nil) {
                 SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Helper became the active app; handing that back to the main stream");
+                // Under macOS 14's cooperative activation an app hands activation over by yielding it
+                // first; activating the other app alone can leave neither in front
+                if (@available(macOS 14.0, *)) {
+                    [NSApp yieldActivationToApplication:main];
+                }
                 [main activateWithOptions:0];
             }
         }];
@@ -108,6 +113,18 @@ pid_t activePid()
     @autoreleasepool {
         NSRunningApplication* active = NSWorkspace.sharedWorkspace.frontmostApplication;
         return active != nil ? active.processIdentifier : 0;
+    }
+}
+
+std::string activeAppName()
+{
+    @autoreleasepool {
+        NSRunningApplication* active = NSWorkspace.sharedWorkspace.frontmostApplication;
+        if (active == nil) {
+            return "no app";
+        }
+        NSString* name = active.localizedName ?: active.bundleIdentifier ?: @"an app";
+        return std::string(name.UTF8String ?: "an app") + " (pid " + std::to_string(active.processIdentifier) + ")";
     }
 }
 

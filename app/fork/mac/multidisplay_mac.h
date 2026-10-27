@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include <sys/types.h>
 
@@ -24,6 +25,9 @@ namespace MultiDisplayMac
 
     // The active app's process ID; 0 if none
     pid_t activePid();
+
+    // The active app for the log, "Name (pid 123)"
+    std::string activeAppName();
 
     // Puts a helper's stream window over its display: above the menu bar and the Dock, on every
     // Space, out of Mission Control and the window cycle, without taking the keyboard
