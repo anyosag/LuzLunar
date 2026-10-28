@@ -48,6 +48,12 @@ void capture(QWindow* qtWindow, bool macTrackpad)
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Not describing the screen to the host: can't tell which one the stream is on");
         }
     }
+
+    // Whichever screen the stream is on, and whether or not it's described
+    if (prefs->hostPrimaryDisplay()) {
+        args += QString::fromStdString(ClientDisplay::primaryArg(true));
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Asking Apollo to make this Mac's screen the PC's main display (luzPrimary=1)");
+    }
 #else
     (void)qtWindow;
 #endif
