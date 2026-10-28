@@ -44,6 +44,13 @@ namespace ForkLinkRules
     // stream of this PC before
     bool shouldShow(bool viaLan, bool networkRemembered);
 
+    // Whether Moonlight's polling tries the PC's LAN address before the one it last answered on:
+    // the address is in the subnet of the interface that reaches it, that isn't a VPN, and this
+    // network carried a LAN stream of this PC before. Otherwise Moonlight keeps a PC at the address
+    // it last answered on, so a Mac back home kept reaching it through the router's public address
+    // until Bonjour found it, and a stream started before then wasn't over the LAN (no Mac drive).
+    bool lanAddressFirst(bool onLink, Kind routeKind, bool networkRemembered);
+
     // "Ethernet 1 Gb/s", "Wi-Fi 5 GHz 866 Mb/s", "VPN over Wi-Fi"; with " · not via LAN" when the
     // stream doesn't go over the LAN. Empty for an unknown link.
     std::string badge(const Link& link, bool notViaLan);

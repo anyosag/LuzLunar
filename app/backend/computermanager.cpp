@@ -2,6 +2,7 @@
 #include "boxartmanager.h"
 #include "nvhttp.h"
 #include "nvpairingmanager.h"
+#include "fork/forknetworklink.h" // [fork]
 
 #include <Limelight.h>
 #include <QtEndian>
@@ -95,8 +96,10 @@ private:
             bool stateChanged = false;
             bool online = false;
             bool wasOnline = m_Computer->state == NvComputer::CS_ONLINE;
+            NvAddress wasAt = m_Computer->activeAddress; // [fork]
             for (int i = 0; i < (wasOnline ? TRIES_BEFORE_OFFLINING : 1) && !online; i++) {
-                for (auto& address : m_Computer->uniqueAddresses()) {
+                // [fork] At home, the PC's LAN address first (ForkNetworkLink::pollOrder())
+                for (auto& address : ForkNetworkLink::pollOrder(m_Computer)) {
                     if (isInterruptionRequested()) {
                         return;
                     }
@@ -104,6 +107,9 @@ private:
                     if (tryPollComputer(&nam, address, stateChanged)) {
                         if (!wasOnline) {
                             qInfo() << m_Computer->name << "is now online at" << m_Computer->activeAddress.toString();
+                        }
+                        else if (m_Computer->activeAddress != wasAt) { // [fork] as the mDNS path says it
+                            qInfo() << m_Computer->name << "is now at" << m_Computer->activeAddress.toString();
                         }
                         online = true;
                         break;

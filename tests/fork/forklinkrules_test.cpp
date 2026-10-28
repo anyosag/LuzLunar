@@ -100,6 +100,21 @@ static void testWhenShown()
     CHECK(!shouldShow(false, false));   // anywhere else, like over the internet
 }
 
+static void testLanAddressFirst()
+{
+    // Back home, on Wi-Fi or Ethernet: the LAN address before the public one
+    CHECK(lanAddressFirst(true, Kind::WiFi, true));
+    CHECK(lanAddressFirst(true, Kind::Ethernet, true));
+    // Away, the LAN address isn't in any of the Mac's subnets
+    CHECK(!lanAddressFirst(false, Kind::WiFi, true));
+    CHECK(!lanAddressFirst(false, Kind::WiFi, false));
+    // Another network with the same subnet, like another 10.0.0.0/24 router: Moonlight's order,
+    // so polls don't wait on an address that isn't the PC's there
+    CHECK(!lanAddressFirst(true, Kind::WiFi, false));
+    // A VPN can hand out a subnet that looks local
+    CHECK(!lanAddressFirst(true, Kind::Vpn, true));
+}
+
 static void testRemembered()
 {
     std::vector<std::string> ids;
@@ -136,6 +151,7 @@ int main()
     testBadge();
     testConnection();
     testWhenShown();
+    testLanAddressFirst();
     testRemembered();
 
     if (s_Failures == 0) {
