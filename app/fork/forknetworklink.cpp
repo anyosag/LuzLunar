@@ -237,4 +237,28 @@ Current current()
     std::lock_guard<std::mutex> lock(state().mutex);
     return state().current;
 }
+
+QVector<NvAddress> pollOrder(NvComputer* computer)
+{
+    QVector<NvAddress> addresses = computer->uniqueAddresses();
+    NvAddress lanAddress;
+    QString uuid;
+    {
+        QReadLocker lock(&computer->lock);
+        lanAddress = computer->localAddress;
+        uuid = computer->uuid;
+    }
+    int at = lanAddress.isNull() ? -1 : addresses.indexOf(lanAddress);
+    if (at <= 0) {
+        return addresses;
+    }
+
+    MacNetworkLink::Probe probe = MacNetworkLink::probe(MacNetworkLink::numericAddress(lanAddress.address().toStdString()));
+    // The settings only when the address is local here: away, that's every poll
+    bool known = probe.onLink && ForkLinkRules::remembered(loadRemembered(uuid), hashed(probe.networkId));
+    if (ForkLinkRules::lanAddressFirst(probe.onLink, probe.link.kind, known)) {
+        addresses.move(at, 0);
+    }
+    return addresses;
+}
 }

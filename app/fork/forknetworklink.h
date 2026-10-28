@@ -3,7 +3,9 @@
 #include <functional>
 
 #include <QString>
+#include <QVector>
 
+#include "backend/nvaddress.h"
 #include "forklinkrules.h"
 
 class NvComputer;
@@ -37,4 +39,10 @@ namespace ForkNetworkLink
         bool shown = false;             // on a network the bar shows the link on (ForkLinkRules::shouldShow())
     };
     Current current();
+
+    // For ComputerManager's polling thread: the PC's addresses in the order to try them. Moonlight's
+    // order (the one it last answered on first), except that the PC's LAN address goes first on a
+    // network this PC was streamed over the LAN on (ForkLinkRules::lanAddressFirst()), so a Mac back
+    // home moves to the LAN at its next poll rather than when Bonjour finds the PC.
+    QVector<NvAddress> pollOrder(NvComputer* computer);
 }

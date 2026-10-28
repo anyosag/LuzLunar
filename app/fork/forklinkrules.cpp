@@ -65,6 +65,11 @@ bool shouldShow(bool viaLan, bool networkRemembered)
     return viaLan || networkRemembered;
 }
 
+bool lanAddressFirst(bool onLink, Kind routeKind, bool networkRemembered)
+{
+    return onLink && routeKind != Kind::Vpn && networkRemembered;
+}
+
 std::string speedText(double mbps)
 {
     if (!(mbps > 0)) {
