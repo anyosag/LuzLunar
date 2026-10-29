@@ -127,4 +127,9 @@ std::string queryArgs(const Description& d)
     return args;
 }
 
+std::string primaryArg(bool primary)
+{
+    return primary ? "&luzPrimary=1" : std::string();
+}
+
 }

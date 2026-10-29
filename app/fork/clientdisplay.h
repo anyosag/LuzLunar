@@ -35,4 +35,9 @@ namespace ClientDisplay
 
     // Percent-encodes everything but letters, digits and "-._~"
     std::string percentEncode(const std::string& text);
+
+    // "&luzPrimary=1" when this Mac's screen should be the PC's primary display, else empty. Apollo's
+    // Virtual Display app then makes it so, with the PC's displays still on beside it, until the app
+    // is quit; other apps and hosts ignore it. The name is Apollo's vdisplay_primary_policy::k_arg.
+    std::string primaryArg(bool primary);
 }

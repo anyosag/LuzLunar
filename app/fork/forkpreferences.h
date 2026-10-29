@@ -53,6 +53,9 @@ public:
     // Tell hosts about the Mac screen a stream shows on, for Apollo's virtual display (clientdisplay.*)
     Q_PROPERTY(bool describeDisplay READ describeDisplay WRITE setDescribeDisplay NOTIFY describeDisplayChanged)
 
+    // Ask Apollo's Virtual Display app to make this Mac's screen the PC's primary display (luzPrimary=1)
+    Q_PROPERTY(bool hostPrimaryDisplay READ hostPrimaryDisplay WRITE setHostPrimaryDisplay NOTIFY hostPrimaryDisplayChanged)
+
     // The HDR peak brightness in nits to tell hosts; 0 works it out from the screen
     Q_PROPERTY(int hdrPeakOverride READ hdrPeakOverride WRITE setHdrPeakOverride NOTIFY hdrPeakOverrideChanged)
 
@@ -154,6 +157,9 @@ public:
     bool describeDisplay() const { return m_DescribeDisplay; }
     void setDescribeDisplay(bool enabled);
 
+    bool hostPrimaryDisplay() const { return m_HostPrimaryDisplay; }
+    void setHostPrimaryDisplay(bool enabled);
+
     int hdrPeakOverride() const { return m_HdrPeakOverride; }
     void setHdrPeakOverride(int nits);
 
@@ -176,6 +182,7 @@ signals:
     void clipboardFilesChanged();
     void notchBarChanged();
     void describeDisplayChanged();
+    void hostPrimaryDisplayChanged();
     void hdrPeakOverrideChanged();
     void imacRouteChanged();
     void macShortcutsChanged();
@@ -196,6 +203,7 @@ private:
     bool m_NotchBarStats;
     int m_NotchBarHints;
     bool m_DescribeDisplay;
+    bool m_HostPrimaryDisplay;
     int m_HdrPeakOverride;
     int m_ImacRoute;
     bool m_MacShortcutsAll;

@@ -475,6 +475,19 @@ Column {
                 onActivated: (value) => ForkPreferences.hdrPeakOverride = value
             }
         }
+
+        // Sent whether or not the screen is described
+        Column {
+            width: parent.width
+            spacing: 0
+
+            ForkSwitchRow {
+                label: qsTr("Make this Mac the PC's main display")
+                help: qsTr("In Apollo's Virtual Display app, Windows makes this Mac's screen its main display, with the taskbar and new windows, and keeps the PC's monitors on beside it. It stays the main display until you quit the app, even after you disconnect, so quit it before someone uses the PC. Other apps and hosts ignore it.")
+                checked: ForkPreferences.hostPrimaryDisplay
+                onToggled: (on) => ForkPreferences.hostPrimaryDisplay = on
+            }
+        }
     }
 
     // ---- This Mac on the PC -----------------------------------------------------------------
