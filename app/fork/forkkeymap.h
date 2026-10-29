@@ -44,4 +44,11 @@ namespace ForkKeymap
     // True if a held Ctrl or Option key is mapped to the Windows key, so the Windows
     // modifier must be sent even when system key capture is off.
     bool heldNonGuiMappedToWin(Uint16 mod, const Map& map);
+
+    // Left Alt+M types µ, as right Alt+M does. Right Option reaches the PC as right Alt, which
+    // Windows takes for AltGr on a layout that has it, and AltGr+M is µ; left Alt+M is a menu
+    // shortcut. Windows reads Ctrl+Alt as AltGr, so with the host's left Alt held alone, M goes with
+    // Ctrl, which Apollo presses around the key (a modifier a key packet names but isn't held).
+    // hostMod is after remapModifiers(); returns it with Ctrl added for that chord, else as it was.
+    Uint16 leftAltMicro(SDL_Scancode scancode, Uint16 hostMod);
 }

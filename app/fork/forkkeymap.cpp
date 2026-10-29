@@ -110,4 +110,12 @@ bool heldNonGuiMappedToWin(Uint16 mod, const Map& map)
     return false;
 }
 
+Uint16 leftAltMicro(SDL_Scancode scancode, Uint16 hostMod)
+{
+    if (scancode == SDL_SCANCODE_M && (hostMod & (KMOD_CTRL | KMOD_ALT | KMOD_GUI | KMOD_SHIFT)) == KMOD_LALT) {
+        return hostMod | KMOD_LCTRL;
+    }
+    return hostMod;
+}
+
 }
