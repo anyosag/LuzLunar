@@ -36,6 +36,15 @@ public:
     };
     Q_ENUM(ImacRoute)
 
+    // The codec of the iMac's display's stream from the PC (ForkDisplayRoute::Codec)
+    enum ImacCodec {
+        IC_AUTOMATIC,   // straight from the PC: one the iMac decodes in hardware; through this Mac: the main stream's
+        IC_H264,
+        IC_HEVC,
+        IC_AV1,
+    };
+    Q_ENUM(ImacCodec)
+
     // What the Command (GUI), Control and Option (Alt) keys send to the host
     Q_PROPERTY(int commandKeyTarget READ commandKeyTarget WRITE setCommandKeyTarget NOTIFY keyTargetsChanged)
     Q_PROPERTY(int controlKeyTarget READ controlKeyTarget WRITE setControlKeyTarget NOTIFY keyTargetsChanged)
@@ -59,6 +68,11 @@ public:
     // "Desktop (multiple displays)": where the iMac's picture comes from when one of the Mac's
     // displays is DisplayExtend's (forkdisplayroute.*)
     Q_PROPERTY(int imacRoute READ imacRoute WRITE setImacRoute NOTIFY imacRouteChanged)
+
+    // ...and the codec and bitrate of that display's stream from the PC, on either route; a bitrate
+    // of 0 is automatic (ForkDisplayRoute::imacStream())
+    Q_PROPERTY(int imacCodec READ imacCodec WRITE setImacCodec NOTIFY imacCodecChanged)
+    Q_PROPERTY(int imacBitrateKbps READ imacBitrateKbps WRITE setImacBitrateKbps NOTIFY imacBitrateChanged)
 
     // This build, like "6.2.0-fork.ee5b3ba" (not a preference; shown in Settings)
     Q_PROPERTY(QString buildId READ buildId CONSTANT)
@@ -160,6 +174,12 @@ public:
     int imacRoute() const { return m_ImacRoute; }
     void setImacRoute(int route);
 
+    int imacCodec() const { return m_ImacCodec; }
+    void setImacCodec(int codec);
+
+    int imacBitrateKbps() const { return m_ImacBitrateKbps; }
+    void setImacBitrateKbps(int kbps);
+
     int commandKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalGui]; }
     int controlKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalCtrl]; }
     int optionKeyTarget() const { return m_KeyMap.target[ForkKeymap::PhysicalAlt]; }
@@ -178,6 +198,8 @@ signals:
     void describeDisplayChanged();
     void hdrPeakOverrideChanged();
     void imacRouteChanged();
+    void imacCodecChanged();
+    void imacBitrateChanged();
     void macShortcutsChanged();
     void trackpadPauseMacSettingsChanged();
     void trackpadScrollSpeedChanged();
@@ -198,6 +220,8 @@ private:
     bool m_DescribeDisplay;
     int m_HdrPeakOverride;
     int m_ImacRoute;
+    int m_ImacCodec;
+    int m_ImacBitrateKbps;
     bool m_MacShortcutsAll;
     bool m_TrackpadPauseMacSettings;
     double m_TrackpadScrollSpeed;

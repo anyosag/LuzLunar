@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QThreadPool>
 
+#include "forkdisplayroute.h"
+
 class ComputerManager;
 
 // Settings › Display › Multiple displays: what DisplayExtend's Host says about the iMac, and
@@ -31,6 +33,11 @@ class ForkImacSetup : public QObject
 
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
 
+    // The "iMac codec" help line: what Automatic picks and what the iMac decodes on its processor,
+    // or, as a warning, that its DisplayExtend streams H.264 only straight from the PC
+    Q_PROPERTY(QString codecHelp READ codecHelp NOTIFY changed)
+    Q_PROPERTY(bool codecHelpWarns READ codecHelpWarns NOTIFY changed)
+
 public:
     static ForkImacSetup* get();
 
@@ -38,6 +45,14 @@ public:
     bool available() const { return m_Available; }
     bool canSetUp() const { return m_CanSetUp; }
     bool busy() const { return m_Busy; }
+    QString codecHelp() const { return m_CodecHelp; }
+    bool codecHelpWarns() const { return m_CodecHelpWarns; }
+
+    // The iMac's automatic bitrate for these settings (ForkDisplayRoute::imacStream()), with this
+    // Mac's displays as they are now; 0 without DisplayExtend's display. Straight from the PC on
+    // an Automatic route, as the iMac goes when it can.
+    Q_INVOKABLE int automaticBitrateKbps(int route, int codec, int mainKbps, int mainWidth, int mainHeight,
+                                         int mainFps, int mainCodecConfig) const;
 
     Q_INVOKABLE void setComputerManager(QObject* manager);
 
@@ -56,7 +71,8 @@ signals:
 private:
     explicit ForkImacSetup(QObject* parent = nullptr);
 
-    void applyStatus(const QString& status, bool available, bool directReady, const QStringList& pairedHostIds);
+    void applyStatus(const QString& status, bool available, bool directReady, const QStringList& pairedHostIds,
+                     const ForkDisplayRoute::ImacCodecs& codecs);
     void updateCanSetUp();
 
     QPointer<ComputerManager> m_Manager;
@@ -67,4 +83,7 @@ private:
     QStringList m_PairedHostIds;
     bool m_CanSetUp = false;
     bool m_Busy = false;
+    ForkDisplayRoute::ImacCodecs m_Codecs;
+    QString m_CodecHelp;
+    bool m_CodecHelpWarns = false;
 };

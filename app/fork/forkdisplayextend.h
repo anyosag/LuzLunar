@@ -36,6 +36,8 @@ public:
         QString moonlightVersion;
         QStringList pairedHostIds;        // the PCs the iMac's Moonlight is paired with (their uniqueid)
         bool directSupported = false;
+        // direct.codecs and imac.hardwareDecoders (DisplayExtend 1.6.5); H.264 alone before
+        ForkDisplayRoute::ImacCodecs codecs;
         QString error;
     };
 
@@ -45,6 +47,7 @@ public:
         QString app;                      // the app's name on the host
         QString hostUniqueId;             // the PC's uniqueid, checked before streaming
         int width = 0, height = 0, fps = 0, bitrateKbps = 0;
+        ForkDisplayRoute::Codec codec = ForkDisplayRoute::Codec::H264;   // sent only when it isn't H.264
     };
 
     static QString socketPath();

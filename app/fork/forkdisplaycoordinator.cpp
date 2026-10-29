@@ -23,6 +23,7 @@
 #include "forkdisplayextend.h"
 #include "forkdisplayroute.h"
 #include "forkevents.h"
+#include "settings/streamingpreferences.h"
 
 #ifdef Q_OS_DARWIN
 #include "mac/multidisplay_mac.h"
@@ -43,8 +44,13 @@ namespace
     // Moonlight's default HTTP port; any other goes with the address
     constexpr uint16_t k_DefaultHttpPort = 47989;
 
-    // The iMac decodes H.264 only, which tops out well below what a Mac display may get
-    constexpr int k_DirectMaxBitrateKbps = 50000;
+    // ForkDisplayRoute (Qt-free) mirrors these for the iMac's codec
+    static_assert(ForkDisplayRoute::k_VccAutomatic == StreamingPreferences::VCC_AUTO
+                  && ForkDisplayRoute::k_VccH264 == StreamingPreferences::VCC_FORCE_H264
+                  && ForkDisplayRoute::k_VccHevc == StreamingPreferences::VCC_FORCE_HEVC
+                  && ForkDisplayRoute::k_VccHevcHdr == StreamingPreferences::VCC_FORCE_HEVC_HDR_DEPRECATED
+                  && ForkDisplayRoute::k_VccAv1 == StreamingPreferences::VCC_FORCE_AV1,
+                  "ForkDisplayRoute's codec configs follow StreamingPreferences::VideoCodecConfig");
 
     enum Code {
         CodeRefocus = 1,
@@ -150,6 +156,21 @@ struct ForkDisplayCoordinator::State
             setCloseOnExec(fd);
         }
 
+        // The iMac's display through this Mac takes the iMac codec and bitrate settings
+        int bitrateKbps = slot.bitrateKbps;
+        int videoCodecConfig = group->videoCodecConfig;
+        if (slot.external) {
+            ForkDisplayRoute::ImacStream stream = ForkDisplayRoute::imacStream(ForkDisplayRoute::Route::ViaMac, group->imacCodec,
+                                                                              group->imacBitrateKbps, slot.bitrateKbps,
+                                                                              group->videoCodecConfig, ForkDisplayRoute::ImacCodecs());
+            bitrateKbps = stream.kbps;
+            if (!stream.sameAsMain) {
+                videoCodecConfig = ForkDisplayRoute::codecConfig(stream.codec);
+            }
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Display group slot %d, the iMac's, through this Mac: %s",
+                        slot.slot, ForkDisplayRoute::describe(stream).c_str());
+        }
+
         QList<QByteArray> arguments {
             QFile::encodeName(executable),
             "--luz-helper",
@@ -163,8 +184,8 @@ struct ForkDisplayCoordinator::State
             "--display", QByteArray::number(slot.displayId),
             "--resolution", QByteArray::number(slot.width) + "x" + QByteArray::number(slot.height),
             "--fps", QByteArray::number(slot.fps),
-            "--bitrate", QByteArray::number(slot.bitrateKbps),
-            "--video-codec", QByteArray::number(group->videoCodecConfig),
+            "--bitrate", QByteArray::number(bitrateKbps),
+            "--video-codec", QByteArray::number(videoCodecConfig),
         };
         if (slot.hdr) {
             arguments.append("--hdr");
@@ -403,13 +424,17 @@ struct ForkDisplayCoordinator::State
         direct.width = slot.width;
         direct.height = slot.height;
         direct.fps = slot.fps;
-        direct.bitrateKbps = std::min(slot.bitrateKbps, k_DirectMaxBitrateKbps);
+        ForkDisplayRoute::ImacStream stream = ForkDisplayRoute::imacStream(ForkDisplayRoute::Route::Direct, group->imacCodec,
+                                                                          group->imacBitrateKbps, slot.bitrateKbps,
+                                                                          group->videoCodecConfig, facts.imacCodecs);
+        direct.codec = stream.codec;
+        direct.bitrateKbps = stream.kbps;
 
         QString error;
         bool started = bridge->startDirect(direct, k_DirectTimeoutMs, &error);
         if (started && !stopping) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] The iMac streams display group slot %d straight from the PC (%s)",
-                        slot.slot, qPrintable(direct.address));
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] The iMac streams display group slot %d straight from the PC (%s), %s",
+                        slot.slot, qPrintable(direct.address), ForkDisplayRoute::describe(stream).c_str());
             bridge.release();
             return true;
         }

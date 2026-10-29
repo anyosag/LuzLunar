@@ -242,11 +242,91 @@ static void testDecideOnRecalledFacts()
     CHECK(d.route == Route::ViaMac);
 }
 
+// DisplayExtend 1.6.5 on an iMac that decodes H.264 only in hardware
+static ImacCodecs codecs165()
+{
+    ImacCodecs imac;
+    imac.direct = { Codec::H264, Codec::Hevc, Codec::Av1 };
+    imac.hardware = { Codec::H264 };
+    return imac;
+}
+
+// Automatic: straight from the PC, a codec the iMac decodes in hardware, at twice a slot bitrate
+// sized for HEVC; through this Mac, slot 0's codec at the slot's bitrate
+static void testImacStreamAutomatic()
+{
+    const int slotKbps = 14694;   // a 1080p60 iMac beside a 3024x1890 120 Hz stream at 81 Mb/s
+    ImacStream s = imacStream(Route::Direct, CodecSetting::Automatic, 0, slotKbps, k_VccAutomatic, codecs165());
+    CHECK(s.codec == Codec::H264 && !s.sameAsMain && s.kbps == 29388 && s.automaticKbps && s.note.empty());
+    CHECK(describe(s) == "H.264 at 29388 kbps (automatic)");
+
+    s = imacStream(Route::Direct, CodecSetting::Automatic, 0, slotKbps, k_VccAutomatic, ImacCodecs());
+    CHECK(s.codec == Codec::H264 && s.kbps == 29388);   // DisplayExtend before 1.6.5
+
+    s = imacStream(Route::Direct, CodecSetting::Automatic, 0, slotKbps, k_VccH264, codecs165());
+    CHECK(s.codec == Codec::H264 && s.kbps == slotKbps);   // slot 0 is H.264 too: already sized for it
+
+    ImacCodecs hevcHardware = codecs165();
+    hevcHardware.hardware = { Codec::H264, Codec::Hevc };
+    s = imacStream(Route::Direct, CodecSetting::Automatic, 0, slotKbps, k_VccAutomatic, hevcHardware);
+    CHECK(s.codec == Codec::Hevc && s.kbps == slotKbps);
+
+    s = imacStream(Route::Direct, CodecSetting::Automatic, 0, 30000, k_VccHevc, codecs165());
+    CHECK(s.kbps == k_DirectMaxBitrateKbps);
+
+    s = imacStream(Route::ViaMac, CodecSetting::Automatic, 0, slotKbps, k_VccAutomatic, codecs165());
+    CHECK(s.sameAsMain && s.codec == Codec::Hevc && s.kbps == slotKbps);
+    CHECK(describe(s) == "slot 0's codec at 14694 kbps (automatic)");
+    s = imacStream(Route::ViaMac, CodecSetting::Automatic, 0, 60000, k_VccAutomatic, codecs165());
+    CHECK(s.kbps == 60000);   // the direct cap is for the iMac's decoder only
+}
+
+// A codec or bitrate set by hand is used on either route, except a codec the iMac's DisplayExtend
+// can't be asked for straight from the PC
+static void testImacStreamSet()
+{
+    ImacStream s = imacStream(Route::Direct, CodecSetting::Hevc, 20000, 14694, k_VccAutomatic, codecs165());
+    CHECK(s.codec == Codec::Hevc && s.kbps == 20000 && !s.automaticKbps && s.note.empty());
+    CHECK(describe(s) == "HEVC at 20000 kbps (set in Settings)");
+
+    s = imacStream(Route::Direct, CodecSetting::Hevc, 0, 14694, k_VccAutomatic, codecs165());
+    CHECK(s.codec == Codec::Hevc && s.kbps == 14694);   // HEVC needs no more than slot 0's HEVC
+
+    s = imacStream(Route::Direct, CodecSetting::Av1, 0, 14694, k_VccAutomatic, ImacCodecs());
+    CHECK(s.codec == Codec::H264 && s.kbps == 29388 && !s.note.empty());
+    CHECK(describe(s) == "H.264 at 29388 kbps (automatic; AV1 is set, but the iMac's DisplayExtend streams H.264 only before 1.6.5)");
+
+    s = imacStream(Route::ViaMac, CodecSetting::Av1, 0, 14694, k_VccAutomatic, ImacCodecs());
+    CHECK(s.codec == Codec::Av1 && !s.sameAsMain && s.note.empty());   // the Mac's helper takes any codec
+
+    s = imacStream(Route::ViaMac, CodecSetting::H264, 0, 14694, k_VccAutomatic, ImacCodecs());
+    CHECK(s.codec == Codec::H264 && s.kbps == 29388);
+    s = imacStream(Route::ViaMac, CodecSetting::Hevc, 0, 14694, k_VccH264, ImacCodecs());
+    CHECK(s.kbps == 7347);   // HEVC beside an H.264 slot 0: half
+
+    CHECK(imacStream(Route::Direct, CodecSetting::H264, 500, 14694, k_VccAutomatic, codecs165()).kbps == k_ImacMinBitrateKbps);
+    CHECK(imacStream(Route::Direct, CodecSetting::H264, 900000, 14694, k_VccAutomatic, codecs165()).kbps == k_ImacMaxBitrateKbps);
+    CHECK(imacStream(Route::ViaMac, CodecSetting::Hevc, 0, 2000, k_VccH264, codecs165()).kbps == k_ImacMinBitrateKbps);
+}
+
+static void testCodecNames()
+{
+    Codec c = Codec::H264;
+    CHECK(parseCodec("HEVC", &c) && c == Codec::Hevc);
+    CHECK(parseCodec("AV1", &c) && c == Codec::Av1);
+    CHECK(parseCodec("H.264", &c) && c == Codec::H264);
+    CHECK(!parseCodec("h264", &c) && c == Codec::H264);
+    CHECK(codecConfig(Codec::H264) == k_VccH264 && codecConfig(Codec::Hevc) == k_VccHevc && codecConfig(Codec::Av1) == k_VccAv1);
+}
+
 int main()
 {
     testDirectWins();
     testAnswering();
     testDecideOnRecalledFacts();
+    testImacStreamAutomatic();
+    testImacStreamSet();
+    testCodecNames();
     testViaMacWhenFaster();
     testViaMacWhenSteadier();
     testIneligible();

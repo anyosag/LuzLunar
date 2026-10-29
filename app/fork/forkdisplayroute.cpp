@@ -107,6 +107,106 @@ std::vector<size_t> answering(const std::vector<Probe>& firstRound)
     return kept;
 }
 
+const char* codecName(Codec codec)
+{
+    switch (codec) {
+    case Codec::Hevc:
+        return "HEVC";
+    case Codec::Av1:
+        return "AV1";
+    default:
+        return "H.264";
+    }
+}
+
+bool parseCodec(const std::string& name, Codec* codec)
+{
+    for (Codec candidate : { Codec::H264, Codec::Hevc, Codec::Av1 }) {
+        if (name == codecName(candidate)) {
+            *codec = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+int codecConfig(Codec codec)
+{
+    return codec == Codec::Hevc ? k_VccHevc : codec == Codec::Av1 ? k_VccAv1 : k_VccH264;
+}
+
+namespace
+{
+    bool contains(const std::vector<Codec>& codecs, Codec codec)
+    {
+        return std::find(codecs.begin(), codecs.end(), codec) != codecs.end();
+    }
+
+    // The bits a codec needs for a picture, against HEVC's and AV1's
+    int weight(Codec codec)
+    {
+        return codec == Codec::H264 ? 2 : 1;
+    }
+}
+
+ImacStream imacStream(Route route, CodecSetting codecSetting, int kbpsSetting, int slotKbps,
+                      int mainCodecConfig, const ImacCodecs& imac)
+{
+    ImacStream stream;
+    Codec mainCodec = mainCodecConfig == k_VccH264 ? Codec::H264
+                    : mainCodecConfig == k_VccAv1  ? Codec::Av1
+                                                   : Codec::Hevc;
+
+    if (codecSetting == CodecSetting::Automatic) {
+        if (route == Route::ViaMac) {
+            stream.codec = mainCodec;
+            stream.sameAsMain = true;
+        }
+        else {
+            stream.codec = Codec::H264;
+            for (Codec preferred : { Codec::Hevc, Codec::Av1 }) {
+                if (contains(imac.hardware, preferred) && contains(imac.direct, preferred)) {
+                    stream.codec = preferred;
+                    break;
+                }
+            }
+        }
+    }
+    else {
+        Codec wanted = codecSetting == CodecSetting::Hevc ? Codec::Hevc
+                     : codecSetting == CodecSetting::Av1  ? Codec::Av1
+                                                          : Codec::H264;
+        stream.codec = wanted;
+        if (route == Route::Direct && !contains(imac.direct, wanted)) {
+            stream.codec = Codec::H264;
+            stream.note = std::string(codecName(wanted)) + " is set, but the iMac's DisplayExtend streams H.264 only before 1.6.5";
+        }
+    }
+
+    if (kbpsSetting > 0) {
+        stream.kbps = std::clamp(kbpsSetting, k_ImacMinBitrateKbps, k_ImacMaxBitrateKbps);
+        stream.automaticKbps = false;
+    }
+    else {
+        long kbps = static_cast<long>(slotKbps) * weight(stream.codec) / weight(mainCodec);
+        if (route == Route::Direct) {
+            kbps = std::min<long>(kbps, k_DirectMaxBitrateKbps);
+        }
+        stream.kbps = static_cast<int>(std::max<long>(kbps, k_ImacMinBitrateKbps));
+    }
+    return stream;
+}
+
+std::string describe(const ImacStream& stream)
+{
+    std::string text = stream.sameAsMain ? "slot 0's codec" : codecName(stream.codec);
+    text += " at " + std::to_string(stream.kbps) + " kbps (" + (stream.automaticKbps ? "automatic" : "set in Settings");
+    if (!stream.note.empty()) {
+        text += "; " + stream.note;
+    }
+    return text + ")";
+}
+
 double median(std::vector<double> values)
 {
     if (values.empty()) {

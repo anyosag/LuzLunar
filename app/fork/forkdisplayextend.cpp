@@ -271,7 +271,27 @@ ForkDisplayExtend::Status ForkDisplayExtend::status(int timeoutMs)
         status.pairedHostIds.append(id.toString());
     }
 
-    status.directSupported = reply.value("direct").toObject().value("supported").toBool();
+    QJsonObject direct = reply.value("direct").toObject();
+    status.directSupported = direct.value("supported").toBool();
+
+    // Codecs the bridge names; a Host before 1.6.5 names none, and its iMac streams H.264
+    auto codecs = [](const QJsonValue& list, std::vector<ForkDisplayRoute::Codec>* out) {
+        if (!list.isArray()) {
+            return;
+        }
+        std::vector<ForkDisplayRoute::Codec> parsed;
+        for (const QJsonValue& name : list.toArray()) {
+            ForkDisplayRoute::Codec codec;
+            if (ForkDisplayRoute::parseCodec(name.toString().toStdString(), &codec)) {
+                parsed.push_back(codec);
+            }
+        }
+        if (!parsed.empty()) {
+            *out = parsed;
+        }
+    };
+    codecs(direct.value("codecs"), &status.codecs.direct);
+    codecs(imac.value("hardwareDecoders"), &status.codecs.hardware);
     return status;
 }
 
@@ -318,6 +338,10 @@ bool ForkDisplayExtend::startDirect(const Direct& direct, int timeoutMs, QString
         { "fps", direct.fps },
         { "bitrateKbps", direct.bitrateKbps },
     };
+    // A Host before 1.6.5 takes no codec and streams H.264
+    if (direct.codec != ForkDisplayRoute::Codec::H264) {
+        arguments.insert("videoCodec", QString::fromLatin1(ForkDisplayRoute::codecName(direct.codec)));
+    }
     if (request(QStringLiteral("startDirect"), arguments, remaining(timer, timeoutMs), error).isEmpty()) {
         return false;
     }

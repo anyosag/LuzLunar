@@ -181,6 +181,8 @@ void prepareSession(NvComputer* computer, const NvApp& app, StreamingPreferences
     group->appId = app.id;
     group->videoCodecConfig = prefs->videoCodecConfig;
     group->route = static_cast<ForkDisplayRoute::Setting>(ForkPreferences::get()->imacRoute());
+    group->imacCodec = static_cast<ForkDisplayRoute::CodecSetting>(ForkPreferences::get()->imacCodec());
+    group->imacBitrateKbps = ForkPreferences::get()->imacBitrateKbps();
 
     ForkDisplayGroup::Stream stream;
     stream.width = prefs->width;
@@ -346,6 +348,7 @@ RouteCheck checkRoute(const Group& group, const ForkRouteMemory::Memory* remembe
     if (status.hz > 0) {
         facts.virtualRefreshHz = status.hz;
     }
+    facts.imacCodecs = status.codecs;
     check.key = routeKey(group, status);
 
     // A Resume: the launch measured for the same PC, iMac, display and network, so its connect

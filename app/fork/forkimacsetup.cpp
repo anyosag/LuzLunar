@@ -14,6 +14,9 @@
 #include "backend/computermanager.h"
 #include "backend/nvcomputer.h"
 #include "forkdisplayextend.h"
+#include "forkdisplaygroup.h"
+#include "forkmultidisplay.h"
+#include "forkpreferences.h"
 
 namespace
 {
@@ -52,6 +55,35 @@ namespace
         }
         return QObject::tr("The iMac can stream straight from %1.").arg(pairedNames.join(QStringLiteral(", ")));
     }
+
+    // The "iMac codec" help line; *warns when the iMac's DisplayExtend can't be asked for a codec
+    QString describeCodecs(bool available, bool directReady, const ForkDisplayRoute::ImacCodecs& codecs, bool* warns)
+    {
+        using namespace ForkDisplayRoute;
+        *warns = false;
+        if (!available) {
+            return QObject::tr("Automatic: straight from the PC, a codec the iMac decodes in hardware; through this Mac, the main stream's codec.");
+        }
+        if (directReady && codecs.direct.size() < 2) {
+            *warns = true;
+            return QObject::tr("Straight from the PC, the iMac streams H.264 until both Macs have DisplayExtend 1.6.5.");
+        }
+
+        Codec automatic = imacStream(Route::Direct, CodecSetting::Automatic, 0, k_ImacMinBitrateKbps, k_VccAutomatic, codecs).codec;
+        QStringList software;
+        for (Codec codec : { Codec::Hevc, Codec::Av1 }) {
+            if (std::find(codecs.hardware.begin(), codecs.hardware.end(), codec) == codecs.hardware.end()) {
+                software.append(QString::fromLatin1(codecName(codec)));
+            }
+        }
+        QString text = QObject::tr("Automatic: %1 straight from the PC, which this iMac decodes in hardware, and the main stream's codec through this Mac.")
+                           .arg(QString::fromLatin1(codecName(automatic)));
+        if (!software.isEmpty()) {
+            text += QLatin1Char(' ') + QObject::tr("Straight from the PC, this iMac decodes %1 on its processor, which costs it time and power.")
+                                           .arg(software.join(QObject::tr(" and ")));
+        }
+        return text;
+    }
 }
 
 ForkImacSetup* ForkImacSetup::get()
@@ -79,10 +111,34 @@ void ForkImacSetup::setComputerManager(QObject* manager)
     refresh();
 }
 
+int ForkImacSetup::automaticBitrateKbps(int route, int codec, int mainKbps, int mainWidth, int mainHeight,
+                                        int mainFps, int mainCodecConfig) const
+{
+    ForkDisplayGroup::Stream stream;
+    stream.width = mainWidth;
+    stream.height = mainHeight;
+    stream.fps = mainFps;
+    stream.bitrateKbps = mainKbps;
+
+    // The plan a launch would make now, for the slot of DisplayExtend's display
+    std::vector<ForkDisplayGroup::MacDisplay> displays = ForkMultiDisplay::macDisplays();
+    ForkDisplayGroup::Plan plan = ForkDisplayGroup::plan(displays, stream, static_cast<int>(displays.size()), "settings");
+    for (const ForkDisplayGroup::Slot& slot : plan.slotList) {
+        if (slot.external) {
+            ForkDisplayRoute::Route imacRoute = route == ForkPreferences::IR_VIA_MAC ? ForkDisplayRoute::Route::ViaMac
+                                                                                      : ForkDisplayRoute::Route::Direct;
+            return ForkDisplayRoute::imacStream(imacRoute, static_cast<ForkDisplayRoute::CodecSetting>(codec), 0,
+                                                slot.bitrateKbps, mainCodecConfig, m_Codecs).kbps;
+        }
+    }
+    return 0;
+}
+
 void ForkImacSetup::refresh()
 {
     if (!ForkDisplayExtend::available()) {
-        applyStatus(tr("DisplayExtend's Host isn't running on this Mac, or is older than 1.6."), false, false, QStringList());
+        applyStatus(tr("DisplayExtend's Host isn't running on this Mac, or is older than 1.6."), false, false, QStringList(),
+                    ForkDisplayRoute::ImacCodecs());
         return;
     }
 
@@ -109,17 +165,20 @@ void ForkImacSetup::refresh()
                 }
             }
             self->applyStatus(describeStatus(status, pairedNames), status.ok && status.imacConnected,
-                              status.directSupported && status.moonlightVerified, status.pairedHostIds);
+                              status.directSupported && status.moonlightVerified, status.pairedHostIds, status.codecs);
         }, Qt::QueuedConnection);
     });
 }
 
-void ForkImacSetup::applyStatus(const QString& status, bool available, bool directReady, const QStringList& pairedHostIds)
+void ForkImacSetup::applyStatus(const QString& status, bool available, bool directReady, const QStringList& pairedHostIds,
+                                const ForkDisplayRoute::ImacCodecs& codecs)
 {
     m_Status = status;
     m_Available = available;
     m_DirectReady = directReady;
     m_PairedHostIds = pairedHostIds;
+    m_Codecs = codecs;
+    m_CodecHelp = describeCodecs(available, directReady, codecs, &m_CodecHelpWarns);
     updateCanSetUp();
     emit changed();
 }

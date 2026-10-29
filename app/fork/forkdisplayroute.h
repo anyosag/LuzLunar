@@ -19,6 +19,23 @@ namespace ForkDisplayRoute
 
     enum class Route { Direct, ViaMac };
 
+    // The codecs of the iMac's display's stream from the PC
+    enum class Codec { H264, Hevc, Av1 };
+
+    // "H.264", "HEVC", "AV1": Moonlight's names, which DisplayExtend's bridge takes and reports
+    const char* codecName(Codec codec);
+    bool parseCodec(const std::string& name, Codec* codec);
+
+    // The "iMac codec" setting (ForkPreferences::ImacCodec)
+    enum class CodecSetting { Automatic = 0, H264 = 1, Hevc = 2, Av1 = 3 };
+
+    // What the iMac's DisplayExtend reports on its bridge status. Before 1.6.5 a direct run streams
+    // H.264 only, and nothing says what the iMac decodes in hardware (its iMac16,2 does H.264).
+    struct ImacCodecs {
+        std::vector<Codec> direct = { Codec::H264 };     // what a direct run can be asked for
+        std::vector<Codec> hardware = { Codec::H264 };   // what the iMac decodes in hardware
+    };
+
     // TCP connects to the PC's HTTPS port from one machine to one of the PC's addresses
     struct Probe {
         std::string address;
@@ -40,6 +57,7 @@ namespace ForkDisplayRoute
         int displayExtendFrames = 0;      // frames that went into it
         int imacRefreshHz = 60;
         int virtualRefreshHz = 60;        // the Mac's DisplayExtend display
+        ImacCodecs imacCodecs;
     };
 
     struct Decision {
@@ -87,4 +105,42 @@ namespace ForkDisplayRoute
     // An address the iMac can't reach at all (the PC's home address, away from home) waits out a
     // timeout on every connect, which made each round about 2 s instead of 250 ms.
     std::vector<size_t> answering(const std::vector<Probe>& firstRound);
+
+    // StreamingPreferences::VideoCodecConfig, which slot 0 and the helpers are set by; kept the same
+    // there by static_asserts in forkdisplaycoordinator.cpp
+    constexpr int k_VccAutomatic = 0, k_VccH264 = 1, k_VccHevc = 2, k_VccHevcHdr = 3, k_VccAv1 = 4;
+    int codecConfig(Codec codec);
+
+    // The "iMac bitrate" setting's range; 0 is automatic
+    constexpr int k_ImacMinBitrateKbps = 2000;
+    constexpr int k_ImacMaxBitrateKbps = 100000;
+
+    // An automatic bitrate straight from the PC stops here: the iMac's hardware decodes H.264 only,
+    // which tops out well below what a Mac display may get
+    constexpr int k_DirectMaxBitrateKbps = 50000;
+
+    struct ImacStream {
+        Codec codec = Codec::H264;   // through this Mac on Automatic: what slot 0's setting asks for (HEVC when automatic)
+        bool sameAsMain = false;     // through this Mac on Automatic: the helper takes slot 0's codec setting as is
+        int kbps = 0;
+        bool automaticKbps = true;
+        std::string note;            // why the codec isn't the one set; empty when it is
+    };
+
+    // The codec and bitrate of the iMac's display's stream from the PC: the iMac's Moonlight's
+    // straight from the PC, the helper's through this Mac.
+    // - Codec: as set; on Automatic, straight from the PC one the iMac decodes in hardware (HEVC,
+    //   then AV1, then H.264), through this Mac slot 0's. Straight from the PC, a codec the iMac's
+    //   DisplayExtend can't be asked for is H.264, with a note.
+    // - Bitrate: as set; on Automatic, the slot's (slot 0's scaled by pixel rate, ForkDisplayGroup::
+    //   plan(), so sized for slot 0's codec), times two when the iMac's is H.264 and slot 0's isn't,
+    //   halved the other way round (slot 0 on Automatic counts as HEVC). At the scaled 14.7 Mbps
+    //   a 1080p60 desktop's colors pulsed on the iMac in H.264, as Apollo re-encoded the still
+    //   picture, while the same display through this Mac (HEVC from the PC) was steady.
+    ImacStream imacStream(Route route, CodecSetting codecSetting, int kbpsSetting, int slotKbps,
+                          int mainCodecConfig, const ImacCodecs& imac);
+
+    // "HEVC at 20000 kbps (set in Settings)", "H.264 at 29388 kbps (automatic)", "slot 0's codec at
+    // 14694 kbps (automatic)", with the note after a semicolon
+    std::string describe(const ImacStream& stream);
 }

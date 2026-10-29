@@ -33,6 +33,9 @@ namespace ForkMultiDisplay
         int appId = 0;
         int videoCodecConfig = 0;        // slot 0's StreamingPreferences::VideoCodecConfig
         ForkDisplayRoute::Setting route = ForkDisplayRoute::Setting::Automatic;
+        // The iMac's display's stream from the PC (ForkDisplayRoute::imacStream()); a bitrate of 0 is automatic
+        ForkDisplayRoute::CodecSetting imacCodec = ForkDisplayRoute::CodecSetting::Automatic;
+        int imacBitrateKbps = 0;
         bool resume = false;             // the app runs on the PC already: Resume, not a launch
     };
 

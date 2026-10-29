@@ -7,6 +7,7 @@
 #include <QSettings>
 #include <QVariantMap>
 
+#include "forkdisplayroute.h"
 #include "forkmacshortcuts.h"
 #include "mac/gesturesuppressor_mac.h"
 #include "mac/macdrivesetup.h"
@@ -20,6 +21,8 @@
 #define SER_DESCRIBEDISPLAY "fork/describeDisplay"
 #define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
 #define SER_IMACROUTE "fork/imacRoute"
+#define SER_IMACCODEC "fork/imacCodec"
+#define SER_IMACBITRATE "fork/imacBitrateKbps"
 #define SER_MACSHORTCUTS "fork/macShortcuts"
 #define SER_MACSHORTCUTSALL "fork/macShortcutsAll"
 #define SER_TRACKPADPAUSEMACSETTINGS "fork/trackpadPauseMacSettings"
@@ -87,6 +90,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_DescribeDisplay(true),
       m_HdrPeakOverride(0),
       m_ImacRoute(IR_AUTOMATIC),
+      m_ImacCodec(IC_AUTOMATIC),
+      m_ImacBitrateKbps(0),
       m_MacShortcutsAll(false),
       m_TrackpadPauseMacSettings(true),
       m_TrackpadScrollSpeed(1.0),
@@ -130,6 +135,14 @@ ForkPreferences::ForkPreferences(QObject* parent)
     int route = settings.value(SER_IMACROUTE, m_ImacRoute).toInt();
     if (route >= IR_AUTOMATIC && route <= IR_VIA_MAC) {
         m_ImacRoute = route;
+    }
+    int codec = settings.value(SER_IMACCODEC, m_ImacCodec).toInt();
+    if (codec >= IC_AUTOMATIC && codec <= IC_AV1) {
+        m_ImacCodec = codec;
+    }
+    int imacKbps = settings.value(SER_IMACBITRATE, m_ImacBitrateKbps).toInt();
+    if (imacKbps == 0 || (imacKbps >= ForkDisplayRoute::k_ImacMinBitrateKbps && imacKbps <= ForkDisplayRoute::k_ImacMaxBitrateKbps)) {
+        m_ImacBitrateKbps = imacKbps;
     }
     m_TrackpadPauseMacSettings = settings.value(SER_TRACKPADPAUSEMACSETTINGS, m_TrackpadPauseMacSettings).toBool();
     double scrollSpeed = settings.value(SER_TRACKPADSCROLLSPEED, m_TrackpadScrollSpeed).toDouble();
@@ -275,6 +288,32 @@ void ForkPreferences::setImacRoute(int route)
     m_ImacRoute = route;
     QSettings().setValue(SER_IMACROUTE, route);
     emit imacRouteChanged();
+}
+
+void ForkPreferences::setImacCodec(int codec)
+{
+    if (codec < IC_AUTOMATIC || codec > IC_AV1 || codec == m_ImacCodec) {
+        return;
+    }
+
+    m_ImacCodec = codec;
+    QSettings().setValue(SER_IMACCODEC, codec);
+    emit imacCodecChanged();
+}
+
+void ForkPreferences::setImacBitrateKbps(int kbps)
+{
+    // 0 is automatic; anything else is kept in the slider's range
+    if (kbps != 0) {
+        kbps = std::clamp(kbps, ForkDisplayRoute::k_ImacMinBitrateKbps, ForkDisplayRoute::k_ImacMaxBitrateKbps);
+    }
+    if (kbps == m_ImacBitrateKbps) {
+        return;
+    }
+
+    m_ImacBitrateKbps = kbps;
+    QSettings().setValue(SER_IMACBITRATE, kbps);
+    emit imacBitrateChanged();
 }
 
 void ForkPreferences::setMacDrive(bool enabled)

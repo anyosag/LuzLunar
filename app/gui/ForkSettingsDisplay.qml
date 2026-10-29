@@ -800,6 +800,125 @@ Column {
             }
         }
 
+        // The iMac's display's stream from the PC, on either route (ForkDisplayRoute::imacStream())
+        Column {
+            width: parent.width
+            spacing: 10
+
+            ForkText {
+                kind: "label"
+                font.weight: Font.DemiBold
+                text: qsTr("iMac codec")
+            }
+
+            ForkSegmented {
+                accessibleName: qsTr("iMac codec")
+                options: [
+                    { "value": ForkPreferences.IC_AUTOMATIC, "label": qsTr("Automatic") },
+                    { "value": ForkPreferences.IC_H264, "label": "H.264" },
+                    { "value": ForkPreferences.IC_HEVC, "label": "HEVC" },
+                    { "value": ForkPreferences.IC_AV1, "label": "AV1" }
+                ]
+                value: ForkPreferences.imacCodec
+                onActivated: (value) => ForkPreferences.imacCodec = value
+            }
+
+            ForkText {
+                width: parent.width
+                kind: "help"
+                color: ForkImacSetup.codecHelpWarns ? ForkTheme.warnText : ForkTheme.muted
+                text: ForkImacSetup.codecHelp
+                visible: text !== ""
+            }
+        }
+
+        Column {
+            id: imacBitrate
+            width: parent.width
+            spacing: 8
+
+            // What Automatic gives now; again when DisplayExtend reports what the iMac takes
+            readonly property int automaticKbps: {
+                var reported = ForkImacSetup.codecHelp
+                return ForkImacSetup.automaticBitrateKbps(ForkPreferences.imacRoute, ForkPreferences.imacCodec,
+                                                          StreamingPreferences.bitrateKbps, StreamingPreferences.width,
+                                                          StreamingPreferences.height, StreamingPreferences.fps,
+                                                          StreamingPreferences.videoCodecConfig)
+            }
+            readonly property bool setByHand: ForkPreferences.imacBitrateKbps > 0
+
+            // To the nearest half Mb/s: "29.5 Mb/s"
+            function mbps(kbps) {
+                return qsTr("%1 Mb/s").arg(Math.round(kbps / 500) / 2)
+            }
+
+            Item {
+                width: parent.width
+                height: imacBitrateLabel.implicitHeight
+
+                ForkText {
+                    id: imacBitrateLabel
+                    kind: "label"
+                    font.weight: Font.DemiBold
+                    text: qsTr("iMac bitrate")
+                }
+
+                ForkText {
+                    anchors.right: parent.right
+                    kind: "mono"
+                    font.pixelSize: 14
+                    color: ForkTheme.accentInk
+                    text: imacBitrate.setByHand ? imacBitrate.mbps(ForkPreferences.imacBitrateKbps)
+                        : imacBitrate.automaticKbps > 0 ? qsTr("Automatic · %1").arg(imacBitrate.mbps(imacBitrate.automaticKbps))
+                        : qsTr("Automatic")
+                }
+            }
+
+            // 2 to 100 Mb/s: ForkDisplayRoute::k_ImacMinBitrateKbps and k_ImacMaxBitrateKbps
+            ForkSlider {
+                id: imacBitrateSlider
+                width: parent.width
+                from: 2000
+                to: 100000
+                stepSize: 500
+                Accessible.name: qsTr("iMac bitrate")
+
+                onMoved: ForkPreferences.imacBitrateKbps = value
+
+                // Shows the automatic bitrate until it's set by hand
+                Binding on value {
+                    value: imacBitrate.setByHand ? ForkPreferences.imacBitrateKbps : Math.max(imacBitrate.automaticKbps, 2000)
+                    when: !imacBitrateSlider.pressed
+                }
+            }
+
+            Item {
+                width: parent.width
+                height: Math.max(imacBitrateHelp.implicitHeight, imacAutomaticButton.implicitHeight)
+
+                ForkText {
+                    id: imacBitrateHelp
+                    anchors.left: parent.left
+                    anchors.right: imacAutomaticButton.visible ? imacAutomaticButton.left : parent.right
+                    anchors.rightMargin: imacAutomaticButton.visible ? 8 : 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "help"
+                    text: qsTr("Automatic follows the main stream's bitrate for the iMac's display size, twice it for H.264.")
+                }
+
+                ForkButton {
+                    id: imacAutomaticButton
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    kind: "link"
+                    visible: imacBitrate.setByHand
+                    text: imacBitrate.automaticKbps > 0 ? qsTr("Use automatic (%1)").arg(imacBitrate.mbps(imacBitrate.automaticKbps))
+                                                        : qsTr("Use automatic")
+                    onClicked: ForkPreferences.imacBitrateKbps = 0
+                }
+            }
+        }
+
         Item {
             width: parent.width
             height: Math.max(imacStatus.implicitHeight, setUpButton.visible ? setUpButton.implicitHeight : 0)
