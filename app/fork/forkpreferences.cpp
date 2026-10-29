@@ -19,6 +19,7 @@
 #define SER_NOTCHBARSTATS "fork/notchBarStats"
 #define SER_NOTCHBARHINTS "fork/notchBarHints"
 #define SER_DESCRIBEDISPLAY "fork/describeDisplay"
+#define SER_LEFTOPTIONMICRO "fork/leftOptionMicro"
 #define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
 #define SER_IMACROUTE "fork/imacRoute"
 #define SER_IMACCODEC "fork/imacCodec"
@@ -88,6 +89,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_NotchBarStats(true),
       m_NotchBarHints(0),
       m_DescribeDisplay(true),
+      m_LeftOptionMicro(true),
       m_HdrPeakOverride(0),
       m_ImacRoute(IR_AUTOMATIC),
       m_ImacCodec(IC_AUTOMATIC),
@@ -125,6 +127,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
     m_NotchBarStats = settings.value(SER_NOTCHBARSTATS, m_NotchBarStats).toBool();
     m_NotchBarHints = settings.value(SER_NOTCHBARHINTS, m_NotchBarHints).toInt();
     m_DescribeDisplay = settings.value(SER_DESCRIBEDISPLAY, m_DescribeDisplay).toBool();
+    m_LeftOptionMicro = settings.value(SER_LEFTOPTIONMICRO, m_LeftOptionMicro).toBool();
 
     int peak = settings.value(SER_HDRPEAKOVERRIDE, m_HdrPeakOverride).toInt();
     if (peak >= 0 && peak <= MAX_HDR_PEAK) {
@@ -266,6 +269,17 @@ void ForkPreferences::setDescribeDisplay(bool enabled)
     m_DescribeDisplay = enabled;
     QSettings().setValue(SER_DESCRIBEDISPLAY, enabled);
     emit describeDisplayChanged();
+}
+
+void ForkPreferences::setLeftOptionMicro(bool enabled)
+{
+    if (enabled == m_LeftOptionMicro) {
+        return;
+    }
+
+    m_LeftOptionMicro = enabled;
+    QSettings().setValue(SER_LEFTOPTIONMICRO, enabled);
+    emit leftOptionMicroChanged();
 }
 
 void ForkPreferences::setHdrPeakOverride(int nits)

@@ -68,7 +68,7 @@ bool preprocessKeyEvent(SDL_KeyboardEvent* event, bool& forceGui)
 
     const ForkKeymap::Map& map = ForkPreferences::get()->keyMap();
     if (ForkKeymap::isIdentity(map)) {
-        if (event->state == SDL_PRESSED) {
+        if (event->state == SDL_PRESSED && ForkPreferences::get()->leftOptionMicro()) {
             event->keysym.mod = ForkKeymap::leftAltMicro(event->keysym.scancode, event->keysym.mod);
         }
         return false;
@@ -93,7 +93,8 @@ bool preprocessKeyEvent(SDL_KeyboardEvent* event, bool& forceGui)
     }
 
     event->keysym.mod = ForkKeymap::remapModifiers(event->keysym.mod, map);
-    if (event->state == SDL_PRESSED) {
+    // Left Option+M types µ, when Settings › Keyboard has it on
+    if (event->state == SDL_PRESSED && ForkPreferences::get()->leftOptionMicro()) {
         event->keysym.mod = ForkKeymap::leftAltMicro(event->keysym.scancode, event->keysym.mod);
     }
     return false;

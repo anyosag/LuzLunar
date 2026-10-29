@@ -219,6 +219,15 @@ Column {
             }
         }
 
+        // Right Option is AltGr on the PC; left Option+M gets µ the same way (ForkKeymap::leftAltMicro())
+        ForkSwitchRow {
+            visible: SystemProperties.isDarwin
+            label: qsTr("Left Option+M types µ")
+            help: qsTr("Right Option is AltGr on the PC, which types µ with M; this makes left Option do the same. Off, left Option+M is Alt+M, an app's own shortcut.")
+            checked: ForkPreferences.leftOptionMicro
+            onToggled: (on) => ForkPreferences.leftOptionMicro = on
+        }
+
         Flow {
             id: modifierTips
             visible: SystemProperties.isDarwin

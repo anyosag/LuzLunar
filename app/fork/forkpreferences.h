@@ -50,6 +50,9 @@ public:
     Q_PROPERTY(int controlKeyTarget READ controlKeyTarget WRITE setControlKeyTarget NOTIFY keyTargetsChanged)
     Q_PROPERTY(int optionKeyTarget READ optionKeyTarget WRITE setOptionKeyTarget NOTIFY keyTargetsChanged)
 
+    // Left Option+M types µ on the PC, as right Option+M does (ForkKeymap::leftAltMicro())
+    Q_PROPERTY(bool leftOptionMicro READ leftOptionMicro WRITE setLeftOptionMicro NOTIFY leftOptionMicroChanged)
+
     // Clipboard sync with Apollo hosts
     Q_PROPERTY(int clipboardSyncMode READ clipboardSyncMode WRITE setClipboardSyncMode NOTIFY clipboardSyncModeChanged)
 
@@ -168,6 +171,9 @@ public:
     bool describeDisplay() const { return m_DescribeDisplay; }
     void setDescribeDisplay(bool enabled);
 
+    bool leftOptionMicro() const { return m_LeftOptionMicro; }
+    void setLeftOptionMicro(bool enabled);
+
     int hdrPeakOverride() const { return m_HdrPeakOverride; }
     void setHdrPeakOverride(int nits);
 
@@ -196,6 +202,7 @@ signals:
     void clipboardFilesChanged();
     void notchBarChanged();
     void describeDisplayChanged();
+    void leftOptionMicroChanged();
     void hdrPeakOverrideChanged();
     void imacRouteChanged();
     void imacCodecChanged();
@@ -218,6 +225,7 @@ private:
     bool m_NotchBarStats;
     int m_NotchBarHints;
     bool m_DescribeDisplay;
+    bool m_LeftOptionMicro;
     int m_HdrPeakOverride;
     int m_ImacRoute;
     int m_ImacCodec;

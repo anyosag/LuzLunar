@@ -124,6 +124,7 @@ Fixes to code the fork doesn't own (`moonlight-common-c`) live in `patches/<name
     - **Why it differs:** right Option reaches the PC as right Alt, which Windows takes for AltGr on a layout that has it, and AltGr+M is µ. Left Option is left Alt, and Alt+M is a menu shortcut.
     - **How:** with the host's left Alt held alone, M goes with the Ctrl flag. Apollo presses Ctrl around a key whose packet names a modifier that isn't held, and Windows reads Ctrl+Alt as AltGr.
     - **What it costs:** an app's own Alt+M shortcut (Excel's Formulas tab, say) is gone from left Option; right Option was always AltGr.
+    - **The switch:** Settings › Keyboard & Clipboard › "Left Option+M types µ", under the modifier keys (`fork/leftOptionMicro`, on by default). Off, left Option+M is plain Alt+M.
   - While streaming with Command remapped, Cmd+Q/Cmd+H go to the host (`app/fork/mac/macintegration.mm`).
   - Settings live under `fork/keyTargets` in Moonlight's preferences.
   - Unit tests are in `tests/fork/keymap_test.cpp`.
