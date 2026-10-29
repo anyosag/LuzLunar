@@ -25,6 +25,8 @@ luzlunar-b129|LuzLunar 1.1
 
 expect "the next master build" "1.16" 205 master "$published"
 expect "a branch build, toward it" "1.16-dev.ee5b3ba" 204 branch "$published"
+expect "a local build, toward it" "1.16local" 2147483647 local "$published"
+expect "a local build before any update" "1.1local" 2147483647 local ""
 expect "a re-run keeps its number" "1.15" 202 master "$published"
 expect "a re-run of an older one" "1.14" 193 master "$published"
 expect "the newest earlier release, not the first listed" "1.16" 210 master "luzlunar-b129|LuzLunar 1.1

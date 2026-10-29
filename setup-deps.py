@@ -37,6 +37,14 @@ def download_and_extract():
         print(f"Error: no SHA-256 for {asset_name} at {TAG}; add it to SHA256 in setup-deps.py")
         sys.exit(1)
 
+    # [fork] Already deployed from this archive: a local build doesn't download it again
+    stamp = os.path.join(target_dir, ".deployed")
+    if os.path.exists(stamp):
+        with open(stamp) as f:
+            if f.read().strip() == f"{TAG} {asset_name} {expected}":
+                print(f"{asset_name} at {TAG} is already deployed")
+                return
+
     if os.path.exists(target_dir):
         print("Cleaning target directory...")
         shutil.rmtree(target_dir)
@@ -66,6 +74,8 @@ def download_and_extract():
         zip_ref.extractall(target_dir)
 
     os.remove(archive_path)
+    with open(stamp, "w") as f:
+        f.write(f"{TAG} {asset_name} {expected}\n")
     print(f"Dependencies successfully deployed")
 
 if __name__ == "__main__":
