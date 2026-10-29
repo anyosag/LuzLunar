@@ -64,6 +64,16 @@ export CFLAGS=-flto=thin
 export CXXFLAGS=-flto=thin
 export LDFLAGS=-flto=thin
 
+# A local build keeps ThinLTO's cache between builds, so a link after a small change reuses the
+# rest of the program's optimized code; it's the slowest step once ccache has the compiles. CI
+# leaves it off: moving the cache between runs would cost about as much as the link. The path
+# can't have spaces (qmake splits LDFLAGS on them).
+if [ -z "$CI" ]; then
+  LTO_CACHE="$HOME/Library/Caches/LuzLunar-ThinLTO"
+  mkdir -p "$LTO_CACHE"
+  export LDFLAGS="$LDFLAGS -Wl,-cache_path_lto,$LTO_CACHE"
+fi
+
 # A compiler cache, when ccache is installed, through qmake's ccache feature: CI keeps one between
 # runs (fork-macos.yml), so a build compiles again only what changed
 CACHE_ARGS=()
