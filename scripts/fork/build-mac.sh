@@ -39,12 +39,19 @@ QMAKE=${QMAKE:-$(command -v qmake || command -v qmake6)}
 [ -n "$QMAKE" ] || fail "qmake not found! Put Qt's bin folder on PATH."
 
 # LuzLunar's version, like 1.16, or 1.16-dev.ee5b3ba for a build that isn't a published update. CI
-# works it out from the updates published before (scripts/fork/version.sh); a local build is
-# local.<commit>. The app shows it in Settings and About, so copies can be told apart.
+# works it out from the updates published before (scripts/fork/version.sh). A local build is named
+# the same way, after the update it comes before, like 1.16local, when gh can read GitHub's
+# releases, and local.<commit> when it can't. The app shows it in Settings and About.
 if [ -n "$CI_VERSION" ]; then
   VERSION=$CI_VERSION
 else
-  VERSION="local.$(git -C "$SOURCE_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+  COMMIT=$(git -C "$SOURCE_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+  VERSION=
+  if RELEASES=$(cd "$SOURCE_ROOT" && gh release list --limit 200 --json tagName,name --jq '.[] | "\(.tagName)\t\(.name)"' 2>/dev/null); then
+    # A run number above any CI run's: every published update came before it
+    VERSION=$(printf '%s\n' "$RELEASES" | bash "$SOURCE_ROOT/scripts/fork/version.sh" 2147483647 local "$COMMIT" 2>/dev/null) || VERSION=
+  fi
+  [ -n "$VERSION" ] || VERSION="local.$COMMIT"
 fi
 
 echo Updating dependencies
