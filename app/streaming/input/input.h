@@ -166,6 +166,11 @@ public:
     bool forkAbsoluteMouseMode() const { return m_AbsoluteMouseMode; }
     void forkSetAbsoluteMouseMode(bool absolute);
 
+    // [fork] The PC's pointer drawn by this Mac in remote desktop mode (fork/forkcursor.*): the Mac's
+    // cursor over the picture in the PC's shape, shown there while it's set; null gives Moonlight's
+    // own back
+    void forkSetPcCursor(SDL_Cursor* cursor);
+
     static
     QString getUnmappedGamepads();
 
@@ -231,6 +236,8 @@ private:
     bool m_PointerRegionLockToggledByUser;
     bool m_ForkRegionLockSuspended = false; // [fork] forkSuspendRegionLock()
     bool m_ForkPointerPlaced = false; // [fork] the stream's first capture placed the PC's pointer (setCaptureActive())
+    SDL_Cursor* m_ForkPcCursor = nullptr; // [fork] forkSetPcCursor()
+    int m_ForkCursorVisibilityBefore = SDL_DISABLE; // [fork] the captured visibility it took over
     void forkPlaceHostPointer(); // [fork]
 
     int m_GamepadMask;

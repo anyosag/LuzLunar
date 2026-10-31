@@ -1,4 +1,5 @@
 #include "streaming/session.h"
+#include "fork/forkcursor.h" // [fork]
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -183,7 +184,9 @@ Uint32 SdlInputHandler::mouseEmulationTimerCallback(Uint32 interval, void *param
     deltaY = qAbs(deltaY) > MOUSE_EMULATION_DEADZONE ? deltaY - MOUSE_EMULATION_DEADZONE : 0;
 
     if (deltaX != 0 || deltaY != 0) {
-        LiSendMouseMoveEvent((short)deltaX, (short)deltaY);
+        if (LiSendMouseMoveEvent((short)deltaX, (short)deltaY) == 0) {
+            ForkCursor::sentMove((short)deltaX, (short)deltaY); // [fork] for the pointer this Mac draws (any thread)
+        }
     }
 
     return interval;

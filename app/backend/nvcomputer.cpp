@@ -1,6 +1,7 @@
 #include "nvcomputer.h"
 #include "nvapp.h"
 #include "settings/compatfetcher.h"
+#include "fork/luzcursor.h" // [fork]
 
 #include <QUdpSocket>
 #include <QHostInfo>
@@ -230,7 +231,11 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     this->apolloBitrateStart = NvHTTP::getXmlString(serverInfo, "LuzBitrateStart") == "1";
     // [fork] It says where its pointer is (GET /actions/cursor), so Mac trackpad mode's pointer can
     // move up into the notch bar (ForkBarReach). Not saved either.
-    this->apolloCursor = NvHTTP::getXmlString(serverInfo, "LuzCursor") == "1";
+    // An Apollo that also lets the Mac draw its pointer says 2 (luzcursor.h)
+    int luzCursor = NvHTTP::getXmlString(serverInfo, "LuzCursor").toInt();
+    this->apolloCursor = luzCursor >= 1;
+    this->apolloCursorDraw = luzCursor >= luzcursor::k_serverinfo_version;
+    this->apolloMic = NvHTTP::getXmlString(serverInfo, "LuzMic").toInt(); // [fork] forkmic.*
 
     // [fork] anyosag/Apollo's multi-display app and device pairing (forkmultidisplay.*)
     this->forkDisplayGroupSlots = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroup").toInt();
@@ -622,6 +627,8 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(isApolloServerSoftware); // [fork]
     ASSIGN_IF_CHANGED(apolloBitrateStart); // [fork]
     ASSIGN_IF_CHANGED(apolloCursor); // [fork]
+    ASSIGN_IF_CHANGED(apolloCursorDraw); // [fork]
+    ASSIGN_IF_CHANGED(apolloMic); // [fork]
     ASSIGN_IF_CHANGED(forkDisplayGroupSlots); // [fork]
     ASSIGN_IF_CHANGED(forkDisplayGroupAppId); // [fork]
     ASSIGN_IF_CHANGED(forkPairDevice); // [fork]

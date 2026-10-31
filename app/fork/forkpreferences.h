@@ -99,6 +99,15 @@ public:
     // Lower the stream's bitrate while the network struggles, and raise it back (adaptivebitrate.*)
     Q_PROPERTY(bool adaptiveBitrate READ adaptiveBitrate WRITE setAdaptiveBitrate NOTIFY adaptiveBitrateChanged)
 
+    // Draw the PC's pointer on this Mac, in remote desktop and Mac trackpad modes, with an Apollo
+    // that lets it (forkcursor.*)
+    Q_PROPERTY(bool drawPcPointer READ drawPcPointer WRITE setDrawPcPointer NOTIFY drawPcPointerChanged)
+
+    // Lend the PC this Mac's microphone while an app there records, with an Apollo that takes it
+    // (forkmic.*); and the microphone: a CoreAudio UID, "" for the built-in one
+    Q_PROPERTY(bool macMicrophone READ macMicrophone WRITE setMacMicrophone NOTIFY macMicrophoneChanged)
+    Q_PROPERTY(QString macMicrophoneDevice READ macMicrophoneDevice WRITE setMacMicrophoneDevice NOTIFY macMicrophoneDeviceChanged)
+
     // Lend this Mac's camera to the PC's "Mac Camera" while an app there uses it (camera.*), and which
     // camera: an AVCaptureDevice uniqueID, empty for the one macOS prefers
     Q_PROPERTY(bool camera READ camera WRITE setCamera NOTIFY cameraChanged)
@@ -117,6 +126,24 @@ public:
 
     bool adaptiveBitrate() const { return m_AdaptiveBitrate; }
     void setAdaptiveBitrate(bool enabled);
+
+    bool drawPcPointer() const { return m_DrawPcPointer; }
+    void setDrawPcPointer(bool enabled);
+
+    bool macMicrophone() const { return m_MacMicrophone; }
+    void setMacMicrophone(bool enabled);
+
+    QString macMicrophoneDevice() const { return m_MacMicrophoneDevice; }
+    void setMacMicrophoneDevice(const QString& uid);
+
+    // This Mac's microphones for Settings, the built-in first: [{ "uid", "name", "builtIn" }]
+    Q_INVOKABLE QVariantList macMicrophones() const;
+
+    // macOS's answer to recording: "granted", "denied" or "undetermined" (asked at the first use)
+    Q_INVOKABLE QString macMicrophoneAccess() const;
+
+    // System Settings › Privacy & Security › Microphone
+    Q_INVOKABLE void openMicrophoneSettings();
 
     bool camera() const { return m_Camera; }
     void setCamera(bool enabled);
@@ -226,6 +253,9 @@ signals:
     void trackpadScrollSpeedChanged();
     void macDriveChanged();
     void adaptiveBitrateChanged();
+    void drawPcPointerChanged();
+    void macMicrophoneChanged();
+    void macMicrophoneDeviceChanged();
     void cameraChanged();
     void cameraDeviceChanged();
 
@@ -250,6 +280,9 @@ private:
     double m_TrackpadScrollSpeed;
     bool m_MacDrive;
     bool m_AdaptiveBitrate;
+    bool m_DrawPcPointer;
+    bool m_MacMicrophone;
+    QString m_MacMicrophoneDevice;
     bool m_Camera;
     QString m_CameraDevice;
     // Saved choices by group key; groups not in it use the table's default

@@ -28,6 +28,7 @@ SOURCES += \
     $$PWD/clipbundle.cpp \
     $$PWD/clipboardsync.cpp \
     $$PWD/clipfiles.cpp \
+    $$PWD/cursorrules.cpp \
     $$PWD/forkaspect.cpp \
     $$PWD/forkaspectratios.cpp \
     $$PWD/forkdebugchannel.cpp \
@@ -36,11 +37,14 @@ SOURCES += \
     $$PWD/forkdisplaygroup.cpp \
     $$PWD/forkdisplayroute.cpp \
     $$PWD/forkroutememory.cpp \
+    $$PWD/forkcursor.cpp \
     $$PWD/forkevents.cpp \
     $$PWD/forkgrouplaunch.cpp \
     $$PWD/forkhelper.cpp \
+    $$PWD/forkhostmessages.cpp \
     $$PWD/forkhostpower.cpp \
     $$PWD/forkhostupdates.cpp \
+    $$PWD/forkmic.cpp \
     $$PWD/forkimacsetup.cpp \
     $$PWD/forkhwrules.cpp \
     $$PWD/forkinput.cpp \
@@ -72,6 +76,7 @@ SOURCES += \
     $$PWD/hostpacing.cpp \
     $$PWD/macdrive.cpp \
     $$PWD/macdriverules.cpp \
+    $$PWD/micrules.cpp \
     $$PWD/powernotice.cpp \
     $$PWD/sfsymbols.cpp \
     $$PWD/streamdiagnostics.cpp \
@@ -89,6 +94,7 @@ HEADERS += \
     $$PWD/clipbundle.h \
     $$PWD/clipboardsync.h \
     $$PWD/clipfiles.h \
+    $$PWD/cursorrules.h \
     $$PWD/forkaspect.h \
     $$PWD/forkaspectratios.h \
     $$PWD/forkdebugchannel.h \
@@ -99,9 +105,12 @@ HEADERS += \
     $$PWD/forkdisplayroute.h \
     $$PWD/forkroutememory.h \
     $$PWD/forkpointersync.h \
+    $$PWD/forkcursor.h \
+    $$PWD/forkmic.h \
     $$PWD/forkevents.h \
     $$PWD/forkgrouplaunch.h \
     $$PWD/forkhelper.h \
+    $$PWD/forkhostmessages.h \
     $$PWD/forkhostpower.h \
     $$PWD/forkhostupdates.h \
     $$PWD/forkimacsetup.h \
@@ -126,6 +135,8 @@ HEADERS += \
     $$PWD/forkvideoscaling.h \
     $$PWD/hostcadence.h \
     $$PWD/hostpacing.h \
+    $$PWD/luzcursor.h \
+    $$PWD/luzmic.h \
     $$PWD/luztouchpad.h \
     $$PWD/adaptivebitrate.h \
     $$PWD/bitrateclient.h \
@@ -135,6 +146,7 @@ HEADERS += \
     $$PWD/bitratestate.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
+    $$PWD/micrules.h \
     $$PWD/notchmenus.h \
     $$PWD/notchquality.h \
     $$PWD/forkpower.h \
@@ -153,9 +165,11 @@ HEADERS += \
     $$PWD/windowchrome.h \
     $$PWD/mac/camera_mac.h \
     $$PWD/mac/displaytiming.h \
+    $$PWD/mac/forkcursor_mac.h \
     $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macdrivesetup.h \
     $$PWD/mac/macintegration.h \
+    $$PWD/mac/mic_mac.h \
     $$PWD/mac/multidisplay_mac.h \
     $$PWD/mac/networklink.h \
     $$PWD/mac/notchbar.h \
@@ -174,9 +188,11 @@ macx {
         $$PWD/mac/camera_mac.mm \
         $$PWD/mac/clienthardware_mac.mm \
         $$PWD/mac/displaytiming_mac.mm \
+        $$PWD/mac/forkcursor_mac.mm \
         $$PWD/mac/gesturesuppressor_mac.mm \
         $$PWD/mac/macdrivesetup_mac.mm \
         $$PWD/mac/macintegration.mm \
+        $$PWD/mac/mic_mac.mm \
         $$PWD/mac/multidisplay_mac.mm \
         $$PWD/mac/networklink_mac.mm \
         $$PWD/mac/notchbar.mm \
@@ -193,6 +209,9 @@ macx {
 
     # Rich clipboard sync: images through ImageIO, and zlib for the clipboard bundle (clipbundle.cpp)
     LIBS += -framework ImageIO -lz
+
+    # This Mac's microphone on the PC: the default output and the microphones (mac/mic_mac.mm)
+    LIBS += -framework CoreAudio -framework AudioToolbox
 
     # Trackpad passthrough's gesture blocker: the event tap and the Accessibility check
     LIBS += -framework ApplicationServices

@@ -252,6 +252,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     NSView* m_Dot;
     NSView* m_CameraDot;            // green while the PC uses this Mac's camera (setCameraLive:)
     BOOL m_CameraLive;
+    NSView* m_MicDot;               // this Mac's microphone records for the PC (setMicLive:), left of the notch
     NSString* m_Warning;            // the connection warning, until the connection recovers
     NSString* m_Toast;              // a clipboard message or a power notice, shown for a few seconds
     ForkMessageKind m_ToastKind;
@@ -276,6 +277,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 
     // The area left of the notch and the pill size, in panel coordinates, from the last refresh
     BOOL m_HasGeometry;
+    BOOL m_MicLive;                 // m_MicDot shows
     NSRect m_LeftArea;
     CGFloat m_PillHeight;
     CGFloat m_PillY;
@@ -296,6 +298,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (void)pulseAtWindowX:(CGFloat)windowX y:(CGFloat)windowY count:(int)count size:(CGFloat)size;
 - (void)settlePulse;
 - (void)refreshMenus;
+- (void)setMicLive:(BOOL)live;
 - (void)bitrateChanged;
 - (void)powerChanged;
 - (void)setCameraLive:(BOOL)live;
@@ -639,6 +642,17 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_CameraDot.hidden = YES;
     m_CameraDot.toolTip = QCoreApplication::translate("NotchBar", "The PC is using this Mac's camera").toNSString();
 
+    m_MicDot = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, k_DotSize, k_DotSize)];
+    CALayer* micDot = [CALayer layer];
+    micDot.backgroundColor = NSColor.systemOrangeColor.CGColor;
+    micDot.cornerRadius = k_DotSize / 2;
+    m_MicDot.layer = micDot;
+    m_MicDot.wantsLayer = YES;
+    m_MicDot.hidden = YES;
+    [m_MicDot setAccessibilityElement:YES];
+    [m_MicDot setAccessibilityRole:NSAccessibilityImageRole];
+    [m_MicDot setAccessibilityLabel:QCoreApplication::translate("NotchBar", "The PC is recording from this Mac's microphone").toNSString()];
+
     m_MessageState = ForkMessageHidden;
     m_ShowsMessages = false;
 
@@ -648,6 +662,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Panel.contentView addSubview:m_BatteryItem];
     [m_Panel.contentView addSubview:m_ControlItem];
     [m_Panel.contentView addSubview:m_CameraDot];
+    [m_Panel.contentView addSubview:m_MicDot];
     // The dot sits under the pill that grows out of it
     [m_Panel.contentView addSubview:m_Dot];
     [m_Panel.contentView addSubview:m_MessagePill];
@@ -703,6 +718,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_ToastActionTitle release];
     [m_Dot release];
     [m_CameraDot release];
+    [m_MicDot release];
     [m_Warning release];
     [m_Toast release];
     [m_Corner release];
@@ -789,7 +805,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNotchPanel* panel = makeNotchPanel();
     [panel setFrame:m_Panel.frame display:NO];
     // In their order in the old panel, so the dot stays under the message pill
-    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_CameraDot, m_Dot, m_MessagePill ]) {
+    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_CameraDot, m_MicDot, m_Dot, m_MessagePill ]) {
         [panel.contentView addSubview:view];
     }
 
@@ -1190,6 +1206,17 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Menus refresh];
 }
 
+- (void)setMicLive:(BOOL)live
+{
+    if (live == m_MicLive) {
+        return;
+    }
+    m_MicLive = live;
+    if (m_HasGeometry) {
+        [self refresh];
+    }
+}
+
 - (void)bitrateChanged
 {
     [self updateQualityItem];
@@ -1369,9 +1396,13 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
 // and Control Center from the right edge of the area right of it, the stats giving way when they don't fit
 - (void)layoutItemsLeft:(NSRect)leftArea right:(NSRect)rightArea height:(CGFloat)height y:(CGFloat)y
 {
-    CGFloat sessionWidth = MIN([m_SessionItem naturalWidth], MAX(NSWidth(leftArea) - 2 * k_Margin, 0));
+    // The microphone's dot at the notch's left edge, where the Session item gives it room
+    CGFloat micRoom = m_MicLive ? k_DotSize + k_Margin : 0;
+    CGFloat sessionWidth = MIN([m_SessionItem naturalWidth], MAX(NSWidth(leftArea) - 2 * k_Margin - micRoom, 0));
     m_SessionItem.frame = NSMakeRect(NSMinX(leftArea) + k_Margin, y, sessionWidth, height);
     m_SessionItem.hidden = sessionWidth <= 0;
+    [m_MicDot setFrameOrigin:NSMakePoint(NSMaxX(leftArea) - k_Margin - k_DotSize, y + (height - k_DotSize) / 2)];
+    m_MicDot.hidden = !m_MicLive || NSWidth(leftArea) < k_DotSize + 2 * k_Margin;
 
     // The stats shrink, down to their icon alone
     std::vector<NotchMenus::Placed> placed = NotchMenus::layoutRight(NSWidth(rightArea), k_Margin, k_ItemGap,
@@ -2273,6 +2304,13 @@ namespace
         {
             @autoreleasepool {
                 [m_Controller refreshMenus];
+            }
+        }
+
+        void setMicLive(bool live) override
+        {
+            @autoreleasepool {
+                [m_Controller setMicLive:live ? YES : NO];
             }
         }
 

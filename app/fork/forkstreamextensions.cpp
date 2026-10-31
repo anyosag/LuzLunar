@@ -14,11 +14,13 @@
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
 #include "forkbarreach.h"
+#include "forkcursor.h"
 #include "forkevents.h"
 #include "forkhostpower.h"
 #include "forkpower.h"
 #include "forkdisplaycoordinator.h"
 #include "forkhelper.h"
+#include "forkmic.h"
 #include "forkmultidisplay.h"
 #include "forknetworklink.h"
 #include "forkpreferences.h"
@@ -180,6 +182,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                     state.clipboard = clipboardState(m_Clipboard->availability());
                     state.clipboardAutomatic = m_Clipboard->automatic();
                 }
+                state.mic = ForkMic::status();
                 if (m_MacDrive) {
                     MacDrive::Mapping mapping = m_MacDrive->mapping();
                     state.driveMapped = mapping.mapped;
@@ -335,6 +338,9 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         };
         callbacks.settleHere = [this]() {
             m_NotchBar->settlePulse();
+            if (m_Cursor) {
+                m_Cursor->settlePulse();
+            }
         };
         callbacks.reduceMotion = [] {
             return NotchBar::reduceMotion();
@@ -355,6 +361,13 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         });
     }
     ForkTrackpadPassthrough::activate(window, prefs);
+
+    // The PC's pointer drawn by this Mac, when the stream asked its Apollo (forkcursor.*); after the
+    // passthrough, whose Mac trackpad mode is one it draws in
+    if (ForkCursor::asked()) {
+        m_Cursor = std::make_unique<ForkCursor>(computer, window, m_Width, m_Height);
+        m_Cursor->setBarReach(m_BarReach.get());
+    }
 
     // Slot 0 of a multi-display stream is connected: bring up the other displays
     if (std::shared_ptr<const ForkMultiDisplay::Group> group = ForkMultiDisplay::group()) {
@@ -413,6 +426,7 @@ ForkStreamExtensions* ForkStreamExtensions::active()
 void ForkStreamExtensions::stopDisplayGroup()
 {
     m_DisplayGroup.reset();
+    m_Cursor.reset();
 }
 
 void ForkStreamExtensions::toggleBarMenus()
@@ -673,6 +687,10 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
             m_Clipboard->setAutomatic(!m_Clipboard->automatic());
         }
         break;
+    case NotchMenus::Action::ToggleMicMute:
+        // The bar hears back through ForkMic's status event
+        ForkMic::setMuted(!ForkMic::muted());
+        break;
     case NotchMenus::Action::ToggleAdaptiveBitrate:
         if (m_AdaptiveBitrate) {
             // The bitrate stays where it got to
@@ -835,6 +853,12 @@ SDL_Rect ForkStreamExtensions::videoRect() const
 
 std::optional<std::pair<double, double>> ForkStreamExtensions::pcPointerInWindow() const
 {
+    // Where this Mac draws it, when it does
+    if (m_Cursor) {
+        if (std::optional<std::pair<double, double>> drawn = m_Cursor->pointerInWindow()) {
+            return drawn;
+        }
+    }
     std::optional<std::pair<double, double>> pointer = m_BarReach ? m_BarReach->pointer() : std::nullopt;
     if (!pointer) {
         return std::nullopt;
@@ -845,6 +869,10 @@ std::optional<std::pair<double, double>> ForkStreamExtensions::pcPointerInWindow
 
 void ForkStreamExtensions::pulseOverPicture(int pulses)
 {
+    // On the PC's own shape, where this Mac draws it
+    if (m_Cursor && m_Cursor->pulse(pulses, NotchBar::reduceMotion())) {
+        return;
+    }
     std::optional<std::pair<double, double>> point = pcPointerInWindow();
     if (!point) {
         return;
@@ -1205,6 +1233,18 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
         m_DisplayGroup->handleEvent(event);
     }
 
+    if (m_Cursor && m_Cursor->handleEvent(event)) {
+        // Apollo's word on its pointer, or a tick for it
+        return;
+    }
+    if (ForkMic::isStatusEvent(event)) {
+        // The PC started or stopped recording from this Mac's microphone, or it was muted
+        if (m_NotchBar) {
+            m_NotchBar->setMicLive(ForkMic::live());
+            m_NotchBar->refreshMenus();
+        }
+        return;
+    }
     if (m_BarReach && m_BarReach->handleEvent(event)) {
         // The PC said where its pointer is
         return;

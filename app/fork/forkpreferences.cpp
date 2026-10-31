@@ -15,6 +15,7 @@
 #include "mac/gesturesuppressor_mac.h"
 #include "mac/macdrivesetup.h"
 #include "mac/macintegration.h"
+#include "mac/mic_mac.h"
 
 #define SER_KEYTARGETS "fork/keyTargets"
 #define SER_CLIPBOARDSYNC "fork/clipboardSync"
@@ -34,6 +35,9 @@
 #define SER_MACDRIVE "fork/macDrive"
 #define SER_MACDRIVELAST "fork/macDriveLast"
 #define SER_ADAPTIVEBITRATE "fork/adaptiveBitrate"
+#define SER_DRAWPCPOINTER "fork/drawPcPointer"
+#define SER_MACMICROPHONE "fork/macMicrophone"
+#define SER_MACMICROPHONEDEVICE "fork/macMicrophoneDevice"
 #define SER_CAMERA "fork/camera"
 #define SER_CAMERADEVICE "fork/cameraDevice"
 
@@ -102,6 +106,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_TrackpadScrollSpeed(1.0),
       m_MacDrive(false),
       m_AdaptiveBitrate(true),
+      m_DrawPcPointer(true),
+      m_MacMicrophone(true),
       m_Camera(true)
 {
     QSettings settings;
@@ -157,6 +163,9 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
     m_MacDrive = settings.value(SER_MACDRIVE, m_MacDrive).toBool();
     m_AdaptiveBitrate = settings.value(SER_ADAPTIVEBITRATE, m_AdaptiveBitrate).toBool();
+    m_DrawPcPointer = settings.value(SER_DRAWPCPOINTER, m_DrawPcPointer).toBool();
+    m_MacMicrophone = settings.value(SER_MACMICROPHONE, m_MacMicrophone).toBool();
+    m_MacMicrophoneDevice = settings.value(SER_MACMICROPHONEDEVICE, m_MacMicrophoneDevice).toString();
     m_Camera = settings.value(SER_CAMERA, m_Camera).toBool();
     m_CameraDevice = settings.value(SER_CAMERADEVICE, m_CameraDevice).toString();
     settings.beginGroup(SER_MACSHORTCUTS);
@@ -346,6 +355,56 @@ void ForkPreferences::setAdaptiveBitrate(bool enabled)
     emit adaptiveBitrateChanged();
 }
 
+void ForkPreferences::setDrawPcPointer(bool enabled)
+{
+    if (enabled == m_DrawPcPointer) {
+        return;
+    }
+
+    m_DrawPcPointer = enabled;
+    QSettings().setValue(SER_DRAWPCPOINTER, enabled);
+    emit drawPcPointerChanged();
+}
+
+void ForkPreferences::setMacMicrophone(bool enabled)
+{
+    if (enabled == m_MacMicrophone) {
+        return;
+    }
+
+    m_MacMicrophone = enabled;
+    QSettings().setValue(SER_MACMICROPHONE, enabled);
+    emit macMicrophoneChanged();
+}
+
+void ForkPreferences::setMacMicrophoneDevice(const QString& uid)
+{
+    if (uid == m_MacMicrophoneDevice) {
+        return;
+    }
+
+    m_MacMicrophoneDevice = uid;
+    QSettings().setValue(SER_MACMICROPHONEDEVICE, uid);
+    emit macMicrophoneDeviceChanged();
+}
+
+QVariantList ForkPreferences::macMicrophones() const
+{
+    std::vector<MicRules::Input> inputs = ForkMicMac::inputs();
+    std::stable_sort(inputs.begin(), inputs.end(), [](const MicRules::Input& a, const MicRules::Input& b) {
+        return a.builtIn && !b.builtIn;
+    });
+    QVariantList list;
+    for (const MicRules::Input& input : inputs) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("uid"), QString::fromStdString(input.uid));
+        entry.insert(QStringLiteral("name"), QString::fromStdString(input.name));
+        entry.insert(QStringLiteral("builtIn"), input.builtIn);
+        list.append(entry);
+    }
+    return list;
+}
+
 void ForkPreferences::setCamera(bool enabled)
 {
     if (enabled == m_Camera) {
@@ -378,6 +437,23 @@ QVariantList ForkPreferences::cameraDevices() const
         list.append(entry);
     }
     return list;
+}
+
+QString ForkPreferences::macMicrophoneAccess() const
+{
+    switch (ForkMicMac::access()) {
+    case MicRules::Access::Granted:
+        return QStringLiteral("granted");
+    case MicRules::Access::Denied:
+        return QStringLiteral("denied");
+    default:
+        return QStringLiteral("undetermined");
+    }
+}
+
+void ForkPreferences::openMicrophoneSettings()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")));
 }
 
 QString ForkPreferences::cameraAccess() const
