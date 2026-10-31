@@ -235,6 +235,7 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     int luzCursor = NvHTTP::getXmlString(serverInfo, "LuzCursor").toInt();
     this->apolloCursor = luzCursor >= 1;
     this->apolloCursorDraw = luzCursor >= luzcursor::k_serverinfo_version;
+    this->apolloMic = NvHTTP::getXmlString(serverInfo, "LuzMic").toInt(); // [fork] forkmic.*
 
     // [fork] anyosag/Apollo's multi-display app and device pairing (forkmultidisplay.*)
     this->forkDisplayGroupSlots = NvHTTP::getXmlString(serverInfo, "LuzDisplayGroup").toInt();
@@ -627,6 +628,7 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED(apolloBitrateStart); // [fork]
     ASSIGN_IF_CHANGED(apolloCursor); // [fork]
     ASSIGN_IF_CHANGED(apolloCursorDraw); // [fork]
+    ASSIGN_IF_CHANGED(apolloMic); // [fork]
     ASSIGN_IF_CHANGED(forkDisplayGroupSlots); // [fork]
     ASSIGN_IF_CHANGED(forkDisplayGroupAppId); // [fork]
     ASSIGN_IF_CHANGED(forkPairDevice); // [fork]

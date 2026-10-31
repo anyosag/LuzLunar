@@ -1,12 +1,14 @@
 import QtQuick
 import QtQuick.Shapes
 
+import ForkPreferences 1.0
 import ForkTheme 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 
 // [fork] Settings › Audio: the speaker layout (each card draws where the speakers sit around the
-// listener) and whether the host PC's own speakers and LuzLunar's stream are muted.
+// listener), whether the host PC's own speakers and LuzLunar's stream are muted, and this Mac's
+// microphone on the PC.
 Column {
     id: audioSection
 
@@ -155,6 +157,117 @@ Column {
                 help: qsTr("Mutes LuzLunar's audio when you switch to another app or click on a different window.")
                 checked: StreamingPreferences.muteOnFocusLoss
                 onToggled: (on) => StreamingPreferences.muteOnFocusLoss = on
+            }
+        }
+    }
+
+    // ---- Microphone -----------------------------------------------------------------------
+
+    // This Mac's microphone on the PC, while an app there records (app/fork/forkmic.*)
+    ForkCard {
+        id: micCard
+        title: qsTr("Microphone")
+
+        // The microphones, read when the card shows: the built-in first, "" standing for it
+        property var microphones: []
+        property string access: "undetermined"
+
+        function reload() {
+            var list = [{ "text": qsTr("Built-in microphone"), "uid": "" }]
+            var found = ForkPreferences.macMicrophones()
+            for (var i = 0; i < found.length; i++) {
+                if (!found[i].builtIn) {
+                    list.push({ "text": found[i].name, "uid": found[i].uid })
+                }
+            }
+            // One chosen before but unplugged now stays chosen, for when it's back
+            var saved = ForkPreferences.macMicrophoneDevice
+            var known = saved === ""
+            for (var j = 0; j < list.length; j++) {
+                if (list[j].uid === saved) {
+                    known = true
+                }
+            }
+            if (!known) {
+                list.push({ "text": qsTr("%1 (not connected)").arg(saved), "uid": saved })
+            }
+            microphones = list
+            access = ForkPreferences.macMicrophoneAccess()
+        }
+
+        Component.onCompleted: reload()
+        onVisibleChanged: if (visible) reload()
+
+        Column {
+            width: parent.width
+            spacing: 12
+
+            ForkSwitchRow {
+                showDivider: false
+                label: qsTr("Use this Mac's microphone on the PC")
+                help: qsTr("While an app on the PC records, it hears this Mac's microphone, as \"Microphone (Steam Streaming Microphone)\", the PC's default microphone during the stream. On speakers, echo cancellation keeps the game's sound out of it; headphones leave the game's sound untouched. Needs LuzLunar's Apollo and Steam on the PC.")
+                checked: ForkPreferences.macMicrophone
+                onToggled: (on) => ForkPreferences.macMicrophone = on
+            }
+
+            Column {
+                visible: ForkPreferences.macMicrophone
+                width: Math.min(320, parent.width)
+                spacing: 10
+
+                ForkText {
+                    kind: "label"
+                    font.weight: Font.DemiBold
+                    text: qsTr("Record from")
+                }
+
+                AutoResizingComboBox {
+                    id: micComboBox
+                    width: Math.min(parent.width, Math.max(280, implicitWidth))
+                    textRole: "text"
+                    Accessible.description: qsTr("Microphone to record from")
+                    model: micCard.microphones
+                    currentIndex: {
+                        for (var i = 0; i < micCard.microphones.length; i++) {
+                            if (micCard.microphones[i].uid === ForkPreferences.macMicrophoneDevice) {
+                                return i
+                            }
+                        }
+                        return 0
+                    }
+                    onActivated: (index) => {
+                        if (index >= 0 && index < micCard.microphones.length) {
+                            ForkPreferences.macMicrophoneDevice = micCard.microphones[index].uid
+                        }
+                    }
+                }
+
+                ForkText {
+                    width: parent.width
+                    kind: "help"
+                    font.pixelSize: 13
+                    text: qsTr("The built-in microphone is used even with AirPods, whose sound would turn to a phone call's while they record.")
+                }
+            }
+
+            // macOS said no: only System Settings can change it
+            Column {
+                visible: ForkPreferences.macMicrophone && micCard.access === "denied"
+                width: parent.width
+                spacing: 8
+
+                ForkText {
+                    width: parent.width
+                    kind: "help"
+                    font.pixelSize: 13
+                    text: qsTr("macOS doesn't let LuzLunar use the microphone. Allow it in System Settings › Privacy & Security › Microphone.")
+                }
+
+                ForkButton {
+                    symbol: "mic"
+                    text: qsTr("Open Microphone Settings")
+                    onClicked: ForkPreferences.openMicrophoneSettings()
+                }
             }
         }
     }

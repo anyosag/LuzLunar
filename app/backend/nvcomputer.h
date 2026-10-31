@@ -124,6 +124,7 @@ public:
     bool apolloBitrateStart = false;     // [fork] <LuzBitrateStart>: starts a stream at luzBitrate, below its launch bitrate (BitrateRules::launchKbps())
     bool apolloCursor = false;           // [fork] <LuzCursor> 1 or more: GET /actions/cursor says where the PC's pointer is (ForkBarReach)
     bool apolloCursorDraw = false;       // [fork] <LuzCursor> 2 or more: this Mac can draw the PC's pointer itself (forkcursor.*)
+    int apolloMic = 0;                   // [fork] <LuzMic>: 1 or more takes this Mac's microphone while it streams (forkmic.*)
     // Remember to update isEqualSerialized() when adding fields here!
 
     // Synchronization

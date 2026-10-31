@@ -19,6 +19,7 @@
 #include "forkpower.h"
 #include "forkdisplaycoordinator.h"
 #include "forkhelper.h"
+#include "forkmic.h"
 #include "forkmultidisplay.h"
 #include "forknetworklink.h"
 #include "forkpreferences.h"
@@ -179,6 +180,7 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
                     state.clipboard = clipboardState(m_Clipboard->availability());
                     state.clipboardAutomatic = m_Clipboard->automatic();
                 }
+                state.mic = ForkMic::status();
                 if (m_MacDrive) {
                     MacDrive::Mapping mapping = m_MacDrive->mapping();
                     state.driveMapped = mapping.mapped;
@@ -668,6 +670,10 @@ void ForkStreamExtensions::performBarAction(NotchMenus::Action action, int value
         if (m_Clipboard) {
             m_Clipboard->setAutomatic(!m_Clipboard->automatic());
         }
+        break;
+    case NotchMenus::Action::ToggleMicMute:
+        // The bar hears back through ForkMic's status event
+        ForkMic::setMuted(!ForkMic::muted());
         break;
     case NotchMenus::Action::ToggleAdaptiveBitrate:
         if (m_AdaptiveBitrate) {
@@ -1213,6 +1219,14 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
 
     if (m_Cursor && m_Cursor->handleEvent(event)) {
         // Apollo's word on its pointer, or a tick for it
+        return;
+    }
+    if (ForkMic::isStatusEvent(event)) {
+        // The PC started or stopped recording from this Mac's microphone, or it was muted
+        if (m_NotchBar) {
+            m_NotchBar->setMicLive(ForkMic::live());
+            m_NotchBar->refreshMenus();
+        }
         return;
     }
     if (m_BarReach && m_BarReach->handleEvent(event)) {
