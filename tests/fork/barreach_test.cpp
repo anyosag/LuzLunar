@@ -247,6 +247,34 @@ static void testAskGap()
     CHECK(askedAt == 1000 + k_AskGapMs);
 }
 
+// The pointer drawn by this Mac says where the PC has it as the stream runs: followed from there
+static void testFollow()
+{
+    Tracker tracker;
+    CHECK(!tracker.known());
+    tracker.follow(100, 50, 1920, 1080);
+    CHECK(tracker.known() && tracker.x() == 100 && tracker.y() == 50);
+    CHECK(tracker.width() == 1920 && tracker.height() == 1080);
+    // The moves go on from there
+    tracker.moved(5, -10, 0, -5, false, 10);
+    CHECK(tracker.x() == 105 && tracker.y() == 40);
+    // Above the top is at the top; beside the display isn't known
+    tracker.follow(10, -3, 1920, 1080);
+    CHECK(tracker.known() && tracker.y() == 0);
+    tracker.follow(2000, 10, 1920, 1080);
+    CHECK(!tracker.known());
+    // Nothing from a display of no size
+    tracker.follow(10, 10, 0, 0);
+    CHECK(!tracker.known());
+
+    // A question out: its answer has the moves since it was asked, so it wins
+    Tracker asking;
+    std::uint32_t ms = 0;
+    CHECK(up(asking, ms).action == Action::Ask);
+    asking.follow(500, 500, 1920, 1080);
+    CHECK(!asking.known());
+}
+
 int main()
 {
     testAsksAsThePushBegins();
@@ -261,6 +289,7 @@ int main()
     testSlidingAndDragging();
     testHiddenOrBeside();
     testAskGap();
+    testFollow();
 
     if (s_Failures == 0) {
         std::printf("barreach: all tests passed\n");
