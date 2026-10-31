@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# LuzLunar's own version for a CI build, printed on one line (FORK.md, "Versions"):
+# LuzLunar's own version for a build, printed on one line (FORK.md, "Versions"):
 #   1.16                   a master build: the update after LuzLunar 1.15
-#   1.16-dev.ee5b3ba       any other build, toward that update
+#   1.16-dev.ee5b3ba       any other CI build, toward that update
+#   1.16local              a local build (build-mac.sh), toward that update
 # The second number goes up by one with each published update: it's one more than the newest
 # release from an earlier run (tag luzlunar-b<run>, titled "LuzLunar <major>.<n>"). Releases are
 # pruned to the newest 15, so they can't be counted, but the newest is always there. A re-run of a
 # published build skips its own release, so it keeps its number. The first number is MAJOR below,
 # changed by hand for a big change; the second keeps counting.
 #
-# Usage: version.sh <run> <master|branch> <short commit>, with the releases on stdin as
-# "<tag><TAB><title>" lines (gh release list --json tagName,name). Written for bash 3.2.
+# Usage: version.sh <run> <master|branch|local> <short commit>, with the releases on stdin as
+# "<tag><TAB><title>" lines (gh release list --json tagName,name); a local build passes a run above
+# any CI run's. Written for bash 3.2.
 set -euo pipefail
 
 MAJOR=1
@@ -44,6 +46,8 @@ fi
 
 if [ "$channel" = master ]; then
   echo "$MAJOR.$count"
+elif [ "$channel" = local ]; then
+  echo "$MAJOR.${count}local"
 else
   echo "$MAJOR.$count-dev.$commit"
 fi

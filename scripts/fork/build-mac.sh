@@ -39,12 +39,19 @@ QMAKE=${QMAKE:-$(command -v qmake || command -v qmake6)}
 [ -n "$QMAKE" ] || fail "qmake not found! Put Qt's bin folder on PATH."
 
 # LuzLunar's version, like 1.16, or 1.16-dev.ee5b3ba for a build that isn't a published update. CI
-# works it out from the updates published before (scripts/fork/version.sh); a local build is
-# local.<commit>. The app shows it in Settings and About, so copies can be told apart.
+# works it out from the updates published before (scripts/fork/version.sh). A local build is named
+# the same way, after the update it comes before, like 1.16local, when gh can read GitHub's
+# releases, and local.<commit> when it can't. The app shows it in Settings and About.
 if [ -n "$CI_VERSION" ]; then
   VERSION=$CI_VERSION
 else
-  VERSION="local.$(git -C "$SOURCE_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+  COMMIT=$(git -C "$SOURCE_ROOT" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+  VERSION=
+  if RELEASES=$(cd "$SOURCE_ROOT" && gh release list --limit 200 --json tagName,name --jq '.[] | "\(.tagName)\t\(.name)"' 2>/dev/null); then
+    # A run number above any CI run's: every published update came before it
+    VERSION=$(printf '%s\n' "$RELEASES" | bash "$SOURCE_ROOT/scripts/fork/version.sh" 2147483647 local "$COMMIT" 2>/dev/null) || VERSION=
+  fi
+  [ -n "$VERSION" ] || VERSION="local.$COMMIT"
 fi
 
 echo Updating dependencies
@@ -63,6 +70,16 @@ mkdir -p "$INSTALLER_FOLDER"
 export CFLAGS=-flto=thin
 export CXXFLAGS=-flto=thin
 export LDFLAGS=-flto=thin
+
+# A local build keeps ThinLTO's cache between builds, so a link after a small change reuses the
+# rest of the program's optimized code; it's the slowest step once ccache has the compiles. CI
+# leaves it off: moving the cache between runs would cost about as much as the link. The path
+# can't have spaces (qmake splits LDFLAGS on them).
+if [ -z "$CI" ]; then
+  LTO_CACHE="$HOME/Library/Caches/LuzLunar-ThinLTO"
+  mkdir -p "$LTO_CACHE"
+  export LDFLAGS="$LDFLAGS -Wl,-cache_path_lto,$LTO_CACHE"
+fi
 
 # A compiler cache, when ccache is installed, through qmake's ccache feature: CI keeps one between
 # runs (fork-macos.yml), so a build compiles again only what changed
