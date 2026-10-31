@@ -106,7 +106,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_TrackpadScrollSpeed(1.0),
       m_MacDrive(false),
       m_AdaptiveBitrate(true),
-      m_DrawPcPointer(true),
+      m_DrawPcPointer(false),
       m_MacMicrophone(true),
       m_Camera(true)
 {
