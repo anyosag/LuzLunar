@@ -19,6 +19,7 @@ class BitrateClient;
 class ClipboardSync;
 class ForkDisplayCoordinator;
 class ForkBarReach;
+class ForkCamera;
 class ForkPower;
 class MacDrive;
 class NotchBar;
@@ -169,6 +170,8 @@ private:
     std::unique_ptr<ClipboardSync> m_Clipboard;
     std::unique_ptr<NotchBar> m_NotchBar;
     std::unique_ptr<MacDrive> m_MacDrive;
+    // This Mac's camera as the PC's Mac Camera, while Apollo offers it
+    std::unique_ptr<ForkCamera> m_Camera;
     std::unique_ptr<PowerNotice> m_PowerNotice;
     // The battery and Stream Battery Saver, with the bar only
     std::unique_ptr<ForkPower> m_Power;

@@ -144,6 +144,10 @@ public:
     // open, show it
     virtual void powerChanged() = 0;
 
+    // The PC is using this Mac's camera (fork/camera.h): a green dot by Control Center, as macOS puts
+    // one in its menu bar, which a fullscreen stream hides
+    virtual void setCameraLive(bool live) = 0;
+
     // Stream Settings' panel (ForkStreamSettings): its contents, open starting the draft again from
     // what the stream applied, and the draft's edits. On the main thread inside AppKit's event
     // handling: they change the draft alone, so they needn't wait for the event loop.

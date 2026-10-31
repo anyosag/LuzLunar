@@ -9,6 +9,7 @@
 
 #include "adaptivebitrate.h"
 #include "bitrateclient.h"
+#include "camera.h"
 #include "backend/nvapp.h"
 #include "backend/nvcomputer.h"
 #include "clipboardsync.h"
@@ -27,6 +28,7 @@
 #include "hostpacing.h"
 #include "mac/macintegration.h"
 #include "mac/notchbar.h"
+#include "luzcamera.h"
 #include "luztouchpad.h"
 #include "macdrive.h"
 #include "mac/pasteboard.h"
@@ -218,6 +220,18 @@ ForkStreamExtensions::ForkStreamExtensions(NvComputer* computer, const NvApp& ap
         }
     }
 
+    // This Mac's camera as the PC's Mac Camera, from an Apollo that offers it; Apollo starts the camera
+    // only when an app on the PC opens it
+    if (forkPrefs->camera() && (LiGetHostFeatureFlags() & luzcamera::k_host_feature_flag) != 0) {
+        m_Camera = std::make_unique<ForkCamera>(computer);
+        if (m_NotchBar) {
+            NotchBar* notchBar = m_NotchBar.get();
+            m_Camera->setMessageSink([notchBar](const QString& text) {
+                return notchBar->showToast(text);
+            });
+        }
+    }
+
     // Low Power Mode holds the screen to about 60 fps
     if (prefs.fps > 60 && MacIntegration::lowPowerModeEnabled()) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
@@ -379,6 +393,8 @@ ForkStreamExtensions::~ForkStreamExtensions()
     if (m_MacDrive) {
         m_MacDrive->setMessageSink(nullptr);
     }
+    // The camera goes off with the stream
+    m_Camera.reset();
     m_PowerNotice->setMessageSink(nullptr);
     m_NotchBar.reset();
 
@@ -1265,6 +1281,10 @@ void ForkStreamExtensions::handleEvent(const SDL_Event& event)
     if (m_MacDrive && m_MacDrive->handleEvent(event) && m_NotchBar) {
         // The drive tile appears in an open Control Center
         m_NotchBar->refreshMenus();
+    }
+    if (m_Camera && m_Camera->handleEvent(event) && m_NotchBar) {
+        // A green dot by Control Center while the PC uses the camera
+        m_NotchBar->setCameraLive(m_Camera->live());
     }
     m_PowerNotice->handleEvent(event);
 
