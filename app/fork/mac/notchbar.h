@@ -8,6 +8,7 @@
 #include <QString>
 #include <QtGlobal>
 
+#include "fork/micrules.h"
 #include "fork/notchmenus.h"
 #include "fork/notchquality.h"
 #include "fork/powerrules.h"
@@ -61,6 +62,9 @@ public:
         enum class Clipboard { OffInSettings, Unknown, Available, NeedsApollo, NotAllowed };
         Clipboard clipboard = Clipboard::OffInSettings;
         bool clipboardAutomatic = false;
+
+        // This Mac's microphone on the PC (ForkMic::status()): Control Center's Microphone switch
+        MicRules::Status mic = MicRules::Status::Off;
 
         // This Mac as a drive on the PC (MacDrive::mapping())
         bool driveMapped = false;
@@ -136,6 +140,10 @@ public:
     // An open menu and the Quality item show MenuState again, after an action changed it
     virtual void refreshMenus() = 0;
 
+    // This Mac's microphone records for the PC: an orange dot beside the notch, as macOS's own
+    // would be in the menu bar the stream hides
+    virtual void setMicLive(bool live) = 0;
+
     // The bitrate, or what the PC can do with it, changed: the Quality item, and Quality or Control
     // Center if open, show it in place
     virtual void bitrateChanged() = 0;
@@ -143,6 +151,10 @@ public:
     // The battery, Low Power Mode or Stream Battery Saver changed: the Battery item, and Battery if
     // open, show it
     virtual void powerChanged() = 0;
+
+    // The PC is using this Mac's camera (fork/camera.h): a green dot by Control Center, as macOS puts
+    // one in its menu bar, which a fullscreen stream hides
+    virtual void setCameraLive(bool live) = 0;
 
     // Stream Settings' panel (ForkStreamSettings): its contents, open starting the draft again from
     // what the stream applied, and the draft's edits. On the main thread inside AppKit's event

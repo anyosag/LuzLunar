@@ -19,6 +19,8 @@ class BitrateClient;
 class ClipboardSync;
 class ForkDisplayCoordinator;
 class ForkBarReach;
+class ForkCamera;
+class ForkCursor;
 class ForkPower;
 class MacDrive;
 class NotchBar;
@@ -49,7 +51,8 @@ public:
     void handleEvent(const SDL_Event& event);
 
     // The stream's event loop ended: the other displays of a multi-display stream end now, before
-    // SDL shuts down, rather than when this goes out of scope
+    // SDL shuts down, rather than when this goes out of scope, and so does the PC's pointer drawn
+    // here, whose SDL cursor SDL would free itself
     void stopDisplayGroup();
 
     // Null when clipboard sync is off
@@ -169,6 +172,8 @@ private:
     std::unique_ptr<ClipboardSync> m_Clipboard;
     std::unique_ptr<NotchBar> m_NotchBar;
     std::unique_ptr<MacDrive> m_MacDrive;
+    // This Mac's camera as the PC's Mac Camera, while Apollo offers it
+    std::unique_ptr<ForkCamera> m_Camera;
     std::unique_ptr<PowerNotice> m_PowerNotice;
     // The battery and Stream Battery Saver, with the bar only
     std::unique_ptr<ForkPower> m_Power;
@@ -180,6 +185,8 @@ private:
     std::unique_ptr<ForkStreamSettings> m_StreamSettings;
     // Mac trackpad mode's pointer up into the bar, with a PC that says where its pointer is
     std::unique_ptr<ForkBarReach> m_BarReach;
+    // The PC's pointer drawn by this Mac, when the stream asked its Apollo
+    std::unique_ptr<ForkCursor> m_Cursor;
     // Slot 0 of a multi-display stream brings up the other displays
     std::unique_ptr<ForkDisplayCoordinator> m_DisplayGroup;
 };

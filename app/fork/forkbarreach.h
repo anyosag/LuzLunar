@@ -44,6 +44,9 @@ public:
     // (ForkTrackpadPassthrough's listener)
     void moved(int dx, int dy, double dxPoints, double dyPoints);
 
+    // Where the PC has its pointer now, in its pixels, while this Mac draws it (ForkCursor)
+    void follow(int x, int y, int width, int height) { m_Tracker.follow(x, y, width, height); }
+
     // Coming back down: the PC pulses its pointer once. False when it can't, to pulse it over the
     // picture instead.
     bool pulseOnce();

@@ -167,6 +167,24 @@ namespace BarReach
             m_Asking = false;
         }
 
+        // Where the PC has its pointer as the stream runs, when this Mac draws it (forkcursor.*,
+        // which puts each STATE's word and the moves since together): followed from there. Not while
+        // a question is out, whose answer has the moves since it was asked.
+        void follow(int x, int y, int width, int height)
+        {
+            if (m_Asking || width <= 0 || height <= 0) {
+                return;
+            }
+            m_Width = width;
+            m_Height = height;
+            // On another display beside this one, as answered() takes it: nothing to follow
+            m_Known = x >= 0 && x < width && y < height;
+            if (m_Known) {
+                m_X = std::clamp(x, 0, width - 1);
+                m_Y = std::clamp(y, 0, height - 1);
+            }
+        }
+
         // Now and then while the pulses run: they may have ended with no move since, or the push
         // stopped with no move to say so
         Step tick(std::uint32_t ms)

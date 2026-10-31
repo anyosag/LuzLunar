@@ -1,0 +1,54 @@
+diff --git a/src/ControlStream.c b/src/ControlStream.c
+index 7f36b77..9ba66c3 100644
+--- a/src/ControlStream.c
++++ b/src/ControlStream.c
+@@ -1109,6 +1109,13 @@ static void queueAsyncCallback(PNVCTL_ENET_PACKET_HEADER_V1 ctlHdr, int packetLe
+     }
+ }
+ 
++// LuzLunar's patch: the fork's own host messages go to this (LiSetForkHostMessageCallback())
++static ConnListenerForkHostMessage forkHostMessageCallback;
++
++void LiSetForkHostMessageCallback(ConnListenerForkHostMessage callback) {
++    forkHostMessageCallback = callback;
++}
++
+ static void controlReceiveThreadFunc(void* context) {
+     int err;
+ 
+@@ -1382,6 +1389,12 @@ static void controlReceiveThreadFunc(void* context) {
+                 free(ctlHdr);
+                 return;
+             }
++            else if (ctlHdr->type >= 0x4C00 && ctlHdr->type <= 0x4CFF) {
++                // LuzLunar's patch: the fork's own messages, read before they're freed below
++                if (forkHostMessageCallback != NULL) {
++                    forkHostMessageCallback(ctlHdr->type, (const uint8_t*)(ctlHdr + 1), packetLength - (int)sizeof(*ctlHdr));
++                }
++            }
+ 
+             free(ctlHdr);
+         }
+diff --git a/src/Limelight.h b/src/Limelight.h
+index c81178e..8058ae3 100644
+--- a/src/Limelight.h
++++ b/src/Limelight.h
+@@ -859,6 +859,18 @@ int LiSendHighResHScrollEvent(short scrollAmount);
+ // malformed packet. (LuzLunar's patch, not upstream.)
+ int LiSendForkInputPacket(const void* packet, uint32_t length, uint8_t channelId, bool reliable);
+ 
++// A control message from the host whose type is in the range LuzLunar's anyosag/Apollo keeps for
++// its own protocol extensions, 0x4C00 to 0x4CFF: payload is what follows the type, decrypted,
++// length bytes. It's called on the control stream's receive thread, in the order the host sent
++// them, so it must return quickly; payload is only valid during the call. (LuzLunar's patch, not
++// upstream.)
++typedef void(*ConnListenerForkHostMessage)(uint16_t type, const uint8_t* payload, int length);
++
++// This function sets the callback above, or clears it with NULL. Set it before LiStartConnection()
++// and clear it after LiStopConnection(): messages arriving without one are dropped. (LuzLunar's
++// patch, not upstream.)
++void LiSetForkHostMessageCallback(ConnListenerForkHostMessage callback);
++
+ // This function returns a time in microseconds with an implementation-defined epoch.
+ // It should only ever be compared with the return value from a previous call to itself.
+ uint64_t LiGetMicroseconds(void);

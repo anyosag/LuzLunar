@@ -11,6 +11,7 @@
 
 #include <Limelight.h>
 
+#include "forkcursor.h"
 #include "forkevents.h"
 #include "forkmultitouch.h"
 #include "forkpreferences.h"
@@ -166,7 +167,10 @@ namespace
         int x = s.pointerX.take(dx * scaleX);
         int y = s.pointerY.take(dy * scaleY);
         if (x != 0 || y != 0) {
-            LiSendMouseMoveEvent(static_cast<short>(x), static_cast<short>(y));
+            if (LiSendMouseMoveEvent(static_cast<short>(x), static_cast<short>(y)) == 0) {
+                // Where the PC's pointer goes, for the pointer this Mac draws (forkcursor.*)
+                ForkCursor::sentMove(x, y);
+            }
             s_MacPointerMoves++;
         }
         if (s_PointerListener) {

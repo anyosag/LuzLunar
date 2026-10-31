@@ -417,6 +417,33 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"
           "$RUNNER_TEMP/luztouchpad_test"
+          # The PC's pointer drawn by this Mac: Apollo's messages and the shared cache, also shared with
+          # anyosag/Apollo (the same test runs in its CI)
+          clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
+            tests/fork/luzcursor_test.cpp -o "$RUNNER_TEMP/luzcursor_test"
+          "$RUNNER_TEMP/luzcursor_test"
+          # This Mac's microphone on the PC: its frames and Apollo's STATE, shared with anyosag/Apollo
+          # (the same test runs in its CI)
+          clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
+            tests/fork/luzmic_test.cpp -o "$RUNNER_TEMP/luzmic_test"
+          "$RUNNER_TEMP/luzmic_test"
+          # And the rest without CoreAudio: when it records, speakers or headphones, which microphone,
+          # the frames' numbers and times, the stream's sound for the voice-processing engine
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/micrules_test.cpp app/fork/micrules.cpp -o "$RUNNER_TEMP/micrules_test"
+          "$RUNNER_TEMP/micrules_test"
+          # And where it is in Mac trackpad mode: the moves, the PC's corrections, when it shows, how big
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/cursorrules_test.cpp app/fork/cursorrules.cpp -o "$RUNNER_TEMP/cursorrules_test"
+          "$RUNNER_TEMP/cursorrules_test"
+          # The Mac camera's protocol, also shared with anyosag/Apollo (the same test runs in its CI)
+          clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
+            tests/fork/luzcamera_test.cpp -o "$RUNNER_TEMP/luzcamera_test"
+          "$RUNNER_TEMP/luzcamera_test"
+          # The Mac camera: whether to connect, the bitrate on a slow link, which frames go, Apollo's answers
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/camerarules_test.cpp app/fork/camerarules.cpp -o "$RUNNER_TEMP/camerarules_test"
+          "$RUNNER_TEMP/camerarules_test"
           # Trackpad passthrough: Mac touches to frames with palms left out, Mac trackpad mode, and
           # which trackpad mouse events are held back
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
@@ -457,6 +484,12 @@ jobs:
             -framework Foundation -framework AppKit -framework OpenDirectory -framework Security \
             -framework SystemConfiguration -o "$RUNNER_TEMP/macdrivesetup_mac_test"
           "$RUNNER_TEMP/macdrivesetup_mac_test"
+          # The Mac camera's encoder: NV12 in, H.264 out as Apollo's decoder takes it, a keyframe when asked
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/camera_mac_test.mm app/fork/mac/camera_mac.mm \
+            -framework Foundation -framework AVFoundation -framework CoreMedia -framework CoreVideo \
+            -framework VideoToolbox -o "$RUNNER_TEMP/camera_mac_test"
+          "$RUNNER_TEMP/camera_mac_test"
 
       # Stream profiles give each Session its own StreamingPreferences copy. Streaming code that
       # reads the global settings directly would bypass the profile, so flag any new such read.

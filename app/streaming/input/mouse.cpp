@@ -3,6 +3,7 @@
 #include <Limelight.h>
 #include "SDL_compat.h"
 #include "streaming/streamutils.h"
+#include "fork/forkcursor.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
 #include "fork/forktrackpadpassthrough.h" // [fork]
 
@@ -180,6 +181,10 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
 
         // Adjust the cursor visibility if applicable
         if (mouseInVideoRegion ^ m_MouseWasInVideoRegion) {
+            // [fork] The PC's shape over the picture, the Mac's own cursor outside it (forkcursor.*)
+            if (m_ForkPcCursor != nullptr) {
+                SDL_SetCursor(mouseInVideoRegion ? m_ForkPcCursor : SDL_GetDefaultCursor());
+            }
             SDL_ShowCursor((mouseInVideoRegion && m_MouseCursorCapturedVisibilityState == SDL_DISABLE) ? SDL_DISABLE : SDL_ENABLE);
             if (!mouseInVideoRegion && buttonState != 0) {
                 // If we still have a button pressed on leave, wait for that to come up
@@ -190,8 +195,8 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
 
         m_MouseWasInVideoRegion = mouseInVideoRegion;
     }
-    else {
-        LiSendMouseMoveEvent(xrel, yrel);
+    else if (LiSendMouseMoveEvent(xrel, yrel) == 0) {
+        ForkCursor::sentMove(xrel, yrel); // [fork] where the PC's pointer goes, for the pointer this Mac draws
     }
 }
 
@@ -325,6 +330,29 @@ void SdlInputHandler::forkSetAbsoluteMouseMode(bool absolute)
     m_AbsoluteMouseMode = absolute;
     if (captured) {
         setCaptureActive(true);
+    }
+}
+
+// [fork] See input.h
+void SdlInputHandler::forkSetPcCursor(SDL_Cursor* cursor)
+{
+    if (cursor == m_ForkPcCursor) {
+        return;
+    }
+    if (cursor != nullptr && m_ForkPcCursor == nullptr) {
+        // Shown over the picture while it's the PC's; the user's own choice (Control-Option-Shift-C)
+        // comes back after
+        m_ForkCursorVisibilityBefore = m_MouseCursorCapturedVisibilityState;
+        m_MouseCursorCapturedVisibilityState = SDL_ENABLE;
+    }
+    else if (cursor == nullptr) {
+        m_MouseCursorCapturedVisibilityState = m_ForkCursorVisibilityBefore;
+    }
+    m_ForkPcCursor = cursor;
+    SDL_SetCursor(cursor != nullptr && m_MouseWasInVideoRegion ? cursor : SDL_GetDefaultCursor());
+    // As handleMouseMotionEvent() has it over the picture
+    if (m_AbsoluteMouseMode && isCaptureActive() && m_MouseWasInVideoRegion) {
+        SDL_ShowCursor(m_MouseCursorCapturedVisibilityState);
     }
 }
 
