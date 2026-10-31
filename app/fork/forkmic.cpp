@@ -407,6 +407,11 @@ IAudioRenderer* createAudioRenderer(const OPUS_MULTISTREAM_CONFIGURATION* opusCo
         return renderer;
     }
     delete renderer;
+    // A layout it can't play: SDL plays the stream from now on, and isn't taken for stale
+    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[fork] Microphone: its engine can't play this stream's audio; SDL does, without echo cancellation");
+    std::lock_guard<std::mutex> lock(s_Mutex);
+    s_PlaybackBroken = true;
+    s_WantRenderer = false;
     return nullptr;
 }
 
