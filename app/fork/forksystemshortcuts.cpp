@@ -52,6 +52,7 @@ namespace
         bool commandShiftHeld = false;
         Uint32 watchUntil = 0;
         bool mouseFreed = false;
+        bool toolsVisible = false;  // at the last look (ForkCursor hides the PC's pointer meanwhile)
     };
 
     std::unique_ptr<State> s_State;
@@ -90,6 +91,7 @@ namespace
     void checkScreenshotTools()
     {
         bool visible = MacIntegration::screenshotOverlayVisible();
+        s_State->toolsVisible = visible;
 
         if (visible && !s_State->mouseFreed && SDL_GetRelativeMouseMode()) {
             SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -105,7 +107,8 @@ namespace
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] The screenshot tools closed; the stream has the mouse again");
         }
 
-        if (!s_State->mouseFreed && !s_State->commandShiftHeld && SDL_TICKS_PASSED(SDL_GetTicks(), s_State->watchUntil)) {
+        // Watched on while the tools stay up: ⇧⌘5's toolbar stays after the keys are let go
+        if (!s_State->mouseFreed && !s_State->toolsVisible && !s_State->commandShiftHeld && SDL_TICKS_PASSED(SDL_GetTicks(), s_State->watchUntil)) {
             stopScreenshotWatch();
         }
     }
@@ -283,6 +286,11 @@ void ForkSystemShortcuts::handleEvent(const SDL_Event& event)
             (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST || event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED)) {
         apply();
     }
+}
+
+bool ForkSystemShortcuts::screenshotToolsOpen()
+{
+    return s_State && s_State->toolsVisible;
 }
 
 bool ForkSystemShortcuts::keyboardGrab(bool shouldGrab)

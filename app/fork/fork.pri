@@ -26,6 +26,7 @@ SOURCES += \
     $$PWD/clipbundle.cpp \
     $$PWD/clipboardsync.cpp \
     $$PWD/clipfiles.cpp \
+    $$PWD/cursorrules.cpp \
     $$PWD/forkaspect.cpp \
     $$PWD/forkaspectratios.cpp \
     $$PWD/forkdebugchannel.cpp \
@@ -34,9 +35,11 @@ SOURCES += \
     $$PWD/forkdisplaygroup.cpp \
     $$PWD/forkdisplayroute.cpp \
     $$PWD/forkroutememory.cpp \
+    $$PWD/forkcursor.cpp \
     $$PWD/forkevents.cpp \
     $$PWD/forkgrouplaunch.cpp \
     $$PWD/forkhelper.cpp \
+    $$PWD/forkhostmessages.cpp \
     $$PWD/forkhostpower.cpp \
     $$PWD/forkhostupdates.cpp \
     $$PWD/forkimacsetup.cpp \
@@ -84,6 +87,7 @@ HEADERS += \
     $$PWD/clipbundle.h \
     $$PWD/clipboardsync.h \
     $$PWD/clipfiles.h \
+    $$PWD/cursorrules.h \
     $$PWD/forkaspect.h \
     $$PWD/forkaspectratios.h \
     $$PWD/forkdebugchannel.h \
@@ -94,9 +98,11 @@ HEADERS += \
     $$PWD/forkdisplayroute.h \
     $$PWD/forkroutememory.h \
     $$PWD/forkpointersync.h \
+    $$PWD/forkcursor.h \
     $$PWD/forkevents.h \
     $$PWD/forkgrouplaunch.h \
     $$PWD/forkhelper.h \
+    $$PWD/forkhostmessages.h \
     $$PWD/forkhostpower.h \
     $$PWD/forkhostupdates.h \
     $$PWD/forkimacsetup.h \
@@ -121,6 +127,7 @@ HEADERS += \
     $$PWD/forkvideoscaling.h \
     $$PWD/hostcadence.h \
     $$PWD/hostpacing.h \
+    $$PWD/luzcursor.h \
     $$PWD/luztouchpad.h \
     $$PWD/adaptivebitrate.h \
     $$PWD/bitrateclient.h \
@@ -147,6 +154,7 @@ HEADERS += \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
     $$PWD/mac/displaytiming.h \
+    $$PWD/mac/forkcursor_mac.h \
     $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macdrivesetup.h \
     $$PWD/mac/macintegration.h \
@@ -167,6 +175,7 @@ macx {
         $$PWD/screenshotharness.cpp \
         $$PWD/mac/clienthardware_mac.mm \
         $$PWD/mac/displaytiming_mac.mm \
+        $$PWD/mac/forkcursor_mac.mm \
         $$PWD/mac/gesturesuppressor_mac.mm \
         $$PWD/mac/macdrivesetup_mac.mm \
         $$PWD/mac/macintegration.mm \

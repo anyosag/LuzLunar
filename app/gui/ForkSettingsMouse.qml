@@ -229,6 +229,14 @@ Column {
                 text: qsTr("Control-Option-Shift-M switches between the two while streaming")
             }
         }
+
+        // The PC's pointer in its Windows shape, drawn here with no stream delay (app/fork/forkcursor.*)
+        ForkSwitchRow {
+            label: qsTr("Draw the PC's pointer on this Mac")
+            help: qsTr("In remote desktop and Mac trackpad modes, the PC's pointer moves with no stream delay, in its own Windows shape. Needs LuzLunar's Apollo on the PC; otherwise, and in games, the PC draws it in the picture.")
+            checked: ForkPreferences.drawPcPointer
+            onToggled: (on) => ForkPreferences.drawPcPointer = on
+        }
     }
 
     // ---- Buttons & scrolling --------------------------------------------------------------

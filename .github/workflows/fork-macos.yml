@@ -417,6 +417,15 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luztouchpad_test.cpp -o "$RUNNER_TEMP/luztouchpad_test"
           "$RUNNER_TEMP/luztouchpad_test"
+          # The PC's pointer drawn by this Mac: Apollo's messages and the shared cache, also shared with
+          # anyosag/Apollo (the same test runs in its CI)
+          clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
+            tests/fork/luzcursor_test.cpp -o "$RUNNER_TEMP/luzcursor_test"
+          "$RUNNER_TEMP/luzcursor_test"
+          # And where it is in Mac trackpad mode: the moves, the PC's corrections, when it shows, how big
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/cursorrules_test.cpp app/fork/cursorrules.cpp -o "$RUNNER_TEMP/cursorrules_test"
+          "$RUNNER_TEMP/cursorrules_test"
           # Trackpad passthrough: Mac touches to frames with palms left out, Mac trackpad mode, and
           # which trackpad mouse events are held back
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
