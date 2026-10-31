@@ -790,7 +790,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNotchPanel* panel = makeNotchPanel();
     [panel setFrame:m_Panel.frame display:NO];
     // In their order in the old panel, so the dot stays under the message pill
-    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_Dot, m_MessagePill ]) {
+    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_MicDot, m_Dot, m_MessagePill ]) {
         [panel.contentView addSubview:view];
     }
 
