@@ -1430,6 +1430,19 @@ typedef NS_ENUM(NSInteger, ForkButtonStyle) {
                   @"keyboard", state.systemKeysToPc, NotchMenus::Action::ToggleSystemKeys, YES);
         addToggle(tr("Mouse"), state.mouseCaptured ? tr("Captured · ⌃⌥⇧Z") : tr("Free · ⌃⌥⇧Z"),
                   @"cursorarrow", state.mouseCaptured, NotchMenus::Action::ToggleMouseCapture, YES);
+        // This Mac's microphone on the PC, while the stream asked for it: on unless muted, greyed
+        // until the PC can take it
+        if (state.mic != MicRules::Status::Off) {
+            using Mic = MicRules::Status;
+            NSString* micDetail = state.mic == Mic::NeedsApollo ? tr("Needs Apollo") :
+                                  state.mic == Mic::NoAccess    ? tr("No access in macOS") :
+                                  state.mic == Mic::NotOnPc     ? tr("Not set up on the PC") :
+                                  state.mic == Mic::Live        ? tr("Live on the PC") :
+                                  state.mic == Mic::Muted       ? tr("Muted") : tr("When the PC records");
+            bool micUsable = state.mic == Mic::Standby || state.mic == Mic::Live || state.mic == Mic::Muted;
+            addToggle(tr("Microphone"), micDetail, state.mic == Mic::Muted ? @"mic.slash" : @"mic", micUsable && state.mic != Mic::Muted,
+                      NotchMenus::Action::ToggleMicMute, micUsable);
+        }
 
         // Trackpad opens its modes (openTrackpadList); Notch Stats switches the bar's stats text
         m_TrackpadTile = [[[ForkMenuControl alloc] initWithKind:ForkMenuControlModule owner:self] autorelease];

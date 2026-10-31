@@ -8,6 +8,7 @@
 #include "fork/forkhostpower.h" // [fork]
 #include "fork/forkhelper.h" // [fork]
 #include "fork/forklaunchargs.h" // [fork]
+#include "fork/forkmic.h" // [fork]
 #include "fork/forkmultidisplay.h" // [fork]
 #include "fork/forknetworklink.h" // [fork]
 #include "fork/forkreconnect.h" // [fork]
@@ -670,6 +671,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
 
     ForkLaunchArgs::capture(m_QtWindow, m_Preferences->trackpadMode == StreamingPreferences::TM_MAC_TRACKPAD); // [fork]
     ForkCursor::prepare(m_Computer, *m_Preferences, ForkMultiDisplay::isHelper()); // [fork] whether this Mac draws the PC's pointer
+    ForkMic::prepare(m_Computer, ForkMultiDisplay::isHelper()); // [fork] whether the PC may take this Mac's microphone
     {
         // [fork] Read here, on the main thread; the stream launches on another (startConnectionAsync())
         QReadLocker lock(&m_Computer->lock);
@@ -1332,6 +1334,7 @@ private:
         LiStopConnection();
         ForkHostMessages::connectionStopped(); // [fork]
         ForkCursor::connectionStopped(); // [fork]
+        ForkMic::connectionStopped(); // [fork]
 
         // Perform a best-effort app quit
         if (shouldQuit) {
@@ -1718,6 +1721,7 @@ bool Session::startConnectionAsync()
     // above its own and the encoder starts at its own, from the first frame
     QString forkLaunchArgs = ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware);
     forkLaunchArgs += ForkCursor::launchArgument(); // [fork] luzCursor
+    forkLaunchArgs += ForkMic::launchArgument(); // [fork] luzMic
     m_ForkOwnBitrateKbps = m_StreamConfig.bitrate;
     if (m_ForkBitrateHeadroom) {
         m_StreamConfig.bitrate = BitrateRules::launchKbps(m_ForkOwnBitrateKbps);
@@ -1814,8 +1818,10 @@ bool Session::startConnectionAsync()
         }
     }
 
-    // [fork] Apollo's own messages are read from the first one on: the PC's pointer drawn by this Mac
+    // [fork] Apollo's own messages are read from the first one on: the PC's pointer drawn by this
+    // Mac, and when the PC records from this Mac's microphone
     ForkCursor::connectionStarting();
+    ForkMic::connectionStarting();
     ForkHostMessages::connectionStarting();
 
     int err = LiStartConnection(&hostInfo, &m_StreamConfig, &k_ConnCallbacks,

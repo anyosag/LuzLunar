@@ -24,6 +24,7 @@ namespace NotchMenus
         ToggleStatsOverlay,         // Ctrl+Option+Shift+S
         CopyDiagnostics,            // a summary of the stream for a bug report, on the Mac's clipboard
         ToggleClipboardSync,        // automatic clipboard sync for the rest of the stream
+        ToggleMicMute,              // this Mac's microphone on the PC muted, or not, for the rest of the stream (ForkMic)
         ToggleNotchStats,           // the bar's stats text, or just its icon (the bar does this itself)
         ToggleAdaptiveBitrate,      // adaptive bitrate on or off for the rest of the stream
         SetBitrate,                 // the Quality slider's bitrate, in kbps (the action's value)

@@ -422,6 +422,16 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/luzcursor_test.cpp -o "$RUNNER_TEMP/luzcursor_test"
           "$RUNNER_TEMP/luzcursor_test"
+          # This Mac's microphone on the PC: its frames and Apollo's STATE, shared with anyosag/Apollo
+          # (the same test runs in its CI)
+          clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
+            tests/fork/luzmic_test.cpp -o "$RUNNER_TEMP/luzmic_test"
+          "$RUNNER_TEMP/luzmic_test"
+          # And the rest without CoreAudio: when it records, speakers or headphones, which microphone,
+          # the frames' numbers and times, the stream's sound for the voice-processing engine
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/micrules_test.cpp app/fork/micrules.cpp -o "$RUNNER_TEMP/micrules_test"
+          "$RUNNER_TEMP/micrules_test"
           # And where it is in Mac trackpad mode: the moves, the PC's corrections, when it shows, how big
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/cursorrules_test.cpp app/fork/cursorrules.cpp -o "$RUNNER_TEMP/cursorrules_test"

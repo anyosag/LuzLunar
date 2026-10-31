@@ -142,6 +142,14 @@ done
 [ "$(/usr/libexec/PlistBuddy -c "Print :LSSupportsGameMode" "$PLIST")" == "false" ] || fail "LSSupportsGameMode isn't false!"
 /usr/libexec/PlistBuddy -c "Print :LSApplicationCategoryType" "$PLIST" >/dev/null 2>&1 && fail "The games category is still set!"
 
+# This Mac's microphone on the PC (app/fork/forkmic.*): macOS asks once, with this, the first time
+# the PC records
+echo Adding the microphone usage string
+MIC_USAGE="LuzLunar records only while an app on your PC records, so the PC can hear you."
+/usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription $MIC_USAGE" "$PLIST" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string $MIC_USAGE" "$PLIST" || fail "Setting NSMicrophoneUsageDescription failed!"
+[ "$(/usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST")" == "$MIC_USAGE" ] || fail "NSMicrophoneUsageDescription isn't set!"
+
 # A layered Icon Composer icon, which macOS 26 renders in Liquid Glass instead of boxing a legacy
 # icon. actool also writes LuzLunar.icns, the same icon flattened, for older macOS.
 echo Compiling the $APP_NAME app icon

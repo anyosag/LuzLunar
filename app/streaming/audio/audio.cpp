@@ -7,6 +7,8 @@
 
 #include "renderers/sdl.h"
 
+#include "fork/forkmic.h" // [fork]
+
 #include <Limelight.h>
 
 #define TRY_INIT_RENDERER(renderer, opusConfig)        \
@@ -44,6 +46,12 @@ IAudioRenderer* Session::createAudioRenderer(const POPUS_MULTISTREAM_CONFIGURATI
     // Steam Link should always have SLAudio
     TRY_INIT_RENDERER(SLAudioRenderer, opusConfig)
 #endif
+
+    // [fork] On speakers, while the PC may take this Mac's microphone, the stream plays through the
+    // microphone's engine, which cancels its echo (fork/forkmic.*)
+    if (IAudioRenderer* forkRenderer = ForkMic::createAudioRenderer(opusConfig)) {
+        return forkRenderer;
+    }
 
     // Default to SDL
     TRY_INIT_RENDERER(SdlAudioRenderer, opusConfig)
@@ -222,7 +230,9 @@ void Session::arDecodeAndPlaySample(char* sampleData, int sampleLength)
             desiredBufferSize = 0;
         }
 
-        if (!s_ActiveSession->m_AudioRenderer->submitAudio(desiredBufferSize)) {
+        // [fork] Or the renderer no longer suits where this Mac plays: headphones came or went (fork/forkmic.*)
+        if (!s_ActiveSession->m_AudioRenderer->submitAudio(desiredBufferSize) ||
+            ForkMic::rendererStale(s_ActiveSession->m_AudioRenderer)) {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                         "Reinitializing audio renderer after failure");
 

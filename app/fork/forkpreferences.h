@@ -103,6 +103,11 @@ public:
     // that lets it (forkcursor.*)
     Q_PROPERTY(bool drawPcPointer READ drawPcPointer WRITE setDrawPcPointer NOTIFY drawPcPointerChanged)
 
+    // Lend the PC this Mac's microphone while an app there records, with an Apollo that takes it
+    // (forkmic.*); and the microphone: a CoreAudio UID, "" for the built-in one
+    Q_PROPERTY(bool macMicrophone READ macMicrophone WRITE setMacMicrophone NOTIFY macMicrophoneChanged)
+    Q_PROPERTY(QString macMicrophoneDevice READ macMicrophoneDevice WRITE setMacMicrophoneDevice NOTIFY macMicrophoneDeviceChanged)
+
     static ForkPreferences* get();
 
     bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
@@ -119,6 +124,21 @@ public:
 
     bool drawPcPointer() const { return m_DrawPcPointer; }
     void setDrawPcPointer(bool enabled);
+
+    bool macMicrophone() const { return m_MacMicrophone; }
+    void setMacMicrophone(bool enabled);
+
+    QString macMicrophoneDevice() const { return m_MacMicrophoneDevice; }
+    void setMacMicrophoneDevice(const QString& uid);
+
+    // This Mac's microphones for Settings, the built-in first: [{ "uid", "name", "builtIn" }]
+    Q_INVOKABLE QVariantList macMicrophones() const;
+
+    // macOS's answer to recording: "granted", "denied" or "undetermined" (asked at the first use)
+    Q_INVOKABLE QString macMicrophoneAccess() const;
+
+    // System Settings › Privacy & Security › Microphone
+    Q_INVOKABLE void openMicrophoneSettings();
 
     // What the Mac drive needs from macOS, for Settings › This Mac: { "fileSharing": bool,
     // "windowsSharing": "on" | "off" | "unknown", "diskShare": the startup disk's share or "",
@@ -213,6 +233,8 @@ signals:
     void macDriveChanged();
     void adaptiveBitrateChanged();
     void drawPcPointerChanged();
+    void macMicrophoneChanged();
+    void macMicrophoneDeviceChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -236,6 +258,8 @@ private:
     bool m_MacDrive;
     bool m_AdaptiveBitrate;
     bool m_DrawPcPointer;
+    bool m_MacMicrophone;
+    QString m_MacMicrophoneDevice;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };
