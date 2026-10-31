@@ -21,6 +21,8 @@ FORK_BUILD_INFO = "// This build's ID, run and channel, written by app/fork/fork
 
 SOURCES += \
     $$PWD/apolloclient.cpp \
+    $$PWD/camera.cpp \
+    $$PWD/camerarules.cpp \
     $$PWD/clientdisplay.cpp \
     $$PWD/clienthardware.cpp \
     $$PWD/clipbundle.cpp \
@@ -79,6 +81,9 @@ SOURCES += \
 
 HEADERS += \
     $$PWD/apolloclient.h \
+    $$PWD/camera.h \
+    $$PWD/camerarules.h \
+    $$PWD/luzcamera.h \
     $$PWD/clientdisplay.h \
     $$PWD/clienthardware.h \
     $$PWD/clipbundle.h \
@@ -146,6 +151,7 @@ HEADERS += \
     $$PWD/streamprofiles.h \
     $$PWD/streamstats.h \
     $$PWD/windowchrome.h \
+    $$PWD/mac/camera_mac.h \
     $$PWD/mac/displaytiming.h \
     $$PWD/mac/gesturesuppressor_mac.h \
     $$PWD/mac/macdrivesetup.h \
@@ -165,6 +171,7 @@ HEADERS += \
 macx {
     SOURCES += \
         $$PWD/screenshotharness.cpp \
+        $$PWD/mac/camera_mac.mm \
         $$PWD/mac/clienthardware_mac.mm \
         $$PWD/mac/displaytiming_mac.mm \
         $$PWD/mac/gesturesuppressor_mac.mm \

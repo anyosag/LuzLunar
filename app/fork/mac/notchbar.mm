@@ -29,6 +29,7 @@ namespace
     const CGFloat k_IconGap = 6;      // between the message icon and its text
     const CGFloat k_TitleGap = 8;     // between the title and a message beside it
     const CGFloat k_DotSize = 8;
+    const CGFloat k_CameraDotSize = 6;
     const CGFloat k_ItemGap = 2;      // between the items right of the notch
     const int64_t k_ToastDurationNs = 3 * NSEC_PER_SEC;
     const int64_t k_NoticeDurationNs = 6 * NSEC_PER_SEC;   // a power notice or a hint is longer to read
@@ -249,6 +250,8 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
     NSImageView* m_MessageIcon;
     NSTextField* m_MessageLabel;
     NSView* m_Dot;
+    NSView* m_CameraDot;            // green while the PC uses this Mac's camera (setCameraLive:)
+    BOOL m_CameraLive;
     NSString* m_Warning;            // the connection warning, until the connection recovers
     NSString* m_Toast;              // a clipboard message or a power notice, shown for a few seconds
     ForkMessageKind m_ToastKind;
@@ -295,6 +298,7 @@ typedef NS_ENUM(NSInteger, ForkMessageState) {
 - (void)refreshMenus;
 - (void)bitrateChanged;
 - (void)powerChanged;
+- (void)setCameraLive:(BOOL)live;
 - (void)updateQualityItem;
 - (void)updateBatteryItem;
 - (void)statsArrived;
@@ -626,6 +630,15 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     m_Dot.wantsLayer = YES;
     m_Dot.hidden = YES;
 
+    m_CameraDot = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, k_CameraDotSize, k_CameraDotSize)];
+    CALayer* cameraDot = [CALayer layer];
+    cameraDot.backgroundColor = NSColor.systemGreenColor.CGColor;
+    cameraDot.cornerRadius = k_CameraDotSize / 2;
+    m_CameraDot.layer = cameraDot;
+    m_CameraDot.wantsLayer = YES;
+    m_CameraDot.hidden = YES;
+    m_CameraDot.toolTip = QCoreApplication::translate("NotchBar", "The PC is using this Mac's camera").toNSString();
+
     m_MessageState = ForkMessageHidden;
     m_ShowsMessages = false;
 
@@ -634,6 +647,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_Panel.contentView addSubview:m_QualityItem];
     [m_Panel.contentView addSubview:m_BatteryItem];
     [m_Panel.contentView addSubview:m_ControlItem];
+    [m_Panel.contentView addSubview:m_CameraDot];
     // The dot sits under the pill that grows out of it
     [m_Panel.contentView addSubview:m_Dot];
     [m_Panel.contentView addSubview:m_MessagePill];
@@ -688,6 +702,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     [m_MessageButton release];
     [m_ToastActionTitle release];
     [m_Dot release];
+    [m_CameraDot release];
     [m_Warning release];
     [m_Toast release];
     [m_Corner release];
@@ -774,7 +789,7 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
     ForkNotchPanel* panel = makeNotchPanel();
     [panel setFrame:m_Panel.frame display:NO];
     // In their order in the old panel, so the dot stays under the message pill
-    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_Dot, m_MessagePill ]) {
+    for (NSView* view in @[ m_SessionItem, m_StatsItem, m_QualityItem, m_BatteryItem, m_ControlItem, m_CameraDot, m_Dot, m_MessagePill ]) {
         [panel.contentView addSubview:view];
     }
 
@@ -1370,6 +1385,17 @@ static NSString* connectionWarningText(bool suggestLowerBitrate)
         item.hidden = placed[i].width <= 0;
         item.frame = NSMakeRect(NSMinX(rightArea) + placed[i].x, y, placed[i].width, height);
     }
+
+    // The camera's dot, at Control Center's top left, like a badge
+    NSRect control = m_ControlItem.frame;
+    m_CameraDot.frame = NSMakeRect(NSMinX(control) - k_CameraDotSize / 2, NSMaxY(control) - k_CameraDotSize, k_CameraDotSize, k_CameraDotSize);
+    m_CameraDot.hidden = !m_CameraLive || m_ControlItem.hidden;
+}
+
+- (void)setCameraLive:(BOOL)live
+{
+    m_CameraLive = live;
+    m_CameraDot.hidden = !m_CameraLive || m_ControlItem.hidden;
 }
 
 // Shows the bar while the stream window is fullscreen on the active Space of a display with a notch,
@@ -2183,6 +2209,11 @@ namespace
         void setStreamSettings(StreamSettingsSource source) override
         {
             [m_Controller setStreamSettings:std::move(source)];
+        }
+
+        void setCameraLive(bool live) override
+        {
+            [m_Controller setCameraLive:live];
         }
 
         bool toggleMenus() override

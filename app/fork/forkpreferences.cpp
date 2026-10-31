@@ -4,11 +4,14 @@
 #include <string>
 
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QSettings>
+#include <QUrl>
 #include <QVariantMap>
 
 #include "forkdisplayroute.h"
 #include "forkmacshortcuts.h"
+#include "mac/camera_mac.h"
 #include "mac/gesturesuppressor_mac.h"
 #include "mac/macdrivesetup.h"
 #include "mac/macintegration.h"
@@ -31,6 +34,8 @@
 #define SER_MACDRIVE "fork/macDrive"
 #define SER_MACDRIVELAST "fork/macDriveLast"
 #define SER_ADAPTIVEBITRATE "fork/adaptiveBitrate"
+#define SER_CAMERA "fork/camera"
+#define SER_CAMERADEVICE "fork/cameraDevice"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
@@ -96,7 +101,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_TrackpadPauseMacSettings(true),
       m_TrackpadScrollSpeed(1.0),
       m_MacDrive(false),
-      m_AdaptiveBitrate(true)
+      m_AdaptiveBitrate(true),
+      m_Camera(true)
 {
     QSettings settings;
 
@@ -151,6 +157,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
     m_MacDrive = settings.value(SER_MACDRIVE, m_MacDrive).toBool();
     m_AdaptiveBitrate = settings.value(SER_ADAPTIVEBITRATE, m_AdaptiveBitrate).toBool();
+    m_Camera = settings.value(SER_CAMERA, m_Camera).toBool();
+    m_CameraDevice = settings.value(SER_CAMERADEVICE, m_CameraDevice).toString();
     settings.beginGroup(SER_MACSHORTCUTS);
     for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
         QString key = QString::fromUtf8(group.key);
@@ -336,6 +344,58 @@ void ForkPreferences::setAdaptiveBitrate(bool enabled)
     m_AdaptiveBitrate = enabled;
     QSettings().setValue(SER_ADAPTIVEBITRATE, enabled);
     emit adaptiveBitrateChanged();
+}
+
+void ForkPreferences::setCamera(bool enabled)
+{
+    if (enabled == m_Camera) {
+        return;
+    }
+
+    m_Camera = enabled;
+    QSettings().setValue(SER_CAMERA, enabled);
+    emit cameraChanged();
+}
+
+void ForkPreferences::setCameraDevice(const QString& id)
+{
+    if (id == m_CameraDevice) {
+        return;
+    }
+
+    m_CameraDevice = id;
+    QSettings().setValue(SER_CAMERADEVICE, id);
+    emit cameraDeviceChanged();
+}
+
+QVariantList ForkPreferences::cameraDevices() const
+{
+    QVariantList list;
+    for (const MacCamera::Device& device : MacCamera::devices()) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("id"), QString::fromStdString(device.id));
+        entry.insert(QStringLiteral("name"), QString::fromStdString(device.name));
+        list.append(entry);
+    }
+    return list;
+}
+
+QString ForkPreferences::cameraAccess() const
+{
+    switch (MacCamera::access()) {
+    case MacCamera::Access::Allowed:
+        return QStringLiteral("allowed");
+    case MacCamera::Access::Denied:
+        return QStringLiteral("denied");
+    case MacCamera::Access::Undetermined:
+        break;
+    }
+    return QStringLiteral("undetermined");
+}
+
+void ForkPreferences::openCameraSettings()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")));
 }
 
 QVariantMap ForkPreferences::macDriveSetup() const

@@ -142,6 +142,14 @@ done
 [ "$(/usr/libexec/PlistBuddy -c "Print :LSSupportsGameMode" "$PLIST")" == "false" ] || fail "LSSupportsGameMode isn't false!"
 /usr/libexec/PlistBuddy -c "Print :LSApplicationCategoryType" "$PLIST" >/dev/null 2>&1 && fail "The games category is still set!"
 
+# The camera, for the PC's Mac Camera (app/fork/camera.*): macOS shows this when it first asks, and
+# without it macOS ends the app as soon as it opens the camera
+echo Adding the camera usage description
+CAMERA_USAGE="LuzLunar sends this camera to the PC you stream from while an app there uses Mac Camera."
+/usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription \"$CAMERA_USAGE\"" "$PLIST" 2>/dev/null || \
+  /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string \"$CAMERA_USAGE\"" "$PLIST" || fail "Setting NSCameraUsageDescription failed!"
+[ "$(/usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" "$PLIST")" == "$CAMERA_USAGE" ] || fail "NSCameraUsageDescription isn't set!"
+
 # A layered Icon Composer icon, which macOS 26 renders in Liquid Glass instead of boxing a legacy
 # icon. actool also writes LuzLunar.icns, the same icon flattened, for older macOS.
 echo Compiling the $APP_NAME app icon
