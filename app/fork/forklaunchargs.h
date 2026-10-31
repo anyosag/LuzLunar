@@ -5,7 +5,8 @@
 class QWindow;
 
 // The fork's additions to /launch and /resume: a description of the Mac screen the stream shows on
-// (clientdisplay.*), for the host's virtual display, and the trackpad's mode. Apollo with
+// (clientdisplay.*), for the host's virtual display, the trackpad's mode, and whether the stream
+// brings the Mac's camera (luzCamera=1, camera.*). Apollo with
 // anyosag/LuzVDA uses them; other hosts ignore arguments they don't know. Captured on the main
 // thread before the stream starts, then taken on the thread that starts it, so every launch and
 // resume describes the current screen.

@@ -108,6 +108,11 @@ public:
     Q_PROPERTY(bool macMicrophone READ macMicrophone WRITE setMacMicrophone NOTIFY macMicrophoneChanged)
     Q_PROPERTY(QString macMicrophoneDevice READ macMicrophoneDevice WRITE setMacMicrophoneDevice NOTIFY macMicrophoneDeviceChanged)
 
+    // Lend this Mac's camera to the PC's "Mac Camera" while an app there uses it (camera.*), and which
+    // camera: an AVCaptureDevice uniqueID, empty for the one macOS prefers
+    Q_PROPERTY(bool camera READ camera WRITE setCamera NOTIFY cameraChanged)
+    Q_PROPERTY(QString cameraDevice READ cameraDevice WRITE setCameraDevice NOTIFY cameraDeviceChanged)
+
     static ForkPreferences* get();
 
     bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
@@ -139,6 +144,22 @@ public:
 
     // System Settings › Privacy & Security › Microphone
     Q_INVOKABLE void openMicrophoneSettings();
+
+    bool camera() const { return m_Camera; }
+    void setCamera(bool enabled);
+
+    QString cameraDevice() const { return m_CameraDevice; }
+    void setCameraDevice(const QString& id);
+
+    // The Mac's cameras for Settings' picker, the one macOS prefers first: [{ "id", "name" }]
+    Q_INVOKABLE QVariantList cameraDevices() const;
+
+    // Whether macOS lets LuzLunar use the camera: "allowed", "denied" or "undetermined" (it asks
+    // the first time the PC wants it)
+    Q_INVOKABLE QString cameraAccess() const;
+
+    // System Settings › Privacy & Security › Camera
+    Q_INVOKABLE void openCameraSettings();
 
     // What the Mac drive needs from macOS, for Settings › This Mac: { "fileSharing": bool,
     // "windowsSharing": "on" | "off" | "unknown", "diskShare": the startup disk's share or "",
@@ -235,6 +256,8 @@ signals:
     void drawPcPointerChanged();
     void macMicrophoneChanged();
     void macMicrophoneDeviceChanged();
+    void cameraChanged();
+    void cameraDeviceChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -260,6 +283,8 @@ private:
     bool m_DrawPcPointer;
     bool m_MacMicrophone;
     QString m_MacMicrophoneDevice;
+    bool m_Camera;
+    QString m_CameraDevice;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };

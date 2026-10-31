@@ -48,6 +48,7 @@ ApolloClient::HostInfo ApolloClient::hostInfo()
         info.clipboardFiles = NvHTTP::getXmlString(serverInfo, "LuzClipboardFiles") == "1";
         info.macDrive = NvHTTP::getXmlString(serverInfo, "LuzMacDrive");
         info.bitrate = NvHTTP::getXmlString(serverInfo, "LuzBitrate");
+        info.camera = NvHTTP::getXmlString(serverInfo, "LuzCamera") == "1";
     }
     catch (...) {
     }

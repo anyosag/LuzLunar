@@ -8,8 +8,8 @@ import SystemProperties 1.0
 
 // [fork] Settings › This Mac: the chip, each display's shape and the hardware video decoders that
 // the warnings about stream settings are checked against (what ForkThisMacGroupBox lists for
-// upstream's page), how the Mac's screen is described to Apollo hosts, and this Mac's disk as a
-// drive on the PC (ForkMacDriveCard). The hardware shown is read from ClientHardware; "Check
+// upstream's page), how the Mac's screen is described to Apollo hosts, this Mac's disk as a
+// drive on the PC (ForkMacDriveCard), and its camera as the PC's webcam (ForkMacCameraCard). The hardware shown is read from ClientHardware; "Check
 // again" reads it again.
 Column {
     id: macSection
@@ -480,6 +480,10 @@ Column {
     // ---- This Mac on the PC -----------------------------------------------------------------
 
     ForkMacDriveCard {
+        visible: SystemProperties.isDarwin
+    }
+
+    ForkMacCameraCard {
         visible: SystemProperties.isDarwin
     }
 }

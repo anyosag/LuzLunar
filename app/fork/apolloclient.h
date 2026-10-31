@@ -49,6 +49,7 @@ public:
         bool clipboardFiles = false; // <LuzClipboardFiles>: LuzLunar's Apollo takes file copies through the clipboard
         QString macDrive;            // <LuzMacDrive>: "1" when Apollo maps this Mac as a drive (macdrive.h), empty from an older Apollo
         QString bitrate;             // <LuzBitrate>: "1" when Apollo changes a stream's bitrate while it runs (adaptivebitrate.h)
+        bool camera = false;         // <LuzCamera>: Apollo's Mac Camera takes this Mac's camera (camera.h)
     };
 
     HostInfo hostInfo();

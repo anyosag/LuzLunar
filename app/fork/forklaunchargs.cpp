@@ -5,6 +5,7 @@
 #include "forkmultidisplay.h"
 #include "forkpreferences.h"
 #include "forkvideoscaling.h"
+#include "luzcamera.h"
 #include "SDL_compat.h"
 
 #include <QMutex>
@@ -60,6 +61,13 @@ void capture(QWindow* qtWindow, bool macTrackpad)
 
     // A multi-display group: slot 0 declares it, the other slots join it (forkmultidisplay.*)
     args += ForkMultiDisplay::launchArgs();
+
+#ifdef Q_OS_DARWIN
+    // This stream brings the Mac's camera for the PC's Mac Camera (camera.*); a group's other slots don't
+    if (ForkPreferences::get()->camera() && !ForkMultiDisplay::isHelper()) {
+        args += QStringLiteral("&") + QString::fromLatin1(luzcamera::k_launch_arg) + QStringLiteral("=1");
+    }
+#endif
 
     QMutexLocker lock(&s_Lock);
     s_Args = args;
