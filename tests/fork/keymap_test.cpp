@@ -53,6 +53,19 @@ int main()
     // A key mapped to nothing loses its modifier bit
     CHECK(remapModifiers(KMOD_LALT | KMOD_LCTRL, dropOption) == KMOD_LCTRL);
 
+    // Left Alt+M goes with Ctrl, which Windows reads as AltGr+M (µ); locks don't matter
+    CHECK(leftAltMicro(SDL_SCANCODE_M, KMOD_LALT) == (KMOD_LALT | KMOD_LCTRL));
+    CHECK(leftAltMicro(SDL_SCANCODE_M, KMOD_LALT | KMOD_CAPS) == (KMOD_LALT | KMOD_LCTRL | KMOD_CAPS));
+    // Right Alt is AltGr already; other keys, other modifiers or none are left alone
+    CHECK(leftAltMicro(SDL_SCANCODE_M, KMOD_RALT) == KMOD_RALT);
+    CHECK(leftAltMicro(SDL_SCANCODE_N, KMOD_LALT) == KMOD_LALT);
+    CHECK(leftAltMicro(SDL_SCANCODE_M, KMOD_LALT | KMOD_LSHIFT) == (KMOD_LALT | KMOD_LSHIFT));
+    CHECK(leftAltMicro(SDL_SCANCODE_M, KMOD_LALT | KMOD_LCTRL) == (KMOD_LALT | KMOD_LCTRL));
+    CHECK(leftAltMicro(SDL_SCANCODE_M, KMOD_LALT | KMOD_LGUI) == (KMOD_LALT | KMOD_LGUI));
+    CHECK(leftAltMicro(SDL_SCANCODE_M, KMOD_NONE) == KMOD_NONE);
+    // Mac Option+M: Option stays Alt after the remapping, so it still applies
+    CHECK(leftAltMicro(SDL_SCANCODE_M, remapModifiers(KMOD_LALT, mac)) == (KMOD_LALT | KMOD_LCTRL));
+
     if (s_Failures == 0) {
         std::printf("All key remapping tests passed\n");
     }
