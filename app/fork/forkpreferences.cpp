@@ -31,6 +31,7 @@
 #define SER_MACDRIVE "fork/macDrive"
 #define SER_MACDRIVELAST "fork/macDriveLast"
 #define SER_ADAPTIVEBITRATE "fork/adaptiveBitrate"
+#define SER_DRAWPCPOINTER "fork/drawPcPointer"
 
 // Brighter than any display sold; HDR10 tops out at 10,000 nits
 #define MAX_HDR_PEAK 10000
@@ -96,7 +97,8 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_TrackpadPauseMacSettings(true),
       m_TrackpadScrollSpeed(1.0),
       m_MacDrive(false),
-      m_AdaptiveBitrate(true)
+      m_AdaptiveBitrate(true),
+      m_DrawPcPointer(true)
 {
     QSettings settings;
 
@@ -151,6 +153,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
     }
     m_MacDrive = settings.value(SER_MACDRIVE, m_MacDrive).toBool();
     m_AdaptiveBitrate = settings.value(SER_ADAPTIVEBITRATE, m_AdaptiveBitrate).toBool();
+    m_DrawPcPointer = settings.value(SER_DRAWPCPOINTER, m_DrawPcPointer).toBool();
     settings.beginGroup(SER_MACSHORTCUTS);
     for (const ForkMacShortcuts::Group& group : ForkMacShortcuts::groups()) {
         QString key = QString::fromUtf8(group.key);
@@ -336,6 +339,17 @@ void ForkPreferences::setAdaptiveBitrate(bool enabled)
     m_AdaptiveBitrate = enabled;
     QSettings().setValue(SER_ADAPTIVEBITRATE, enabled);
     emit adaptiveBitrateChanged();
+}
+
+void ForkPreferences::setDrawPcPointer(bool enabled)
+{
+    if (enabled == m_DrawPcPointer) {
+        return;
+    }
+
+    m_DrawPcPointer = enabled;
+    QSettings().setValue(SER_DRAWPCPOINTER, enabled);
+    emit drawPcPointerChanged();
 }
 
 QVariantMap ForkPreferences::macDriveSetup() const

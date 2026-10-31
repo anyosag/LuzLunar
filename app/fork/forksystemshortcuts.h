@@ -15,4 +15,8 @@ namespace ForkSystemShortcuts
     // The keyboard grab to ask SDL for, given upstream's decision (SdlInputHandler::updateKeyboardGrabState).
     // On macOS it's false unless every shortcut goes to the host: the chosen shortcuts are taken here.
     bool keyboardGrab(bool shouldGrab);
+
+    // macOS's screenshot tools (⇧⌘4's crosshair, ⇧⌘5's toolbar) were on screen at the last look,
+    // which runs while ⌘⇧ is held, a second after, and as long as they stay up
+    bool screenshotToolsOpen();
 }

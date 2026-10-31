@@ -3,6 +3,8 @@
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
 #include "fork/bitraterules.h" // [fork]
+#include "fork/forkcursor.h" // [fork]
+#include "fork/forkhostmessages.h" // [fork]
 #include "fork/forkhostpower.h" // [fork]
 #include "fork/forkhelper.h" // [fork]
 #include "fork/forklaunchargs.h" // [fork]
@@ -667,6 +669,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
 #endif
 
     ForkLaunchArgs::capture(m_QtWindow, m_Preferences->trackpadMode == StreamingPreferences::TM_MAC_TRACKPAD); // [fork]
+    ForkCursor::prepare(m_Computer, *m_Preferences, ForkMultiDisplay::isHelper()); // [fork] whether this Mac draws the PC's pointer
     {
         // [fork] Read here, on the main thread; the stream launches on another (startConnectionAsync())
         QReadLocker lock(&m_Computer->lock);
@@ -1327,6 +1330,8 @@ private:
 
         // Finish cleanup of the connection state
         LiStopConnection();
+        ForkHostMessages::connectionStopped(); // [fork]
+        ForkCursor::connectionStopped(); // [fork]
 
         // Perform a best-effort app quit
         if (shouldQuit) {
@@ -1712,6 +1717,7 @@ bool Session::startConnectionAsync()
     // it launched with, so with an Apollo that starts it at luzBitrate, the stream launches a quarter
     // above its own and the encoder starts at its own, from the first frame
     QString forkLaunchArgs = ForkLaunchArgs::take(m_Computer->isNvidiaServerSoftware);
+    forkLaunchArgs += ForkCursor::launchArgument(); // [fork] luzCursor
     m_ForkOwnBitrateKbps = m_StreamConfig.bitrate;
     if (m_ForkBitrateHeadroom) {
         m_StreamConfig.bitrate = BitrateRules::launchKbps(m_ForkOwnBitrateKbps);
@@ -1807,6 +1813,10 @@ bool Session::startConnectionAsync()
             break;
         }
     }
+
+    // [fork] Apollo's own messages are read from the first one on: the PC's pointer drawn by this Mac
+    ForkCursor::connectionStarting();
+    ForkHostMessages::connectionStarting();
 
     int err = LiStartConnection(&hostInfo, &m_StreamConfig, &k_ConnCallbacks,
                                 &m_VideoCallbacks, &m_AudioCallbacks,

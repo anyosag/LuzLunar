@@ -1,4 +1,5 @@
 #include "input.h"
+#include "fork/forkcursor.h" // [fork]
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -100,7 +101,9 @@ void SdlInputHandler::handleRelativeFingerEvent(SDL_TouchFingerEvent* event)
         short deltaX = static_cast<short>(event->dx * m_StreamWidth);
         short deltaY = static_cast<short>(event->dy * m_StreamHeight);
         if (deltaX != 0 || deltaY != 0) {
-            LiSendMouseMoveEvent(deltaX, deltaY);
+            if (LiSendMouseMoveEvent(deltaX, deltaY) == 0) {
+                ForkCursor::sentMove(deltaX, deltaY); // [fork] for the pointer this Mac draws
+            }
         }
     }
 

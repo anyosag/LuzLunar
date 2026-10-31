@@ -99,6 +99,10 @@ public:
     // Lower the stream's bitrate while the network struggles, and raise it back (adaptivebitrate.*)
     Q_PROPERTY(bool adaptiveBitrate READ adaptiveBitrate WRITE setAdaptiveBitrate NOTIFY adaptiveBitrateChanged)
 
+    // Draw the PC's pointer on this Mac, in remote desktop and Mac trackpad modes, with an Apollo
+    // that lets it (forkcursor.*)
+    Q_PROPERTY(bool drawPcPointer READ drawPcPointer WRITE setDrawPcPointer NOTIFY drawPcPointerChanged)
+
     static ForkPreferences* get();
 
     bool trackpadPauseMacSettings() const { return m_TrackpadPauseMacSettings; }
@@ -112,6 +116,9 @@ public:
 
     bool adaptiveBitrate() const { return m_AdaptiveBitrate; }
     void setAdaptiveBitrate(bool enabled);
+
+    bool drawPcPointer() const { return m_DrawPcPointer; }
+    void setDrawPcPointer(bool enabled);
 
     // What the Mac drive needs from macOS, for Settings › This Mac: { "fileSharing": bool,
     // "windowsSharing": "on" | "off" | "unknown", "diskShare": the startup disk's share or "",
@@ -205,6 +212,7 @@ signals:
     void trackpadScrollSpeedChanged();
     void macDriveChanged();
     void adaptiveBitrateChanged();
+    void drawPcPointerChanged();
 
 private:
     explicit ForkPreferences(QObject* parent = nullptr);
@@ -227,6 +235,7 @@ private:
     double m_TrackpadScrollSpeed;
     bool m_MacDrive;
     bool m_AdaptiveBitrate;
+    bool m_DrawPcPointer;
     // Saved choices by group key; groups not in it use the table's default
     QHash<QString, bool> m_MacShortcutsToHost;
 };
