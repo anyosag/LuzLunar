@@ -373,6 +373,12 @@ namespace WakeSetupRules
         return fill(fix ? "%1's wake settings didn't change. Try again." : "%1's wake settings didn't go back. Try again.", pcName);
     }
 
+    // A fix or undo the PC didn't answer about within a minute (its network adapter restarts)
+    inline std::string noAnswerAfterChange(const std::string& pcName)
+    {
+        return fill("%1 didn't answer after changing its settings. If it doesn't come back, restart Apollo on it.", pcName);
+    }
+
     // When Apollo refuses a request, or doesn't answer (httpStatus 0)
     inline std::string refusalText(int httpStatus, const std::string& error, const std::string& pcName)
     {

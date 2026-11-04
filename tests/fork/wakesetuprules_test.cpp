@@ -244,6 +244,7 @@ static void testResults()
     CHECK(refusalText(409, "nothing", "PC") == "Nothing to change on PC");
     CHECK(refusalText(409, "applying", "PC") == "PC is already changing its settings");
     CHECK(refusalText(0, "", "PC") == "PC didn't answer");
+    CHECK(has(noAnswerAfterChange("PC"), "restart Apollo on it"));
 }
 
 static void testTexts()
