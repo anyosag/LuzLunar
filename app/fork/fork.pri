@@ -113,6 +113,7 @@ HEADERS += \
     $$PWD/forkhostmessages.h \
     $$PWD/forkhostpower.h \
     $$PWD/forkhostupdates.h \
+    $$PWD/hostupdaterules.h \
     $$PWD/forkimacsetup.h \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \

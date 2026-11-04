@@ -8,6 +8,7 @@
 #include "apolloclient.h"
 #include "backend/computermanager.h"
 #include "backend/nvcomputer.h"
+#include "hostupdaterules.h"
 
 namespace
 {
@@ -201,6 +202,7 @@ void ForkHostUpdates::onResponse(const QString& uuid, int httpStatus, const QByt
         host.error = document.object().value(QStringLiteral("error")).toString();
         if (host.updating) {
             host.updating = false;
+            emit finished(uuid, tr("Apollo didn't update: %1").arg(host.error));
         }
     }
     else if (!host.updating) {
@@ -210,26 +212,49 @@ void ForkHostUpdates::onResponse(const QString& uuid, int httpStatus, const QByt
 
     if (host.updating && httpStatus == 200) {
         QString version = host.status.value(QStringLiteral("version")).toString();
-        QString state = host.status.value(QStringLiteral("state")).toString();
+        QString message = host.status.value(QStringLiteral("message")).toString();
         QJsonObject lastResult = host.status.value(QStringLiteral("last_result")).toObject();
-        qint64 resultTime = static_cast<qint64>(lastResult.value(QStringLiteral("time")).toDouble());
 
-        if (!host.versionBefore.isEmpty() && version != host.versionBefore) {
-            host.updating = false;
+        HostUpdateRules::Answer answer;
+        answer.versionBefore = host.versionBefore.toStdString();
+        answer.version = version.toStdString();
+        answer.state = host.status.value(QStringLiteral("state")).toString().toStdString();
+        answer.hasLastResult = !lastResult.isEmpty();
+        answer.lastResultTime = static_cast<qint64>(lastResult.value(QStringLiteral("time")).toDouble());
+        answer.startedSecs = host.updateStarted.toSecsSinceEpoch();
+        answer.nowSecs = QDateTime::currentDateTimeUtc().toSecsSinceEpoch();
+
+        // Every way it ends gets a toast, so a click on Update Apollo never just comes back
+        switch (HostUpdateRules::outcome(answer)) {
+        case HostUpdateRules::Outcome::Updated:
             emit finished(uuid, tr("Apollo updated to %1").arg(version));
-        }
-        else if (resultTime >= host.updateStarted.toSecsSinceEpoch() && !lastResult.isEmpty()) {
-            // Back on the same version: the helper put the previous build back
-            host.updating = false;
+            break;
+        case HostUpdateRules::Outcome::WentBack:
+            // Back on the same version: the helper put the previous build back, or gave up
             emit finished(uuid, lastResult.value(QStringLiteral("text")).toString());
-        }
-        else if (state == QStringLiteral("failed") || state == QStringLiteral("idle")) {
-            host.updating = false;
-            host.error = host.status.value(QStringLiteral("message")).toString();
-        }
-        else if (state == QStringLiteral("waiting")) {
+            break;
+        case HostUpdateRules::Outcome::Failed:
+            host.error = message;
+            emit finished(uuid, tr("Apollo didn't update: %1").arg(message));
+            break;
+        case HostUpdateRules::Outcome::UpToDate:
+            host.error = message;
+            emit finished(uuid, tr("Apollo is up to date"));
+            break;
+        case HostUpdateRules::Outcome::StuckChecking:
+            // An Apollo from before the updater put its state back after a check ignores Install
+            host.error = tr("Apollo is stuck checking for updates. Restart Apollo on the PC (or the PC), then choose Update Apollo again within 30 minutes.");
+            emit finished(uuid, host.error);
+            break;
+        case HostUpdateRules::Outcome::Waiting:
             // It installs once nobody streams, however long that takes
             host.updateStarted = QDateTime::currentDateTimeUtc();
+            break;
+        case HostUpdateRules::Outcome::Continue:
+            break;
+        }
+        if (HostUpdateRules::ends(HostUpdateRules::outcome(answer))) {
+            host.updating = false;
         }
     }
 
@@ -251,6 +276,7 @@ void ForkHostUpdates::pollUpdating()
             host.error = tr("Apollo didn't come back after updating. Check the PC.");
             m_Revision++;
             emit changed();
+            emit finished(it.key(), host.error);
             continue;
         }
         any = true;
