@@ -401,6 +401,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/powerrules_test.cpp -o "$RUNNER_TEMP/powerrules_test"
           "$RUNNER_TEMP/powerrules_test"
+          # Set Up Wake from Off and Shut Down PC: the dialog's rows and notes, Shut Down's warning, the toasts
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/wakesetuprules_test.cpp -o "$RUNNER_TEMP/wakesetuprules_test"
+          "$RUNNER_TEMP/wakesetuprules_test"
           # Reconnecting from the notch bar: the new stream's settings, Quality's frame rates and resolutions
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/reconnectrules_test.cpp -o "$RUNNER_TEMP/reconnectrules_test"

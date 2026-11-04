@@ -152,6 +152,7 @@ HEADERS += \
     $$PWD/forkpower.h \
     $$PWD/forkreconnect.h \
     $$PWD/powerrules.h \
+    $$PWD/wakesetuprules.h \
     $$PWD/reconnectrules.h \
     $$PWD/streamsettings.h \
     $$PWD/streamsettingsrules.h \
