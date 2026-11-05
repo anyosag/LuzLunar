@@ -341,8 +341,18 @@ void ForkGroupLaunch::rebuild()
         if (!direct && m_Decision.reason == "steadier at its worst") {
             m_ViaCard["note"] = tr("Steadier at its worst");
         }
-        else if (direct && m_Decision.reason == "set to go straight from the PC") {
-            m_DirectCard["note"] = tr("Set in Settings");
+        else if (direct && m_Decision.reason.rfind("set to go straight from the PC", 0) == 0) {
+            // Set in Settings, it goes straight from the PC however the connection measures; a slow
+            // or lossy one only shows in warning colors
+            const std::string though = ", though ";
+            size_t at = m_Decision.reason.find(though);
+            if (at == std::string::npos) {
+                m_DirectCard["note"] = tr("Set in Settings");
+            }
+            else {
+                m_DirectCard["note"] = tr("Set in Settings, though %1").arg(QString::fromStdString(m_Decision.reason.substr(at + though.size())));
+                m_DirectCard["warn"] = true;
+            }
         }
     }
     else if (m_Group->route == ForkDisplayRoute::Setting::ViaMac) {

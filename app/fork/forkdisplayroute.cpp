@@ -28,11 +28,10 @@ namespace
                probe.medianMs <= k_DirectMaxMedianMs && probe.maxMs <= k_DirectMaxWorstMs;
     }
 
-    // Why the iMac can't stream straight from the PC; empty if it can. best is set to the fastest
-    // usable probe.
-    std::string ineligible(const Facts& facts, const Probe*& best)
+    // Why the iMac can't stream straight from the PC at all, however its connection measures;
+    // empty when it can
+    std::string blocker(const Facts& facts)
     {
-        best = nullptr;
         if (!facts.bridge) {
             return "DisplayExtend's Host isn't running, or is too old to hand the iMac over";
         }
@@ -48,29 +47,105 @@ namespace
         if (!facts.paired) {
             return "the iMac isn't paired with this PC; use Set up the iMac in Settings";
         }
+        return {};
+    }
 
-        const Probe* fastestReachable = nullptr;
+    // Some connect from the iMac to this address went through
+    bool reachable(const Probe& probe)
+    {
+        return probe.medianMs >= 0 && probe.failures < probe.count;
+    }
+
+    // The usable probe with the lowest median, or none
+    const Probe* fastestUsable(const Facts& facts)
+    {
+        const Probe* best = nullptr;
         for (const Probe& probe : facts.imacToPc) {
             if (usable(probe) && (best == nullptr || probe.medianMs < best->medianMs)) {
                 best = &probe;
             }
-            if (probe.medianMs >= 0 && probe.failures < probe.count &&
-                    (fastestReachable == nullptr || probe.medianMs < fastestReachable->medianMs)) {
-                fastestReachable = &probe;
+        }
+        return best;
+    }
+
+    // The reachable probe with the lowest median, or none
+    const Probe* fastestReachable(const Facts& facts)
+    {
+        const Probe* best = nullptr;
+        for (const Probe& probe : facts.imacToPc) {
+            if (reachable(probe) && (best == nullptr || probe.medianMs < best->medianMs)) {
+                best = &probe;
             }
         }
+        return best;
+    }
+
+    // The reachable probe with the fewest failed connects, then the lowest median, or none
+    const Probe* mostReliable(const Facts& facts)
+    {
+        const Probe* best = nullptr;
+        for (const Probe& probe : facts.imacToPc) {
+            if (reachable(probe) && (best == nullptr || probe.failures < best->failures ||
+                                     (probe.failures == best->failures && probe.medianMs < best->medianMs))) {
+                best = &probe;
+            }
+        }
+        return best;
+    }
+
+    // What keeps a reachable probe from being usable: "2 of 30 connects from the iMac to the PC
+    // failed", or "the iMac's connection to the PC is <slow> (20 ms, worst 30 ms)"
+    std::string quality(const Probe& probe, const char* slow)
+    {
+        if (probe.failures > 0) {
+            return std::to_string(probe.failures) + " of " + std::to_string(probe.count) +
+                   " connects from the iMac to the PC failed";
+        }
+        return std::string("the iMac's connection to the PC is ") + slow + " (" + ms(probe.medianMs) + ", worst " +
+               ms(probe.maxMs) + ")";
+    }
+
+    // For Automatic: why the iMac can't stream straight from the PC; empty if it can. best is set to
+    // the fastest usable probe.
+    std::string ineligible(const Facts& facts, const Probe*& best)
+    {
+        best = nullptr;
+        std::string why = blocker(facts);
+        if (!why.empty()) {
+            return why;
+        }
+        best = fastestUsable(facts);
         if (best != nullptr) {
             return {};
         }
-        if (fastestReachable == nullptr) {
+        const Probe* fastest = fastestReachable(facts);
+        if (fastest == nullptr) {
             return "the iMac can't reach the PC";
         }
-        if (fastestReachable->failures > 0) {
-            return std::to_string(fastestReachable->failures) + " of " + std::to_string(fastestReachable->count) +
-                   " connects from the iMac to the PC failed";
+        return quality(*fastest, "too slow");
+    }
+
+    // For Straight from the PC: why the iMac can't, which only a blocker or an address it can't reach
+    // at all decide; a slow or lossy connection doesn't overrule the setting, and only says so in
+    // though. best is set to the probe to stream from: the fastest usable, else the most reliable.
+    std::string unreachable(const Facts& facts, const Probe*& best, std::string& though)
+    {
+        best = nullptr;
+        though.clear();
+        std::string why = blocker(facts);
+        if (!why.empty()) {
+            return why;
         }
-        return "the iMac's connection to the PC is too slow (" + ms(fastestReachable->medianMs) + ", worst " +
-               ms(fastestReachable->maxMs) + ")";
+        best = fastestUsable(facts);
+        if (best != nullptr) {
+            return {};
+        }
+        best = mostReliable(facts);
+        if (best == nullptr) {
+            return "the iMac can't reach the PC";
+        }
+        though = quality(*best, "slow");
+        return {};
     }
 }
 
@@ -239,8 +314,10 @@ Decision decide(Setting setting, const Facts& facts)
         decision.estViaWorstMs = macWorstOneWay + k_MacDecodeMs + frameWaitMs(facts.virtualRefreshHz) + displayExtendWorstMs;
     }
 
+    // Straight from the PC whenever the iMac can; Automatic only over a connection good enough to win
     const Probe* best = nullptr;
-    std::string why = ineligible(facts, best);
+    std::string though;
+    std::string why = setting == Setting::Direct ? unreachable(facts, best, though) : ineligible(facts, best);
     if (!why.empty()) {
         decision.reason = setting == Setting::Direct ? "can't go straight from the PC: " + why : why;
         return decision;
@@ -257,6 +334,9 @@ Decision decide(Setting setting, const Facts& facts)
     if (setting == Setting::Direct) {
         decision.route = Route::Direct;
         decision.reason = "set to go straight from the PC";
+        if (!though.empty()) {
+            decision.reason += ", though " + though;
+        }
     }
     else if (fasterTypically && fasterAtWorst) {
         decision.route = Route::Direct;

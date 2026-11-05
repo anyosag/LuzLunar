@@ -68,8 +68,10 @@ namespace ForkDisplayRoute
         std::string reason;               // why, for the log and Settings
     };
 
-    // The thresholds an iMac to PC probe must meet for the direct route: every connect succeeds,
-    // with a median and a worst case at most this long
+    // The thresholds an iMac to PC probe must meet for Automatic to go straight from the PC: every
+    // connect succeeds, with a median and a worst case at most this long. Set to go straight from the
+    // PC, they don't overrule the setting: any address the iMac reaches will do, and the decision's
+    // reason says when it's slow or dropped connects.
     constexpr double k_DirectMaxMedianMs = 15;
     constexpr double k_DirectMaxWorstMs = 60;
 
