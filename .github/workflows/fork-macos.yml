@@ -44,6 +44,7 @@ jobs:
       qt_version: ${{ steps.read.outputs.qt_version }}
       aqtsource: ${{ steps.read.outputs.aqtsource }}
       version: ${{ steps.luzlunar.outputs.version }}
+      channel: ${{ steps.luzlunar.outputs.channel }}
     steps:
       - name: Checkout workflows
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
@@ -81,7 +82,9 @@ jobs:
           echo "Using ${os:-macos-26}, Qt ${qt:-6.11.2}, $aqt"
 
       # LuzLunar's own version, like 1.16 (scripts/fork/version.sh): the update after the newest one
-      # published, or 1.16-dev.<commit> toward it for a build that isn't a push to master
+      # published, or 1.16-dev.<commit> toward it for a build that isn't a master build. A master
+      # build is a push to master, or this workflow started by hand on master (as when GitHub has
+      # no macOS 26 machines free and the run picks macos-15), never Sync upstream's call.
       - name: Work out LuzLunar's version
         id: luzlunar
         shell: bash
@@ -89,13 +92,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN: ${{ github.run_number }}
-          IS_MASTER_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+          IS_MASTER_BUILD: ${{ github.ref == 'refs/heads/master' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.workflow == 'LuzLunar - macOS (Apple Silicon)')) }}
         run: |
           set -euo pipefail
           channel=branch
-          if [ "$IS_MASTER_PUSH" = true ]; then
+          if [ "$IS_MASTER_BUILD" = true ]; then
             channel=master
           fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
           version=$(gh release list --repo "$REPO" --limit 200 --json tagName,name --jq '.[] | "\(.tagName)\t\(.name)"' |
             bash scripts/fork/version.sh "$RUN" "$channel" "$(git rev-parse --short=7 HEAD)")
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -152,21 +156,22 @@ jobs:
           modules: 'qtimageformats'
 
       # LuzLunar's version (the setup job) names the build. The run number orders builds for
-      # over-the-air updates (app/fork/forkupdater.cpp); only a push to master is a master build, which
-      # updates may replace by themselves and the publish job releases.
+      # over-the-air updates (app/fork/forkupdater.cpp); only a master build (the setup job's channel: a
+      # push to master, or a run started by hand on master) is one updates may replace by themselves
+      # and the publish job releases.
       - name: Set version
         id: version
         shell: bash
         env:
           LUZLUNAR_VERSION: ${{ needs.setup.outputs.version }}
           FORK_BUILD_RUN: ${{ github.run_number }}
-          IS_MASTER_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+          CHANNEL: ${{ needs.setup.outputs.channel }}
         run: |
           version=$LUZLUNAR_VERSION
           echo "CI_VERSION=$version" >> "$GITHUB_ENV"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "FORK_BUILD_RUN=$FORK_BUILD_RUN" >> "$GITHUB_ENV"
-          if [ "$IS_MASTER_PUSH" = true ]; then
+          if [ "$CHANNEL" = master ]; then
             echo "FORK_BUILD_CHANNEL=master" >> "$GITHUB_ENV"
           else
             echo "FORK_BUILD_CHANNEL=branch" >> "$GITHUB_ENV"
@@ -559,8 +564,8 @@ jobs:
   # key is the FORK_UPDATE_KEY secret of the `release` environment, which only master may use.
   publish:
     name: Publish update
-    needs: [build, tests]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [setup, build, tests]
+    if: needs.setup.outputs.channel == 'master' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -597,6 +602,7 @@ jobs:
           COMMIT: ${{ github.sha }}
           REPO: ${{ github.repository }}
           HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ -z "$FORK_UPDATE_KEY" ]; then
@@ -607,6 +613,10 @@ jobs:
           cd artifacts
           file=LuzLunar-macOS-arm64.zip
           tag="luzlunar-b$RUN"
+          # A run started by hand has no pushed commit in its event: ask for the commit's message
+          if [ -z "$HEAD_MESSAGE" ]; then
+            HEAD_MESSAGE=$(gh api "repos/$REPO/commits/$COMMIT" --jq .commit.message || true)
+          fi
           notes="${HEAD_MESSAGE%%$'\n'*}"
           notes="${notes:0:500}"
           jq -n \
