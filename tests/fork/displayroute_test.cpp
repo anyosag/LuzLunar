@@ -167,6 +167,51 @@ static void testSettings()
     d = decide(Setting::Direct, f);
     CHECK(d.route == Route::ViaMac);
     CHECK(d.reason.rfind("can't go straight from the PC: ", 0) == 0);
+
+    // Set to go straight from the PC, a slow connection doesn't overrule it: it only says so
+    f = ready();
+    f.imacToPc = { probe("10.0.0.77", 20, 30) };
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::Direct && d.address == "10.0.0.77");
+    CHECK(d.reason == "set to go straight from the PC, though the iMac's connection to the PC is slow (20 ms, worst 30 ms)");
+    CHECK(d.estDirectMs > 0 && d.estDirectWorstMs > 0);
+    CHECK(contains(describe(d, f), "straight from the PC (about "));
+    // Automatic still won't go straight from the PC over it
+    CHECK(decide(Setting::Automatic, f).route == Route::ViaMac);
+
+    // One worst connect over 60 ms, as Wi-Fi has: still straight from the PC
+    f.imacToPc = { probe("10.0.0.77", 5, 61) };
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::Direct && contains(d.reason, ", though the iMac's connection to the PC is slow (5 ms, worst 61 ms)"));
+
+    // Connects that failed, as long as some went through
+    f.imacToPc = { probe("10.0.0.77", 4, 9, 2) };
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::Direct && d.address == "10.0.0.77");
+    CHECK(d.reason == "set to go straight from the PC, though 2 of 10 connects from the iMac to the PC failed");
+
+    // Two addresses: a usable one wins over a faster one that dropped connects
+    f.imacToPc = { probe("100.64.0.7", 2, 5, 1), probe("10.0.0.77", 8, 20) };
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::Direct && d.address == "10.0.0.77" && d.reason == "set to go straight from the PC");
+    // Neither usable: the one that dropped fewer connects, then the faster
+    f.imacToPc = { probe("100.64.0.7", 2, 5, 3), probe("10.0.0.77", 30, 90, 1), probe("10.0.0.78", 25, 95, 1) };
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::Direct && d.address == "10.0.0.78");
+
+    // An address the iMac can't reach at all, or none: through this Mac, and why
+    f.imacToPc = { probe("192.168.1.20", -1, -1, 10) };
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::ViaMac && d.reason == "can't go straight from the PC: the iMac can't reach the PC");
+    f.imacToPc.clear();
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::ViaMac && d.reason == "can't go straight from the PC: the iMac can't reach the PC");
+
+    // The iMac not connected: through this Mac whatever the connection
+    f = ready();
+    f.imacConnected = false;
+    d = decide(Setting::Direct, f);
+    CHECK(d.route == Route::ViaMac && d.reason == "can't go straight from the PC: the iMac isn't connected to DisplayExtend");
 }
 
 static void testDefaults()

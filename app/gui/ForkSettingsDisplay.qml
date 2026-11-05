@@ -796,7 +796,7 @@ Column {
             ForkText {
                 width: parent.width
                 kind: "help"
-                text: qsTr("When one of this Mac's displays is DisplayExtend's, the iMac can stream its display straight from the PC, or show it through this Mac as usual. Automatic measures both at each launch and picks the faster.")
+                text: qsTr("When one of this Mac's displays is DisplayExtend's, the iMac can stream its display straight from the PC, or show it through this Mac as usual. Automatic measures both at each launch and picks the faster. Straight from the PC goes straight whenever the iMac can (connected and paired), however its connection measures; the launch screen warns when it's slow. Through this Mac never does.")
             }
         }
 

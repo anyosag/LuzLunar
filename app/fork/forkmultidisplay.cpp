@@ -8,6 +8,7 @@
 #include <QReadLocker>
 #include <QSettings>
 
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -200,6 +201,14 @@ void prepareSession(NvComputer* computer, const NvApp& app, StreamingPreferences
     }
 
     logPlan(*group);
+    // Set to go straight from the PC with no DisplayExtend display in the group: say so, since nothing
+    // else would (the route is only decided for the iMac's slot)
+    if (group->route == ForkDisplayRoute::Setting::Direct &&
+            std::none_of(group->plan.slotList.begin(), group->plan.slotList.end(),
+                         [](const ForkDisplayGroup::Slot& slot) { return slot.external; })) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "[fork] iMac picture is set to Straight from the PC, but none of this Mac's displays in the group is DisplayExtend's: the iMac isn't part of this stream");
+    }
     size_t displayCount = macDisplays().size();
     if (group->plan.slotList.size() < displayCount) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
