@@ -170,8 +170,9 @@ CenteredGridView {
         Accessible.name: model.name
         Accessible.description: (model.online ? qsTr("Online") : qsTr("Offline")) + ", " + (model.paired ? qsTr("paired") : qsTr("not paired"))
 
-        // [fork] Waking: from sending Wake-on-LAN until the PC comes online (or a minute passes),
-        // the card says so; then a toast says it's awake
+        // [fork] Waking: from sending Wake-on-LAN until the PC comes online (or 3 minutes pass, for
+        // a PC that was off and boots), the card says so; then a toast says whether it woke from
+        // sleep or was turned on (ForkHostPower.poweredOn)
         property bool forkWaking: false
         readonly property bool forkOnline: model.online
 
@@ -182,20 +183,23 @@ CenteredGridView {
         }
         // [fork] Whether this Mac may put the PC to sleep, and what's running on it (ForkHostPower)
         readonly property var forkSleepInfo: ForkHostPower.revision >= 0 ? ForkHostPower.status(model.uuid) : ({})
+        // [fork] What stops Wake PC from turning it on from off (ForkHostPower, Set Up Wake from Off)
+        readonly property var forkWakeInfo: ForkHostPower.revision >= 0 ? ForkHostPower.wakeStatus(model.uuid) : ({})
         function forkWake() {
             forkWaking = true
             forkWakeTimeout.restart()
+            ForkHostPower.noteWakeSent(model.uuid)
             computerModel.wakeComputer(index)
         }
         onForkOnlineChanged: {
             if (forkOnline && forkWaking) {
                 forkWaking = false
-                window.forkToast(qsTr("%1 is awake").arg(model.name))
+                ForkHostPower.noteOnline(model.uuid) // its poweredOn() toasts
             }
         }
         Timer {
             id: forkWakeTimeout
-            interval: 60000
+            interval: 180000
             onTriggered: pcDelegate.forkWaking = false
         }
 
@@ -230,7 +234,7 @@ CenteredGridView {
             sourceComponent: NavigableMenu {
                 id: pcContextMenu
                 initiator: pcContextMenuLoader.parent
-                onAboutToShow: ForkHostPower.refresh(model.uuid) // [fork] whether Sleep PC fits now
+                onAboutToShow: ForkHostPower.refresh(model.uuid) // [fork] whether Sleep PC and Shut Down PC fit now
                 MenuItem {
                     text: qsTr("PC Status: %1").arg(model.online ? qsTr("Online") : qsTr("Offline"))
                     font.bold: true
@@ -269,11 +273,25 @@ CenteredGridView {
                     symbol: "moon.zzz"
                     text: qsTr("Sleep PC")
                     onTriggered: {
+                        sleepPcDialog.mode = "sleep"
                         sleepPcDialog.pcUuid = model.uuid
                         sleepPcDialog.pcName = model.name
                         sleepPcDialog.open()
                     }
                     visible: model.online && model.paired && !!pcDelegate.forkSleepInfo.supported && !!pcDelegate.forkSleepInfo.permitted
+                }
+                // [fork] Shut Down PC: a full shutdown, which Wake PC can turn on again (ForkHostPower)
+                NavigableMenuItem {
+                    symbol: "power"
+                    text: qsTr("Shut Down PC…")
+                    onTriggered: {
+                        sleepPcDialog.mode = "off"
+                        sleepPcDialog.pcUuid = model.uuid
+                        sleepPcDialog.pcName = model.name
+                        sleepPcDialog.open()
+                    }
+                    visible: model.online && model.paired && !!pcDelegate.forkSleepInfo.supported && !!pcDelegate.forkSleepInfo.permitted &&
+                             !!pcDelegate.forkSleepInfo.canShutDown
                 }
                 NavigableMenuItem {
                     symbol: "network" // [fork]
@@ -292,6 +310,13 @@ CenteredGridView {
                         renamePcDialog.originalName = model.name
                         renamePcDialog.open()
                     }
+                }
+                // [fork] Set Up Wake from Off (ForkWakeSetupDialog)
+                NavigableMenuItem {
+                    symbol: "checkmark.circle"
+                    text: qsTr("Set Up Wake from Off…")
+                    onTriggered: wakeSetupDialog.openFor(model.uuid, model.name)
+                    visible: model.online && model.paired && !!pcDelegate.forkWakeInfo.supported
                 }
                 NavigableMenuItem {
                     symbol: "info.circle" // [fork] before the line, as in the design (was after Delete)
@@ -507,32 +532,58 @@ CenteredGridView {
         }
     }
 
-    // [fork] Sleep PC's confirmation; it warns when an app is still running on the PC, which sleeping
-    // quits first (ForkHostPower)
+    // [fork] Sleep PC's and Shut Down PC's confirmation; it warns when an app is still running on
+    // the PC, which sleeping or shutting down quits first, and, for Shut Down PC, when Wake PC may
+    // not turn the PC on again (ForkHostPower)
     NavigableMessageDialog {
         id: sleepPcDialog
         property string pcUuid : ""
         property string pcName : ""
+        property string mode: "sleep" // or "off": Shut Down PC
+        readonly property bool off: mode === "off"
         readonly property var info: ForkHostPower.revision >= 0 && pcUuid !== "" ? ForkHostPower.status(pcUuid) : ({})
+        readonly property var wake: ForkHostPower.revision >= 0 && pcUuid !== "" ? ForkHostPower.wakeStatus(pcUuid) : ({})
         readonly property string runningApp: info.reason === "app_running" ? info.app : ""
-        title: qsTr("Put %1 to sleep?").arg(pcName)
-        text: runningApp !== "" ? qsTr("%1 is still running on %2. Sleep quits it first; anything unsaved in it is lost.").arg(runningApp).arg(pcName)
-                                : qsTr("Wake PC wakes it again.")
-        destructive: runningApp !== ""
+        title: off ? qsTr("Shut down %1?").arg(pcName) : qsTr("Put %1 to sleep?").arg(pcName)
+        text: {
+            if (!off) {
+                return runningApp !== "" ? qsTr("%1 is still running on %2. Sleep quits it first; anything unsaved in it is lost.").arg(runningApp).arg(pcName)
+                                         : qsTr("Wake PC wakes it again.")
+            }
+            var text = runningApp !== "" ? qsTr("%1 is still running on %2. Shutting down quits it first; anything unsaved in it is lost.").arg(runningApp).arg(pcName)
+                                         : qsTr("Open apps on %1 are closed, and anything unsaved in them is lost. Wake PC turns it back on.").arg(pcName)
+            if (wake.shutDownWarning) {
+                text += "\n\n" + wake.shutDownWarning
+            }
+            return text
+        }
+        destructive: off || runningApp !== ""
         forkShowIcon: false
         standardButtons: Dialog.Yes | Dialog.No
 
         onAboutToShow: {
             ForkHostPower.refresh(pcUuid)
             if (standardButton(Dialog.Yes)) {
-                standardButton(Dialog.Yes).text = qsTr("Sleep")
+                standardButton(Dialog.Yes).text = off ? qsTr("Shut Down") : qsTr("Sleep")
             }
             if (standardButton(Dialog.No)) {
                 standardButton(Dialog.No).text = qsTr("Cancel")
             }
         }
 
-        onAccepted: ForkHostPower.sleep(pcUuid, runningApp)
+        onAccepted: {
+            if (off) {
+                ForkHostPower.shutDown(pcUuid, runningApp)
+            }
+            else {
+                ForkHostPower.sleep(pcUuid, runningApp)
+            }
+        }
+    }
+
+    // [fork] Set Up Wake from Off
+    ForkWakeSetupDialog {
+        id: wakeSetupDialog
     }
 
     NavigableMessageDialog {

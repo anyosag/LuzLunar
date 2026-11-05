@@ -537,6 +537,13 @@ ApplicationWindow {
                     ForkHostPower.finished.connect(function(uuid, ok, text) {
                         window.forkToast(text)
                     })
+                    // [fork] Set Up Wake from Off's outcome, and whether a PC Wake PC was sent to woke or was turned on
+                    ForkHostPower.wakeFinished.connect(function(uuid, ok, text) {
+                        window.forkToast(text)
+                    })
+                    ForkHostPower.poweredOn.connect(function(uuid, text) {
+                        window.forkToast(text)
+                    })
                 }
 
                 Keys.onDownPressed: {

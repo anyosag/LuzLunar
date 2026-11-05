@@ -113,6 +113,7 @@ HEADERS += \
     $$PWD/forkhostmessages.h \
     $$PWD/forkhostpower.h \
     $$PWD/forkhostupdates.h \
+    $$PWD/hostupdaterules.h \
     $$PWD/forkimacsetup.h \
     $$PWD/forkhwrules.h \
     $$PWD/forkinput.h \
@@ -152,6 +153,7 @@ HEADERS += \
     $$PWD/forkpower.h \
     $$PWD/forkreconnect.h \
     $$PWD/powerrules.h \
+    $$PWD/wakesetuprules.h \
     $$PWD/reconnectrules.h \
     $$PWD/streamsettings.h \
     $$PWD/streamsettingsrules.h \
