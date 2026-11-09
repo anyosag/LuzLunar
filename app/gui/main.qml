@@ -2,6 +2,7 @@ import QtQuick 2.9
 import QtQuick.Controls 2.2
 import QtQuick.Layouts 1.3
 import QtQuick.Window 2.2
+import QtQuick.Templates as T // [fork] for Overlay, which QtQuick.Controls 2.2 above predates (2.3)
 // [fork] No explicit Material import: it would override the native macOS style set in main.cpp
 
 import ComputerManager 1.0
@@ -276,9 +277,12 @@ ApplicationWindow {
         forkToasts.show(text)
     }
 
+    // In the window's overlay, where dialogs and menus go, above them all. The Overlay type has to
+    // come from the T import: with this file's QtQuick.Controls 2.2 it's undefined, and the toasts
+    // stayed in the window's content, under any open dialog and its dim.
     ForkToast {
         id: forkToasts
-        parent: Overlay.overlay
+        parent: T.Overlay.overlay
         z: 1000
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom

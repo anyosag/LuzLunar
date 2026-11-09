@@ -28,6 +28,7 @@
 #include <iterator>
 
 #include "mac/macintegration.h"
+#include "screenshotharness.h"
 
 namespace
 {
@@ -136,7 +137,13 @@ namespace
         { "6c-stream-settings-end", "scrollY = scrollMax", 1000, "harnessStreamSettings" },
         { nullptr, "window.height = 600", 500 },
         { "6d-stream-settings-short", "scrollY = 0", 1500, "harnessStreamSettings" },
+        // A toast while a dialog is open shows above the dialog and its dim (main.qml). Last, since
+        // a toast stays a few seconds and would be in the screenshots after it.
+        { "7-toast-over-dialog", "forkToast(qsTr('Renamed to Office PC'))", 1000 },
     };
+
+    // The engine whose QML warnings go to harness-log.txt (watchWarnings()), or null for none yet
+    QQmlEngine* s_WatchedEngine = nullptr;
 
     // Adds a line to harness-log.txt in the output folder
     void logLine(const QString& outputDir, const QString& line)
@@ -224,16 +231,10 @@ namespace
             window->create();
         }
 
-        // QML's warnings while the steps run, once the main window's engine is there
-        static bool watchingWarnings = false;
-        if (!watchingWarnings) {
+        // QML's warnings, if main.cpp didn't hand over the engine before main.qml loaded: from now on
+        if (s_WatchedEngine == nullptr) {
             if (QQmlEngine* engine = qmlEngine(window)) {
-                watchingWarnings = true;
-                QObject::connect(engine, &QQmlEngine::warnings, engine, [outputDir](const QList<QQmlError>& warnings) {
-                    for (const QQmlError& warning : warnings) {
-                        logLine(outputDir, warning.toString());
-                    }
-                });
+                ScreenshotHarness::watchWarnings(engine);
             }
         }
 
@@ -313,6 +314,22 @@ namespace
             runStep(outputDir, 0);
         });
     }
+}
+
+void ScreenshotHarness::watchWarnings(QQmlEngine* engine)
+{
+    // The output folder exists by now: startScreenshotHarness() runs as the app object is made
+    QString outputDir = qEnvironmentVariable("LUZLUNAR_SCREENSHOTS");
+    if (outputDir.isEmpty() || engine == nullptr || s_WatchedEngine != nullptr) {
+        return;
+    }
+
+    s_WatchedEngine = engine;
+    QObject::connect(engine, &QQmlEngine::warnings, engine, [outputDir](const QList<QQmlError>& warnings) {
+        for (const QQmlError& warning : warnings) {
+            logLine(outputDir, warning.toString());
+        }
+    });
 }
 
 Q_COREAPP_STARTUP_FUNCTION(startScreenshotHarness)

@@ -159,6 +159,7 @@ HEADERS += \
     $$PWD/streamsettingsrules.h \
     $$PWD/notchstatus.h \
     $$PWD/powernotice.h \
+    $$PWD/screenshotharness.h \
     $$PWD/sfsymbols.h \
     $$PWD/streamdiagnostics.h \
     $$PWD/streamhistory.h \

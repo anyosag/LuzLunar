@@ -59,6 +59,7 @@
 #include "fork/forkdebugchannel.h" // [fork]
 #include "fork/forkhelper.h" // [fork]
 #include "fork/mac/macintegration.h" // [fork] the hidden screenshot run
+#include "fork/screenshotharness.h" // [fork]
 
 #if defined(Q_OS_WIN32)
 #define IS_UNSPECIFIED_HANDLE(x) ((x) == INVALID_HANDLE_VALUE || (x) == NULL)
@@ -1156,6 +1157,10 @@ int main(int argc, char *argv[])
         engine.rootContext()->setContextProperty("initialView", initialView);
         engine.rootContext()->setContextProperty("isGuiLaunch", commandLineParserResult == GlobalCommandLineParser::NormalStartRequested);
         engine.rootContext()->setContextProperty("forkHiddenScreenshots", forkHiddenScreenshots); // [fork]
+
+        // [fork] CI's screenshot run logs QML's warnings from here, including the ones while
+        // main.qml loads (harness-log.txt); a no-op otherwise
+        ScreenshotHarness::watchWarnings(&engine);
 
         // Load the main.qml file
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));
