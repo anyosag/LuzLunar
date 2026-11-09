@@ -94,8 +94,9 @@ T.Button {
                     return "transparent"
                 }
                 if (control.kind === "pc") {
-                    return control.down ? Qt.darker(ForkTheme.pcFill, 1.1)
-                                        : (control.hovered ? Qt.lighter(ForkTheme.pcFill, 1.1) : ForkTheme.pcFill)
+                    // Darker, not lighter, on hover: white text keeps 4.5:1 or more
+                    return control.down ? Qt.darker(ForkTheme.pcFill, 1.18)
+                                        : (control.hovered ? Qt.darker(ForkTheme.pcFill, 1.08) : ForkTheme.pcFill)
                 }
                 if (control.kind === "glass") {
                     return control.down ? Qt.rgba(1, 1, 1, 0.06) : (control.hovered ? Qt.rgba(1, 1, 1, 0.17) : Qt.rgba(1, 1, 1, 0.1))

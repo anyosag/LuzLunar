@@ -100,6 +100,27 @@ QVariantMap AppModel::forkHostInfo()
     return info;
 }
 
+QVariantMap AppModel::forkRunningApp()
+{
+    QVariantMap info;
+    if (m_Computer == nullptr || m_CurrentGameId == 0) {
+        return info;
+    }
+
+    for (const NvApp& app : std::as_const(m_AllApps)) {
+        if (app.id == m_CurrentGameId) {
+            info.insert(QStringLiteral("id"), app.id);
+            info.insert(QStringLiteral("name"), app.name);
+            int row = forkIndexOfApp(app.id);
+            if (row >= 0) {
+                info.insert(QStringLiteral("boxart"), data(createIndex(row, 0), BoxArtRole));
+            }
+            break;
+        }
+    }
+    return info;
+}
+
 int AppModel::getDirectLaunchAppIndex()
 {
     for (int i = 0; i < m_VisibleApps.count(); i++) {

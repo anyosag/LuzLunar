@@ -64,6 +64,7 @@ namespace
           "ListElement { name: \"Xbox\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: true; appid: 10; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"\" } "
           "}', stackView); "
           "var appView = Qt.createComponent('qrc:/gui/AppView.qml').createObject(stackView, { objectName: 'GonzaloPC', showHiddenGames: true, "
+          "  forkHostStatus: 'Apollo · online', "
           "  forkSampleHost: { software: 'Apollo', version: '0.4.8', address: '10.0.0.77', local: true, remote: false }, "
           "  forkSampleModel: sample }); "
           "stackView.push(appView, StackView.Immediate)", 3000 },

@@ -60,6 +60,7 @@ Item {
         height: 160
         scale: cover.width / 120
         transformOrigin: Item.TopLeft
+        preferredRendererType: Shape.CurveRenderer
 
         ShapePath {
             strokeWidth: -1

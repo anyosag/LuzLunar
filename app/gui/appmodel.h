@@ -55,6 +55,10 @@ public:
     // ("Apollo", "Sunshine" or "GeForce Experience") and "uuid"
     Q_INVOKABLE QVariantMap forkHostInfo();
 
+    // [fork] The app that runs, for the apps page's header, whether or not the grid shows its tile:
+    // "id", "name", and "boxart" when it's one of this model's rows; empty with nothing running
+    Q_INVOKABLE QVariantMap forkRunningApp();
+
     QVariant data(const QModelIndex &index, int role) const override;
 
     int rowCount(const QModelIndex &parent) const override;

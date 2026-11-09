@@ -15,7 +15,7 @@ Column {
     id: header
 
     // The PC: its name, whether its host is Apollo (for the logo), the line under its name (host
-    // software and network, like "Apollo 0.4.8 · Same network as this Mac") and its address
+    // software and network, like "Apollo 0.4.8 · Home network") and its address
     property string pcName: ""
     property bool apollo: false
     property string hostLine: ""
@@ -39,10 +39,18 @@ Column {
     signal quit()
     signal toggleHidden()
     signal copyAddress()
+    // The search field took the keyboard; Up (to the toolbar), and Down or Return (to the apps), leave it
+    signal searchFocused()
+    signal searchUp()
+    signal searchDown()
 
-    // Room for the moon and for the running app's cover and details
+    // How the band fits its width: the moon only where there's room; what the PC is doing under
+    // the PC rather than beside it where they'd meet; Resume and Quit as bare symbols, and no
+    // cover, when even that is tight
     readonly property bool roomy: width >= 900
-    readonly property bool narrow: width < 720
+    readonly property bool stacked: width < 820
+    readonly property bool tiny: width < 520
+    readonly property real bandTop: 124
 
     // The page rhythm: 28 above, 24 between the band and the title, 20 to the grid
     spacing: 24
@@ -58,7 +66,7 @@ Column {
     Rectangle {
         id: band
         width: header.width
-        height: 124
+        height: header.stacked ? header.bandTop + capsule.height + 16 : header.bandTop
         radius: ForkTheme.radiusCard
         color: ForkTheme.pcSky
         clip: true
@@ -89,20 +97,21 @@ Column {
         }
 
         // The moon, between the PC and what it's doing, where there's room; its glow breathes
-        // while an app runs
+        // while an app runs (no glow where effects can't draw)
         Shape {
             id: moon
 
             property real glow: 0.45
 
-            visible: header.roomy && capsule.x - (identity.x + identity.width) > 130
+            visible: header.roomy && !header.stacked && capsule.x - (identity.x + identity.width) > 130
             x: Math.round((identity.x + identity.width + capsule.x) / 2 - width / 2)
             y: 24
             width: 54
             height: 54
+            preferredRendererType: Shape.CurveRenderer
             Accessible.ignored: true
 
-            layer.enabled: visible
+            layer.enabled: visible && GraphicsInfo.api !== GraphicsInfo.Software
             layer.effect: MultiEffect {
                 shadowEnabled: true
                 shadowColor: "#F5C878"
@@ -133,7 +142,7 @@ Column {
             id: logo
             visible: header.apollo
             x: 22
-            anchors.verticalCenter: parent.verticalCenter
+            y: Math.round((header.bandTop - height) / 2)
             width: 68
             height: 68
             source: "qrc:/res/apollo.png"
@@ -147,7 +156,7 @@ Column {
             id: otherLogo
             visible: !header.apollo
             x: 26
-            anchors.verticalCenter: parent.verticalCenter
+            y: Math.round((header.bandTop - height) / 2)
             width: 60
             height: 60
             radius: 16
@@ -164,10 +173,10 @@ Column {
 
         Column {
             id: identity
-            anchors.left: header.apollo ? logo.right : otherLogo.right
-            anchors.leftMargin: 14
-            anchors.verticalCenter: parent.verticalCenter
-            width: Math.max(80, Math.min(320, capsule.x - x - 24))
+            x: (header.apollo ? logo.x + logo.width : otherLogo.x + otherLogo.width) + 14
+            y: Math.round((header.bandTop - height) / 2)
+            // Beside the capsule, never wider than the room it leaves
+            width: header.stacked ? band.width - x - 24 : Math.max(0, Math.min(320, capsule.x - x - 24))
             spacing: 4
 
             ForkText {
@@ -190,13 +199,14 @@ Column {
                 text: header.hostLine
             }
 
-            // The address, in a pill with a copy button
+            // The address, in a pill with a copy button; a long one (IPv6) is shortened in the middle
             Rectangle {
                 visible: header.address !== ""
                 width: Math.min(parent.width, pillRow.implicitWidth + 11)
                 height: 22
                 radius: 11
                 color: Qt.rgba(1, 1, 1, 0.13)
+                clip: true
 
                 Row {
                     id: pillRow
@@ -205,6 +215,7 @@ Column {
                     spacing: 6
 
                     Text {
+                        id: ipLabel
                         anchors.verticalCenter: parent.verticalCenter
                         text: "IP"
                         textFormat: Text.PlainText
@@ -218,8 +229,10 @@ Column {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, Math.max(24, identity.width - 19 - ipLabel.implicitWidth - copyButton.width - 2 * pillRow.spacing))
                         text: header.address
                         textFormat: Text.PlainText
+                        elide: Text.ElideMiddle
                         font.family: ForkTheme.monoFamily
                         font.pixelSize: 12
                         color: "#FFFFFF"
@@ -255,13 +268,13 @@ Column {
             }
         }
 
-        // What the PC is doing: the app that runs, with Resume and Quit, or that it's ready
+        // What the PC is doing: the app that runs, with Resume and Quit, or that it's ready. Beside
+        // the PC, or under it where they'd meet.
         Rectangle {
             id: capsule
-            anchors.right: parent.right
-            anchors.rightMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-            width: capsuleRow.implicitWidth + 26
+            x: header.stacked ? 16 : band.width - width - 16
+            y: header.stacked ? header.bandTop : Math.round((header.bandTop - height) / 2)
+            width: header.stacked ? band.width - 32 : capsuleRow.implicitWidth + 26
             height: 92
             radius: 18
             color: Qt.rgba(1, 1, 1, 0.08)
@@ -279,7 +292,7 @@ Column {
                 // The running app's cover, in the running ring
                 Item {
                     id: thumb
-                    visible: header.hasRunning && !header.narrow
+                    visible: header.hasRunning && !header.tiny
                     anchors.verticalCenter: parent.verticalCenter
                     width: 54
                     height: 72
@@ -342,6 +355,7 @@ Column {
 
                 // Ready: a check
                 Rectangle {
+                    id: readyDisc
                     visible: !header.hasRunning
                     anchors.verticalCenter: parent.verticalCenter
                     width: 44
@@ -360,7 +374,20 @@ Column {
 
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: header.narrow ? 150 : (header.roomy ? 240 : 190)
+                    // Beside the PC a fixed width; under it, whatever the buttons leave
+                    width: {
+                        if (!header.stacked) {
+                            return header.roomy ? 240 : 190
+                        }
+                        var others = 0
+                        var parts = [thumb, readyDisc, resumeButton, quitButton]
+                        for (var i = 0; i < parts.length; i++) {
+                            if (parts[i].visible) {
+                                others += parts[i].width + capsuleRow.spacing
+                            }
+                        }
+                        return Math.max(60, capsule.width - 24 - others)
+                    }
                     spacing: 3
 
                     Row {
@@ -433,24 +460,28 @@ Column {
                 }
 
                 ForkButton {
+                    id: resumeButton
                     visible: header.hasRunning
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "pc"
                     symbol: "play.fill"
                     symbolSize: 13
                     focusPolicy: Qt.NoFocus
-                    text: qsTr("Resume")
+                    text: header.tiny ? "" : qsTr("Resume")
+                    Accessible.description: qsTr("Resume %1").arg(header.runningName)
                     onClicked: header.resume()
                 }
 
                 ForkButton {
+                    id: quitButton
                     visible: header.hasRunning
                     anchors.verticalCenter: parent.verticalCenter
                     kind: "glass"
                     symbol: "stop.fill"
                     symbolSize: 11
                     focusPolicy: Qt.NoFocus
-                    text: qsTr("Quit")
+                    text: header.tiny ? "" : qsTr("Quit")
+                    Accessible.description: qsTr("Quit %1").arg(header.runningName)
                     onClicked: header.quit()
                 }
             }
@@ -485,7 +516,8 @@ Column {
             elide: Text.ElideRight
             text: {
                 if (header.matchCount >= 0) {
-                    return header.matchCount === 1 ? qsTr("1 app matches") : qsTr("%1 apps match").arg(header.matchCount)
+                    return header.matchCount === 0 ? qsTr("No apps match")
+                         : header.matchCount === 1 ? qsTr("1 app matches") : qsTr("%1 apps match").arg(header.matchCount)
                 }
                 var apps = header.appCount === 1 ? qsTr("1 app") : qsTr("%1 apps").arg(header.appCount)
                 return header.hiddenCount > 0 ? apps + " · " + qsTr("%1 hidden").arg(header.hiddenCount) : apps
@@ -501,13 +533,22 @@ Column {
             ForkTextField {
                 id: search
                 anchors.verticalCenter: parent.verticalCenter
-                width: header.narrow ? 170 : 240
+                width: header.tiny ? 140 : (header.stacked ? 190 : 240)
                 implicitHeight: 36
                 leftPadding: 34
                 rightPadding: text !== "" ? 34 : 12
                 font.pixelSize: 13
+                // The placeholder is the field's only visible label, so it's in the muted color
+                // (4.5:1 or more in both appearances) rather than the fainter one fields use
+                placeholderTextColor: ForkTheme.muted
                 placeholderText: qsTr("Search apps")
                 Accessible.name: qsTr("Search the apps on %1").arg(header.pcName)
+
+                onActiveFocusChanged: {
+                    if (activeFocus) {
+                        header.searchFocused()
+                    }
+                }
 
                 ForkSymbol {
                     x: 12
@@ -557,6 +598,11 @@ Column {
                         event.accepted = false
                     }
                 }
+                // The arrow keys and a gamepad's pad (and its A, as Return) lead out of the field
+                Keys.onUpPressed: header.searchUp()
+                Keys.onDownPressed: header.searchDown()
+                Keys.onReturnPressed: header.searchDown()
+                Keys.onEnterPressed: header.searchDown()
             }
 
             Row {
@@ -566,6 +612,7 @@ Column {
 
                 ForkText {
                     anchors.verticalCenter: parent.verticalCenter
+                    visible: !header.tiny
                     kind: "body"
                     font.pixelSize: 13
                     color: ForkTheme.text2

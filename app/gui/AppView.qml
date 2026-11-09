@@ -55,11 +55,10 @@ CenteredGridView {
     cellWidth: forkItemWidth + forkGap
     cellHeight: forkTileHeight + forkRowGap
 
-    // [fork] The running app, for the header's band. Tiles report it as they're created; a
-    // model change with nothing running clears it.
-    property int forkRunningIndex: -1
-    property string forkRunningName: ""
-    property url forkRunningBoxart
+    // [fork] The running app, for the header's band, read from the model by its ID
+    // (AppModel.forkRunningApp()), since the grid only makes tiles for the rows in view and the
+    // search and hidden apps move rows: {id, name, boxart}, or empty with nothing running
+    property var forkRunning: ({})
     // Bumped when the stream settings dialog closes, so the tiles' profile chips are read again
     property int forkProfileRevision: 0
     readonly property string forkHostUuid: forkSample ? "" : StreamProfiles.hostUuid(ComputerManager, computerIndex)
@@ -74,7 +73,8 @@ CenteredGridView {
         var info = ForkHostUpdates.revision >= 0 ? ForkHostUpdates.status(forkHostUuid) : ({})
         return info.known && info.version ? info.version : ""
     }
-    // Like "Apollo 0.4.8 · Same network as this Mac"
+    // Like "Apollo 0.4.8 · Home network": which of the PC's addresses LuzLunar uses, the one on
+    // its own network (from home, or over a VPN into it) or the one from outside
     readonly property string forkHostLine: {
         var parts = []
         var software = forkHostInfo.software || ""
@@ -82,7 +82,7 @@ CenteredGridView {
             parts.push(software === "Apollo" && forkApolloVersion !== "" ? "Apollo " + forkApolloVersion : software)
         }
         if (forkHostInfo.local) {
-            parts.push(qsTr("Same network as this Mac"))
+            parts.push(qsTr("Home network"))
         }
         else if (forkHostInfo.remote) {
             parts.push(qsTr("Over the internet"))
@@ -101,16 +101,23 @@ CenteredGridView {
     readonly property int forkAppTotal: forkCounter.count
     property int forkHiddenCount: 0
 
-    function forkNoteRunning(index, running, name, boxart) {
-        if (running) {
-            forkRunningIndex = index
-            forkRunningName = name
-            forkRunningBoxart = boxart
+    function forkReadRunning() {
+        if (forkSample) {
+            var found = {}
+            for (var i = 0; i < forkSampleModel.count; i++) {
+                var row = forkSampleModel.get(i)
+                if (row.running) {
+                    found = { "id": row.appid, "name": row.name, "boxart": row.boxart }
+                    break
+                }
+            }
+            forkRunning = found
         }
-        else if (forkRunningIndex === index) {
-            forkRunningIndex = -1
+        else {
+            forkRunning = appModel ? appModel.forkRunningApp() : ({})
         }
     }
+    onAppModelChanged: forkReadRunning()
 
     function forkCountHidden() {
         var hidden = 0
@@ -144,7 +151,6 @@ CenteredGridView {
         if (show === forkShowHidden) {
             return
         }
-        forkRunningIndex = -1
         currentIndex = -1
         if (!show && !forkSample) {
             // A model keeps the apps that were visible when it was made (so a slip can be undone),
@@ -163,11 +169,13 @@ CenteredGridView {
     }
 
     // [fork] The search: both models keep only the apps whose names contain the text (and the
-    // running app, so the band's Resume and Quit still reach it)
+    // running app, so the band's Resume and Quit still reach it). No tile is picked meanwhile:
+    // when rows change the grid would give a picked tile the keyboard, away from the search.
     function forkSetQuery(text) {
         if (text === forkQuery) {
             return
         }
+        currentIndex = -1
         forkQuery = text
         if (forkVisibleModel) {
             forkVisibleModel.forkSetNameFilter(text)
@@ -182,33 +190,39 @@ CenteredGridView {
         forkHostInfo = forkSample ? forkSampleHost : (forkVisibleModel ? forkVisibleModel.forkHostInfo() : ({}))
     }
 
-    // [fork] The band's Resume and Quit, for the app that runs, wherever its tile is (or isn't)
+    // [fork] The band's Resume and Quit, for the app that runs, wherever its tile is (or isn't).
+    // A hidden app that runs isn't in the grid's model while hidden apps are hidden, so Resume
+    // takes its row from the model with every app.
     function forkResumeRunning() {
-        if (!appModel) {
+        var id = forkRunning.id || 0
+        if (!appModel || id === 0) {
             return
         }
-        var runningId = appModel.getRunningAppId()
-        var row = appModel.forkIndexOfApp(runningId)
-        if (runningId === 0 || row < 0) {
+        var model = appModel
+        var row = model.forkIndexOfApp(id)
+        if (row < 0 && forkFullModel) {
+            model = forkFullModel
+            row = model.forkIndexOfApp(id)
+        }
+        if (row < 0) {
             return
         }
-        var name = appModel.getRunningAppName()
         var component = Qt.createComponent("StreamSegue.qml")
         var segue = component.createObject(stackView, {
-                                               "appName": name,
-                                               "session": appModel.createSessionForApp(row),
+                                               "appName": forkRunning.name,
+                                               "session": model.createSessionForApp(row),
                                                "isResume": true,
                                                "hostName": appGrid.objectName,
-                                               "summary": appGrid.forkStreamSummary(name)
+                                               "summary": appGrid.forkStreamSummary(forkRunning.name)
                                            })
         stackView.push(segue)
     }
 
     function forkQuitRunning() {
-        if (!appModel || appModel.getRunningAppId() === 0) {
+        if (!appModel || !forkRunning.id) {
             return
         }
-        quitAppDialog.appName = appModel.getRunningAppName()
+        quitAppDialog.appName = forkRunning.name
         quitAppDialog.segueToStream = false
         quitAppDialog.open()
     }
@@ -331,12 +345,12 @@ CenteredGridView {
         apollo: appGrid.forkHostInfo.software === "Apollo"
         hostLine: appGrid.forkHostLine
         address: appGrid.forkHostInfo.address || ""
-        hasRunning: appGrid.forkRunningIndex >= 0
-        runningName: appGrid.forkRunningName
-        runningBoxart: appGrid.forkRunningBoxart
+        hasRunning: !!appGrid.forkRunning.id
+        runningName: appGrid.forkRunning.name || ""
+        runningBoxart: appGrid.forkRunning.boxart || ""
         runningSummary: {
             appGrid.forkProfileRevision
-            return appGrid.forkRunningIndex >= 0 ? appGrid.forkBannerSummary(appGrid.forkRunningName) : ""
+            return appGrid.forkRunning.id ? appGrid.forkBannerSummary(appGrid.forkRunning.name) : ""
         }
         showingHidden: appGrid.forkShowHidden
         appCount: appGrid.forkAppTotal - appGrid.forkHiddenCount
@@ -348,6 +362,23 @@ CenteredGridView {
         onToggleHidden: appGrid.forkSetShowHidden(!appGrid.forkShowHidden)
         onCopyAddress: appGrid.forkCopyAddress()
         onSearchTextChanged: appGrid.forkSetQuery(searchText)
+        // In the search no tile stays picked; Up goes on to the toolbar (where Up from the top
+        // row used to go), and Down or Return to the first app
+        onSearchFocused: appGrid.currentIndex = -1
+        onSearchUp: {
+            var previous = appGrid.nextItemInFocusChain(false)
+            if (previous) {
+                previous.forceActiveFocus(Qt.TabFocusReason)
+            }
+        }
+        onSearchDown: {
+            if (appGrid.count > 0) {
+                appGrid.currentIndex = 0
+                if (appGrid.currentItem) {
+                    appGrid.currentItem.forceActiveFocus(Qt.TabFocusReason)
+                }
+            }
+        }
 
         // Unless the user has scrolled, keep the top in view when the header changes height
         onHeightChanged: {
@@ -358,20 +389,64 @@ CenteredGridView {
     }
     onMovementStarted: forkUserScrolled = true // [fork]
 
-    // [fork] Under the tiles: how to start an app and, for Apollo, where its apps come from
+    // [fork] A search that matches nothing (the running app stays in the grid, so that can be
+    // next to a tile), or no apps to show
+    readonly property bool forkShowEmpty: count === 0 || (forkQuery.trim() !== "" && forkMatchCount === 0)
+
+    // [fork] Under the tiles: what's missing when nothing matches or shows, then how to start an
+    // app and, for Apollo, where its apps come from. In the footer, it always sits under the
+    // header and any tiles.
     footer: Item {
         width: appGrid.forkContentWidth
-        height: footnote.implicitHeight + 36
+        height: footerColumn.implicitHeight + 36
 
-        ForkText {
-            id: footnote
+        Column {
+            id: footerColumn
             y: 6
-            width: Math.min(parent.width, 760)
-            kind: "help"
-            color: ForkTheme.faint
-            text: appGrid.forkHostInfo.software === "Apollo"
-                  ? qsTr("Click an app to start it, or right-click it for its options. To add an app, open Apollo’s web page on %1 and go to Applications.").arg(appGrid.objectName)
-                  : qsTr("Click an app to start it, or right-click it for its options.")
+            width: parent.width
+            spacing: 14
+
+            Column {
+                visible: appGrid.forkShowEmpty
+                width: parent.width
+                topPadding: appGrid.count === 0 ? 40 : 0
+                bottomPadding: 16
+                spacing: 14
+
+                ForkText {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    kind: "body"
+                    font.pixelSize: 15
+                    color: ForkTheme.text2
+                    // [fork] Every app hidden, and a search that matches nothing, have their own words
+                    text: appGrid.forkQuery.trim() !== ""
+                          ? qsTr("No apps on %1 match “%2”").arg(appGrid.objectName).arg(appGrid.forkQuery.trim())
+                          : appGrid.forkHiddenCount > 0 && !appGrid.forkShowHidden
+                          ? qsTr("Every app on this PC is hidden. Show hidden apps to see them.")
+                          : qsTr("This computer doesn't seem to have any applications or some applications are hidden")
+                }
+
+                ForkButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    visible: appGrid.forkQuery.trim() !== ""
+                    text: qsTr("Clear Search")
+                    onClicked: {
+                        if (appGrid.headerItem) {
+                            appGrid.headerItem.searchText = ""
+                        }
+                    }
+                }
+            }
+
+            ForkText {
+                width: Math.min(parent.width, 760)
+                kind: "help"
+                color: ForkTheme.faint
+                text: appGrid.forkHostInfo.software === "Apollo"
+                      ? qsTr("Click an app to start it, or right-click it for its options. To add an app, open Apollo’s web page on %1 and go to Applications.").arg(appGrid.objectName)
+                      : qsTr("Click an app to start it, or right-click it for its options.")
+            }
         }
     }
 
@@ -398,14 +473,19 @@ CenteredGridView {
     displaced: Transition {
         enabled: !ForkTheme.reduceMotion
         NumberAnimation { properties: "x,y"; duration: 220; easing.type: Easing.OutCubic }
+        // A tile whose populate or add transition this cuts short still ends opaque, as Qt's
+        // ViewTransition docs advise (else typing fast, or the host's list changing while the
+        // tiles come in, leaves some invisible)
+        NumberAnimation { property: "opacity"; to: 1; duration: 220 }
     }
 
-    // [fork] ⌘F goes to the search
+    // [fork] ⌘F goes to the search, scrolling up to it
     Shortcut {
         sequence: StandardKey.Find
         enabled: appGrid.activated
         onActivated: {
             if (appGrid.headerItem) {
+                appGrid.positionViewAtBeginning()
                 appGrid.headerItem.focusSearch()
             }
         }
@@ -426,17 +506,21 @@ CenteredGridView {
         onObjectRemoved: appGrid.forkRecount()
     }
 
+    // [fork] The band reads the running app again when the model changes. Later, since the model
+    // signals a change of running app before it has noted the new one.
     Connections {
         target: appGrid.appModel
         function onDataChanged() {
-            if (appGrid.appModel.getRunningAppId() === 0) {
-                appGrid.forkRunningIndex = -1
-            }
+            Qt.callLater(appGrid.forkReadRunning)
         }
         function onModelReset() {
-            if (appGrid.appModel.getRunningAppId() === 0) {
-                appGrid.forkRunningIndex = -1
-            }
+            Qt.callLater(appGrid.forkReadRunning)
+        }
+        function onRowsInserted() {
+            Qt.callLater(appGrid.forkReadRunning)
+        }
+        function onRowsRemoved() {
+            Qt.callLater(appGrid.forkReadRunning)
         }
     }
 
@@ -452,6 +536,7 @@ CenteredGridView {
         // selection when backing out of a different page of the app.
         currentIndex = -1
         forkReadHost() // [fork]
+        forkReadRunning() // [fork]
     }
 
     StackView.onActivated: {
@@ -460,6 +545,7 @@ CenteredGridView {
         }
         activated = true
         forkReadHost() // [fork]
+        forkReadRunning() // [fork]
         forkCountHidden() // [fork]
 
         // Highlight the first item if a gamepad is connected
@@ -518,11 +604,6 @@ CenteredGridView {
         Accessible.role: Accessible.Button
         Accessible.name: model.running ? qsTr("Resume %1").arg(model.name) : qsTr("Start %1").arg(model.name)
         Accessible.description: forkChips.map(function(chip) { return chip.text }).join(", ")
-
-        // [fork] Tells the header whether this is the running app
-        readonly property bool forkRunning: model.running
-        onForkRunningChanged: appGrid.forkNoteRunning(index, forkRunning, model.name, appIcon.isPlaceholder ? "" : model.boxart)
-        Component.onCompleted: appGrid.forkNoteRunning(index, model.running, model.name, appIcon.isPlaceholder ? "" : model.boxart)
 
         // [fork] Pointed at with the mouse, or picked with the keyboard or a gamepad
         readonly property bool forkPointed: tile.hovered || tile.highlighted
@@ -583,10 +664,11 @@ CenteredGridView {
                 height: appGrid.forkArtHeight
                 opacity: model.hidden ? 0.45 : 1.0
 
-                // [fork] The running app's glow, breathing (still with Reduce Motion)
+                // [fork] The running app's glow, breathing (still with Reduce Motion); none where
+                // effects can't draw (the software renderer of offscreen screenshots)
                 Rectangle {
                     id: runGlow
-                    visible: model.running
+                    visible: model.running && GraphicsInfo.api !== GraphicsInfo.Software
                     anchors.fill: parent
                     anchors.margins: -3
                     radius: appIconMask.radius + 3
@@ -1039,39 +1121,8 @@ CenteredGridView {
         }
     }
 
-    Column {
-        anchors.centerIn: parent
-        width: Math.min(appGrid.width - 48, 480)
-        spacing: 14
-        visible: appGrid.count === 0
-
-        Label {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            // [fork] Every app hidden, and a search that matches nothing, have their own words
-            text: appGrid.forkQuery.trim() !== ""
-                  ? qsTr("No apps on %1 match “%2”").arg(appGrid.objectName).arg(appGrid.forkQuery.trim())
-                  : appGrid.forkHiddenCount > 0 && !appGrid.forkShowHidden
-                  ? qsTr("Every app on this PC is hidden. Show hidden apps to see them.")
-                  : qsTr("This computer doesn't seem to have any applications or some applications are hidden")
-            textFormat: Text.PlainText // [fork] the host picks the PC's name
-            font.pointSize: 15 // [fork] was 20
-            verticalAlignment: Text.AlignVCenter
-            wrapMode: Text.Wrap
-        }
-
-        // [fork] Clears the search
-        ForkButton {
-            anchors.horizontalCenter: parent.horizontalCenter
-            visible: appGrid.forkQuery.trim() !== ""
-            text: qsTr("Clear Search")
-            onClicked: {
-                if (appGrid.headerItem) {
-                    appGrid.headerItem.searchText = ""
-                }
-            }
-        }
-    }
+    // [fork] The words for an empty page (no apps, every app hidden, or no match for the search)
+    // are in the footer, under the header (was a Label centered in the view)
 
     NavigableMessageDialog {
         id: quitAppDialog
