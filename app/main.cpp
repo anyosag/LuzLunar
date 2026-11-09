@@ -13,6 +13,7 @@
 #include <QElapsedTimer>
 #include <QTemporaryFile>
 #include <QTemporaryDir> // [fork] the screenshot run's own settings
+#include <QFileInfo> // [fork]
 #include <QRegularExpression>
 
 #ifdef Q_OS_UNIX
@@ -445,6 +446,8 @@ int main(int argc, char *argv[])
     // CI publishes, and the run could change them. The folder goes when the app quits.
     QScopedPointer<QTemporaryDir> forkScreenshotHome;
     if (!qEnvironmentVariableIsEmpty("LUZLUNAR_SCREENSHOTS")) {
+        // The output folder is read later, from the new current folder, which goes when the app quits
+        qputenv("LUZLUNAR_SCREENSHOTS", QFileInfo(qEnvironmentVariable("LUZLUNAR_SCREENSHOTS")).absoluteFilePath().toUtf8());
         forkScreenshotHome.reset(new QTemporaryDir(QDir::tempPath() + "/luzlunar-screenshots-XXXXXX"));
         if (!forkScreenshotHome->isValid() || !QDir::setCurrent(forkScreenshotHome->path())) {
             fprintf(stderr, "[fork] Screenshot run: no folder of its own for settings (%s)\n",

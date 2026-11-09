@@ -53,8 +53,9 @@ namespace MacIntegration
     bool lowPowerModeEnabled();
 
     // Keeps the app out of the Dock and the app switcher (the accessory activation policy) from its
-    // launch on. Call before QGuiApplication: with no NSApp yet, the policy is set as the launch
-    // finishes, before macOS shows the app in the Dock.
+    // launch on, and out of App Nap, which would slow its timers while it shows nothing. Call before
+    // QGuiApplication: with no NSApp yet, the policy is set as the launch finishes, before macOS
+    // shows the app in the Dock.
     void stayInBackground();
 #else
     inline void setStreamShortcutGuard(bool) {}

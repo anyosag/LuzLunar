@@ -278,8 +278,10 @@ jobs:
           rm -f "$RUNNER_TEMP/signing.p12"
           # Let codesign use the key without a prompt
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
-          # Search the new keychain too, keeping the existing ones
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
+          # Search the new keychain too, keeping the existing ones. xargs passes each listed path, quoted,
+          # as one argument, so a keychain whose path has a space stays in the list (on your own Mac
+          # it's your list)
+          security list-keychains -d user | xargs security list-keychains -d user -s "$keychain"
           # A self-signed certificate isn't trusted, so it's listed without -v (valid only)
           identity=$(security find-identity -p codesigning "$keychain" | grep -oE '[0-9A-F]{40}' | head -n1)
           if [ -z "$identity" ]; then

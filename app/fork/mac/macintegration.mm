@@ -160,7 +160,14 @@ bool MacIntegration::lowPowerModeEnabled()
 void MacIntegration::stayInBackground()
 {
     static id s_LaunchObserver = nil;
+    static id s_Activity = nil;
     @autoreleasepool {
+        // An app with nothing on the screen is what App Nap slows down: its timers would drag
+        if (s_Activity == nil) {
+            s_Activity = [[[NSProcessInfo processInfo] beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep
+                                                                         reason:@"Working in the background"] retain];
+        }
+
         // Without NSApp yet (Qt makes it in QGuiApplication), as the launch finishes: before then
         // macOS hasn't put the app in the Dock, and Qt doesn't change the policy afterwards
         // without its foreground transform (QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM)

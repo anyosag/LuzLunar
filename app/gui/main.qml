@@ -140,6 +140,18 @@ ApplicationWindow {
         focus: true
 
         Component.onCompleted: {
+            // [fork] CI's hidden screenshot run only renders when the harness grabs the window, and
+            // the style's XAnimator transitions start at a render and stop at the grab's teardown,
+            // so a page would never finish coming in: change pages at once there
+            if (forkHiddenScreenshots) {
+                pushEnter = null
+                pushExit = null
+                popEnter = null
+                popExit = null
+                replaceEnter = null
+                replaceExit = null
+            }
+
             // Perform our early initialization before constructing
             // the initial view and pushing it to the StackView
             doEarlyInit()
