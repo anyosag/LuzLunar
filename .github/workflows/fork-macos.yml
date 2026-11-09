@@ -84,12 +84,14 @@ jobs:
           upstream_os=$(grep -oE 'os: macos-[0-9A-Za-z.-]+' "$f" | head -n1 | cut -d' ' -f2)
           qt=$(grep -A1 -E 'os: macos-' "$f" | grep -oE 'qt_version: [0-9.]+' | head -n1 | cut -d' ' -f2)
           aqt=$(grep -oE "aqtsource: '[^']+'" "$f" | head -n1 | sed -E "s/aqtsource: '(.*)'/\1/")
+          # The variable without the spaces, line breaks or capitals a paste can bring
+          pref=$(printf '%s' "$RUNNER_PREF" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
           os=macos-15
           runs_on='"macos-15"'
           if [ "$RUNNER_OVERRIDE" = "upstream" ]; then
             os=${upstream_os:-macos-26}
             runs_on="\"$os\""
-          elif [ "$RUNNER_OVERRIDE" != "macos-15" ] && [ "$RUNNER_PREF" = "self-hosted" ] &&
+          elif [ "$RUNNER_OVERRIDE" != "macos-15" ] && [ "$pref" = "self-hosted" ] &&
                { [ "$EVENT" != "pull_request" ] || [ "$HEAD_REPO" = "$REPO" ]; }; then
             os=self-hosted
             runs_on='["self-hosted", "macOS", "ARM64"]'
