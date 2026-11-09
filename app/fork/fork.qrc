@@ -39,6 +39,7 @@
         <file alias="ForkPcFooter.qml">../gui/ForkPcFooter.qml</file>
         <file alias="ForkThisMacStrip.qml">../gui/ForkThisMacStrip.qml</file>
         <file alias="ForkAppsHeader.qml">../gui/ForkAppsHeader.qml</file>
+        <file alias="ForkAppCover.qml">../gui/ForkAppCover.qml</file>
         <file alias="ForkLaunchPanel.qml">../gui/ForkLaunchPanel.qml</file>
         <file alias="ForkGroupLaunchCard.qml">../gui/ForkGroupLaunchCard.qml</file>
         <file alias="ForkFpsDialog.qml">../gui/ForkFpsDialog.qml</file>

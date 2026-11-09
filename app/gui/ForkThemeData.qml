@@ -45,6 +45,15 @@ QtObject {
     // The app icon's tile, the same in both modes
     readonly property color markTile: "#0E1430"
 
+    // A PC's own color on the page of its apps: the band at the top (pcSky, in both modes) and its
+    // main button, focus ring and play disc (pcFill). Every PC has the design's Indigo for now.
+    readonly property color pcFill: "#5E5CE6"
+    readonly property color pcSky: "#17163F"
+
+    // The app that's running: its ring and glow, and its badge
+    readonly property color running: dark ? "#409CFF" : "#0A6CDB"
+    readonly property color runningBadge: "#0A6CDB"
+
     // States
     readonly property color ok: dark ? "#79D6B5" : "#16805D"
     readonly property color chipScrim: dark ? Qt.rgba(10 / 255, 14 / 255, 28 / 255, 0.74) : Qt.rgba(1, 1, 1, 0.88)

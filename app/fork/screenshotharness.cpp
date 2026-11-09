@@ -48,6 +48,26 @@ namespace
           "  stackView.push(appView, StackView.Immediate) "
           "}", 3000 },
         { nullptr, "if (stackView.depth > 1) stackView.pop(null, StackView.Immediate)", 500 },
+        // A PC's apps page with sample apps (AppView.forkSampleModel), since the CI Mac has no PCs:
+        // the band with an app running, covers drawn for apps without art, chips and hidden apps
+        { "1a-apps-sample",
+          "var sample = Qt.createQmlObject('import QtQuick; ListModel { "
+          "ListElement { name: \"Desktop\"; running: true; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 1; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"\" } "
+          "ListElement { name: \"Desktop (multiple displays)\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 2; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"office\" } "
+          "ListElement { name: \"Steam Big Picture\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 3; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"gaming\" } "
+          "ListElement { name: \"Virtual Display\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 4; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"\" } "
+          "ListElement { name: \"Forza Horizon 5\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 5; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"gaming\" } "
+          "ListElement { name: \"Hades II\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 6; directLaunch: true; isAppCollectorGame: false; sampleProfile: \"gaming\" } "
+          "ListElement { name: \"Blender\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 7; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"custom\" } "
+          "ListElement { name: \"Visual Studio Code\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: false; appid: 8; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"office\" } "
+          "ListElement { name: \"Epic Games Launcher\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: true; appid: 9; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"\" } "
+          "ListElement { name: \"Xbox\"; running: false; boxart: \"qrc:/res/no_app_image.png\"; hidden: true; appid: 10; directLaunch: false; isAppCollectorGame: false; sampleProfile: \"\" } "
+          "}', stackView); "
+          "var appView = Qt.createComponent('qrc:/gui/AppView.qml').createObject(stackView, { objectName: 'GonzaloPC', showHiddenGames: true, "
+          "  forkSampleHost: { software: 'Apollo', version: '0.4.8', address: '10.0.0.77', local: true, remote: false }, "
+          "  forkSampleModel: sample }); "
+          "stackView.push(appView, StackView.Immediate)", 3000 },
+        { nullptr, "if (stackView.depth > 1) stackView.pop(null, StackView.Immediate)", 500 },
         // The CI Mac has no PCs, so show sample tiles in their states (running an app, asleep, not paired)
         { "1b-computer-tiles",
           "stackView.currentItem.model = Qt.createQmlObject('import QtQuick; ListModel { "
