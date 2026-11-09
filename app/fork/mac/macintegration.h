@@ -42,7 +42,8 @@ namespace MacIntegration
     // screencapture process puts a window over the whole screen until it's done
     bool screenshotOverlayVisible();
 
-    // True if pid is a running copy of this program, for crash records another copy left
+    // True if pid is a running copy of this program, wherever its bundle is (not this process), for
+    // crash records another copy left
     bool isRunningCopy(long pid);
 
     // The text on the app's Dock icon, like a transfer's progress; empty removes it. Main thread.
@@ -50,6 +51,12 @@ namespace MacIntegration
 
     // True while Low Power Mode is on (macOS 12+), which holds the screen to about 60 fps
     bool lowPowerModeEnabled();
+
+    // Keeps the app out of the Dock and the app switcher (the accessory activation policy) from its
+    // launch on, and out of App Nap, which would slow its timers while it shows nothing. Call before
+    // QGuiApplication: with no NSApp yet, the policy is set as the launch finishes, before macOS
+    // shows the app in the Dock.
+    void stayInBackground();
 #else
     inline void setStreamShortcutGuard(bool) {}
     inline bool clipboardHasConcealedContent() { return false; }
@@ -62,5 +69,6 @@ namespace MacIntegration
     inline bool isRunningCopy(long) { return false; }
     inline void setDockBadge(const QString&) {}
     inline bool lowPowerModeEnabled() { return false; }
+    inline void stayInBackground() {}
 #endif
 }

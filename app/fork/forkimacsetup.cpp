@@ -136,7 +136,9 @@ int ForkImacSetup::automaticBitrateKbps(int route, int codec, int mainKbps, int 
 
 void ForkImacSetup::refresh()
 {
-    if (!ForkDisplayExtend::available()) {
+    // CI's screenshot run doesn't ask DisplayExtend: on a self-hosted runner it's the Mac owner's
+    // setup, and CI publishes the screenshots. It shows the page as GitHub's machines have it.
+    if (!ForkDisplayExtend::available() || qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS")) {
         applyStatus(tr("DisplayExtend's Host isn't running on this Mac, or is older than 1.6."), false, false, QStringList(),
                     ForkDisplayRoute::ImacCodecs());
         return;

@@ -248,6 +248,11 @@ void start(const QString& logFile, std::function<uint64_t()> logBytes, uint64_t 
     if (s_Thread.joinable()) {
         return;
     }
+    // CI's screenshot run leaves the socket, and its folder in Application Support, to the Mac's
+    // own LuzLunar: on a self-hosted runner that's the Mac owner's
+    if (qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS")) {
+        return;
+    }
     {
         std::lock_guard<std::mutex> lock(s_Mutex);
         s_LogFile = logFile;

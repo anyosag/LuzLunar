@@ -17,12 +17,13 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: macOS runner. Upstream's default; macos-15 when GitHub is short of macOS 26 machines.
+        description: macOS runner. auto is your own Mac when the repository variable LUZLUNAR_RUNNER is self-hosted (see FORK.md), else macos-15; upstream is macOS 26.
         type: choice
         options:
-          - upstream
+          - auto
           - macos-15
-        default: upstream
+          - upstream
+        default: auto
   # Used by sync-upstream.yml, since pushes made with GITHUB_TOKEN don't trigger workflows.
   workflow_call:
     inputs:
@@ -41,6 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       os: ${{ steps.read.outputs.os }}
+      runs_on: ${{ steps.read.outputs.runs_on }}
+      skip_macos: ${{ steps.read.outputs.skip_macos }}
       qt_version: ${{ steps.read.outputs.qt_version }}
       aqtsource: ${{ steps.read.outputs.aqtsource }}
       version: ${{ steps.luzlunar.outputs.version }}
@@ -55,20 +58,48 @@ jobs:
             scripts/fork
           persist-credentials: false
 
-      # Follow upstream's macOS runner, Qt version and aqtinstall pin so Qt bumps don't need fork edits.
+      # Follow upstream's Qt version and aqtinstall pin so Qt bumps don't need fork edits. The runner
+      # is macos-15 for every run (its Xcode 26 is picked below): GitHub is often short of the
+      # macOS 26 machines upstream builds on, and cancels jobs that wait 15 minutes for one. A run
+      # started by hand can still pick upstream's runner.
+      # With the repository variable LUZLUNAR_RUNNER set to self-hosted, this repository's own
+      # pushes, pull requests and runs by hand build on your own Mac instead (a self-hosted Apple
+      # silicon runner, see FORK.md). A pull request from another repository still goes to GitHub's
+      # machines; one can change this file, though, which is why the repository must require
+      # approval before running workflows from outside contributors.
+      # The Mac takes one job at a time, so there a pull request from a claude/ branch skips the
+      # macOS jobs: the branch's push run builds and tests the same commit.
       - name: Read build-win-mac.yml
         id: read
         shell: bash
         env:
           RUNNER_OVERRIDE: ${{ inputs.runner }}
+          RUNNER_PREF: ${{ vars.LUZLUNAR_RUNNER }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          REPO: ${{ github.repository }}
         run: |
           f=.github/workflows/build-win-mac.yml
-          os=$(grep -oE 'os: macos-[0-9A-Za-z.-]+' "$f" | head -n1 | cut -d' ' -f2)
+          upstream_os=$(grep -oE 'os: macos-[0-9A-Za-z.-]+' "$f" | head -n1 | cut -d' ' -f2)
           qt=$(grep -A1 -E 'os: macos-' "$f" | grep -oE 'qt_version: [0-9.]+' | head -n1 | cut -d' ' -f2)
           aqt=$(grep -oE "aqtsource: '[^']+'" "$f" | head -n1 | sed -E "s/aqtsource: '(.*)'/\1/")
-          # A manual run can pick another runner when GitHub has no macOS 26 machines free
-          if [ -n "$RUNNER_OVERRIDE" ] && [ "$RUNNER_OVERRIDE" != "upstream" ]; then
-            os=$RUNNER_OVERRIDE
+          # The variable without the spaces, line breaks or capitals a paste can bring
+          pref=$(printf '%s' "$RUNNER_PREF" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+          os=macos-15
+          runs_on='"macos-15"'
+          if [ "$RUNNER_OVERRIDE" = "upstream" ]; then
+            os=${upstream_os:-macos-26}
+            runs_on="\"$os\""
+          elif [ "$RUNNER_OVERRIDE" != "macos-15" ] && [ "$pref" = "self-hosted" ] &&
+               { [ "$EVENT" != "pull_request" ] || [ "$HEAD_REPO" = "$REPO" ]; }; then
+            os=self-hosted
+            runs_on='["self-hosted", "macOS", "ARM64"]'
+          fi
+          skip_macos=false
+          if [ "$os" = self-hosted ] && [ "$EVENT" = pull_request ] && [[ "$HEAD_REF" == claude/* ]]; then
+            skip_macos=true
+            echo "The push run of $HEAD_REF builds this commit on the Mac, so this run skips the macOS jobs"
           fi
           # Upstream pins aqtinstall to a commit. Falling back to whatever PyPI serves would install
           # an unpinned tool into the build, so stop instead.
@@ -76,15 +107,17 @@ jobs:
             echo "::error::Couldn't read aqtsource from $f; upstream may have changed its format. Update this step."
             exit 1
           fi
-          echo "os=${os:-macos-26}" >> "$GITHUB_OUTPUT"
+          echo "os=$os" >> "$GITHUB_OUTPUT"
+          echo "runs_on=$runs_on" >> "$GITHUB_OUTPUT"
+          echo "skip_macos=$skip_macos" >> "$GITHUB_OUTPUT"
           echo "qt_version=${qt:-6.11.2}" >> "$GITHUB_OUTPUT"
           echo "aqtsource=$aqt" >> "$GITHUB_OUTPUT"
-          echo "Using ${os:-macos-26}, Qt ${qt:-6.11.2}, $aqt"
+          echo "Using $os, Qt ${qt:-6.11.2}, $aqt"
 
       # LuzLunar's own version, like 1.16 (scripts/fork/version.sh): the update after the newest one
       # published, or 1.16-dev.<commit> toward it for a build that isn't a master build. A master
-      # build is a push to master, or this workflow started by hand on master (as when GitHub has
-      # no macOS 26 machines free and the run picks macos-15), never Sync upstream's call.
+      # build is a push to master, or this workflow started by hand on master (as when a push's run
+      # never got a machine), never Sync upstream's call.
       - name: Work out LuzLunar's version
         id: luzlunar
         shell: bash
@@ -108,7 +141,8 @@ jobs:
   build:
     name: macOS arm64
     needs: setup
-    runs-on: ${{ needs.setup.outputs.os }}
+    if: needs.setup.outputs.skip_macos != 'true'
+    runs-on: ${{ fromJSON(needs.setup.outputs.runs_on) }}
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -125,13 +159,38 @@ jobs:
       - name: Use Xcode 26 or later
         shell: bash
         run: |
-          # Read the whole output first: xcodebuild crashes if a pipe closes early (head)
-          version=$(xcodebuild -version)
+          # Read the whole output first: xcodebuild crashes if a pipe closes early (head). It fails
+          # where the Mac's developer folder is the Command Line Tools rather than an Xcode.
+          version=$(xcodebuild -version 2>/dev/null || true)
           major=$(echo "$version" | grep -oE '[0-9]+' | head -n1)
+          # Your own Mac: Homebrew's tools (ccache, OpenSSL) for the later steps, since a standard
+          # user's PATH may not have them
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ] && ! command -v brew > /dev/null &&
+             [ -x /opt/homebrew/bin/brew ]; then
+            echo /opt/homebrew/bin >> "$GITHUB_PATH"
+          fi
           if [ "${major:-0}" -lt 26 ]; then
-            xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
-            [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
-            sudo xcode-select -s "$xcode"
+            if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+              # Your own Mac: point this job at its newest Xcode, 26 or later, without changing
+              # the Mac's default (no sudo)
+              xcode=""
+              best=0
+              for app in /Applications/Xcode*.app; do
+                v=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null || true)
+                vmajor=$(echo "$v" | grep -oE '[0-9]+' | head -n1)
+                if [ "${vmajor:-0}" -ge 26 ] && [ "${vmajor:-0}" -gt "$best" ]; then
+                  best=$vmajor
+                  xcode=$app
+                fi
+              done
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 or later in /Applications on this Mac"; exit 1; }
+              echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+              export DEVELOPER_DIR="$xcode/Contents/Developer"
+            else
+              xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+              sudo xcode-select -s "$xcode"
+            fi
           fi
           xcodebuild -version
 
@@ -143,9 +202,27 @@ jobs:
       - name: Install create-dmg
         run: npm install --global create-dmg@8.1.0
 
+      # Qt's installer, aqtinstall, needs Python 3.10 or later. install-qt-action gets one with
+      # setup-python, which on Apple silicon runs Python's .pkg installer with sudo, so on your own
+      # Mac it uses a Python from uv instead (kept in the runner user's home between runs).
+      - name: Set up uv
+        if: needs.setup.outputs.os == 'self-hosted'
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+        with:
+          version: '0.13.5'
+          enable-cache: false
+
+      - name: Python for the Qt installer
+        if: needs.setup.outputs.os == 'self-hosted'
+        shell: bash
+        run: |
+          uv venv --seed --python 3.14 "$RUNNER_TEMP/qt-python"
+          echo "$RUNNER_TEMP/qt-python/bin" >> "$GITHUB_PATH"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125  # v4.4.1
         with:
+          setup-python: ${{ needs.setup.outputs.os != 'self-hosted' }}
           cache: true
           set-env: true
           add-tools-to-path: true
@@ -201,8 +278,10 @@ jobs:
           rm -f "$RUNNER_TEMP/signing.p12"
           # Let codesign use the key without a prompt
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
-          # Search the new keychain too, keeping the existing ones
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
+          # Search the new keychain too, keeping the existing ones. xargs passes each listed path, quoted,
+          # as one argument, so a keychain whose path has a space stays in the list (on your own Mac
+          # it's your list)
+          security list-keychains -d user | xargs security list-keychains -d user -s "$keychain"
           # A self-signed certificate isn't trusted, so it's listed without -v (valid only)
           identity=$(security find-identity -p codesigning "$keychain" | grep -oE '[0-9A-F]{40}' | head -n1)
           if [ -z "$identity" ]; then
@@ -216,8 +295,11 @@ jobs:
       # The compiler cache, kept between runs: most commits change a few files, so most of the build
       # comes from it (build-mac.sh compiles through ccache when it's installed). Each run saves its own
       # copy; the next run starts from the newest one its branch, or master, has. The link isn't
-      # cached: ThinLTO's own cache would cost about as much to move as the link takes.
+      # cached: ThinLTO's own cache would cost about as much to move as the link takes. Your own
+      # Mac keeps its cache in the runner user's Library instead, so it isn't moved over your
+      # connection (the next step).
       - name: Restore the compiler cache
+        if: needs.setup.outputs.os != 'self-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ${{ runner.temp }}/ccache
@@ -227,13 +309,24 @@ jobs:
       - name: Install ccache
         shell: bash
         run: |
-          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ccache
+          dir=$RUNNER_TEMP/ccache
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            # Your own Mac has it installed (see FORK.md): the runner user can't install with
+            # Homebrew. Its cache stays in that user's Library between runs.
+            dir=$HOME/Library/Caches/LuzLunar-ccache
+            if ! command -v ccache > /dev/null; then
+              echo "::warning::ccache isn't installed on this Mac, so the build compiles everything. An administrator can install it: brew install ccache"
+              exit 0
+            fi
+          elif ! command -v ccache > /dev/null; then
+            HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ccache
+          fi
           {
-            echo "CCACHE_DIR=$RUNNER_TEMP/ccache"
+            echo "CCACHE_DIR=$dir"
             echo "CCACHE_MAXSIZE=2G"
           } >> "$GITHUB_ENV"
           # This run's hits and misses only (build-mac.sh prints them after the build)
-          CCACHE_DIR="$RUNNER_TEMP/ccache" ccache --zero-stats
+          CCACHE_DIR="$dir" ccache --zero-stats
 
       - name: Build (arm64)
         run: bash scripts/fork/build-mac.sh Release
@@ -274,7 +367,8 @@ jobs:
   tests:
     name: Fork unit tests
     needs: setup
-    runs-on: ${{ needs.setup.outputs.os }}
+    if: needs.setup.outputs.skip_macos != 'true'
+    runs-on: ${{ fromJSON(needs.setup.outputs.runs_on) }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
@@ -287,13 +381,38 @@ jobs:
       - name: Use Xcode 26 or later
         shell: bash
         run: |
-          # Read the whole output first: xcodebuild crashes if a pipe closes early (head)
-          version=$(xcodebuild -version)
+          # Read the whole output first: xcodebuild crashes if a pipe closes early (head). It fails
+          # where the Mac's developer folder is the Command Line Tools rather than an Xcode.
+          version=$(xcodebuild -version 2>/dev/null || true)
           major=$(echo "$version" | grep -oE '[0-9]+' | head -n1)
+          # Your own Mac: Homebrew's tools (ccache, OpenSSL) for the later steps, since a standard
+          # user's PATH may not have them
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ] && ! command -v brew > /dev/null &&
+             [ -x /opt/homebrew/bin/brew ]; then
+            echo /opt/homebrew/bin >> "$GITHUB_PATH"
+          fi
           if [ "${major:-0}" -lt 26 ]; then
-            xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
-            [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
-            sudo xcode-select -s "$xcode"
+            if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+              # Your own Mac: point this job at its newest Xcode, 26 or later, without changing
+              # the Mac's default (no sudo)
+              xcode=""
+              best=0
+              for app in /Applications/Xcode*.app; do
+                v=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null || true)
+                vmajor=$(echo "$v" | grep -oE '[0-9]+' | head -n1)
+                if [ "${vmajor:-0}" -ge 26 ] && [ "${vmajor:-0}" -gt "$best" ]; then
+                  best=$vmajor
+                  xcode=$app
+                fi
+              done
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 or later in /Applications on this Mac"; exit 1; }
+              echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+              export DEVELOPER_DIR="$xcode/Contents/Developer"
+            else
+              xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+              sudo xcode-select -s "$xcode"
+            fi
           fi
           xcodebuild -version
 
@@ -470,8 +589,21 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork \
             tests/fork/trackpadgestures_test.cpp app/fork/forktrackpadgestures.cpp -o "$RUNNER_TEMP/trackpadgestures_test"
           "$RUNNER_TEMP/trackpadgestures_test"
-          # Over-the-air updates: manifests, when they install, and the Ed25519 check (Homebrew's OpenSSL)
-          openssl_prefix=$(brew --prefix openssl@3)
+          # Over-the-air updates: manifests, when they install, and the Ed25519 check (Homebrew's
+          # OpenSSL: openssl@3 on GitHub's Macs; on your own Mac, the one Homebrew's ccache brings)
+          openssl_prefix=""
+          for formula in openssl@3 openssl@4 openssl; do
+            prefix=$(brew --prefix "$formula" 2>/dev/null || true)
+            if [ -n "$prefix" ] && [ -f "$prefix/include/openssl/evp.h" ]; then
+              openssl_prefix=$prefix
+              break
+            fi
+          done
+          if [ -z "$openssl_prefix" ]; then
+            echo "::error::The update tests need Homebrew's OpenSSL. An administrator can install it: brew install openssl@3"
+            exit 1
+          fi
+          echo "Update tests with $openssl_prefix"
           clang++ -std=c++17 -Wall -Wextra -Iapp/fork -I"$openssl_prefix/include" \
             tests/fork/updaterules_test.cpp app/fork/forkupdaterules.cpp \
             -L"$openssl_prefix/lib" -lcrypto -o "$RUNNER_TEMP/updaterules_test"
@@ -528,7 +660,7 @@ jobs:
   screenshots:
     name: UI screenshots
     needs: [setup, build]
-    runs-on: ${{ needs.setup.outputs.os }}
+    runs-on: ${{ fromJSON(needs.setup.outputs.runs_on) }}
     steps:
       - name: Download the update zip
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
@@ -544,9 +676,19 @@ jobs:
         run: |
           ditto -x -k artifacts/LuzLunar-macOS-arm64.zip "$RUNNER_TEMP/app"
           app="$RUNNER_TEMP/app/LuzLunar.app/Contents/MacOS/LuzLunar"
+          # On your own Mac, where you may be working, nothing shows on the screen: no window (the
+          # app grabs it offscreen), no Dock icon, no taking the keyboard (screenshotharness.cpp)
+          hidden=0
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            hidden=1
+          fi
+          # The run's own settings folder (main.cpp) goes in the job's temporary folder, which the
+          # runner empties even if a run is stopped
+          mkdir -p "$RUNNER_TEMP/tmp"
           for scheme in dark light; do
-            LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
-              perl -e 'alarm 120; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
+            TMPDIR="$RUNNER_TEMP/tmp" LUZLUNAR_SCREENSHOTS_HIDDEN=$hidden \
+              LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
+              perl -e 'alarm 180; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
           done
           # The app icon as older macOS shows it (actool's flattened .icns)
           sips -s format png "$RUNNER_TEMP/app/LuzLunar.app/Contents/Resources/LuzLunar.icns" --out "$RUNNER_TEMP/screenshots/app-icon.png" || true

@@ -1,6 +1,7 @@
 #!/bin/bash
 # LuzLunar build for Apple Silicon: scripts/generate-dmg.sh, but arm64 only, renamed and re-signed.
-# Requires create-dmg from https://github.com/sindresorhus/create-dmg and Qt's tools on PATH.
+# Requires create-dmg 7.1 or later from https://github.com/sindresorhus/create-dmg (CI installs 8.1.0)
+# and Qt's tools on PATH.
 #
 # An unsigned arm64 app doesn't launch on Apple Silicon (macdeployqt invalidates the linker's
 # ad-hoc signature), so the bundle is re-signed: with the certificate in LUZLUNAR_SIGN_IDENTITY
@@ -199,8 +200,23 @@ else
 fi
 
 echo Smoke test: launching $APP_NAME --version
-perl -e 'alarm 60; exec @ARGV' "$APP/Contents/MacOS/$APP_NAME" --version
+# On a self-hosted CI runner, a Mac someone may be using, it runs as a portable copy in a folder of
+# its own (portable.dat): its settings and its log stay there, where a normal launch would read the
+# Mac's own settings and prune the Mac's own logs in /tmp. Qt runs offscreen (the plugin added
+# above), so the app doesn't appear in the Dock even for a moment. The screenshot job still starts
+# it with Qt's Cocoa platform.
+SMOKE_ENV=()
+SMOKE_DIR=$PWD
+if [ "$RUNNER_ENVIRONMENT" == "self-hosted" ]; then
+  SMOKE_ENV=(QT_QPA_PLATFORM=offscreen)
+  SMOKE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/luzlunar-smoke.XXXXXX") || fail "No folder for the smoke test!"
+  touch "$SMOKE_DIR/portable.dat" || fail "No folder for the smoke test!"
+fi
+(cd "$SMOKE_DIR" && env "${SMOKE_ENV[@]}" perl -e 'alarm 60; exec @ARGV' "$APP/Contents/MacOS/$APP_NAME" --version)
 STATUS=$?
+if [ "$SMOKE_DIR" != "$PWD" ]; then
+  rm -rf "$SMOKE_DIR"
+fi
 case $STATUS in
   0) echo "$APP_NAME started and exited cleanly" ;;
   137) fail "$APP_NAME was killed at launch (SIGKILL), which usually means an invalid code signature" ;;
@@ -217,10 +233,15 @@ if [ "$LUZLUNAR_SKIP_DMG" == "1" ]; then
   echo Skipping the DMG
 else
   echo Creating DMG
-  create-dmg "$APP" "$INSTALLER_FOLDER" --no-version-in-filename
+  # The image itself isn't signed (the app in it is): create-dmg would sign it with any Apple
+  # developer certificate in the keychains, which on someone's own Mac is theirs, with their name
+  # in it. It mounts the image hidden from Finder (appdmg's hdiutil attach -nobrowse). Older
+  # create-dmg ignores --no-code-sign, and Homebrew's create-dmg is another tool.
+  create-dmg --help 2>/dev/null | grep -q -- --no-code-sign || \
+    fail "create-dmg 7.1 or later is needed: npm install --global create-dmg (or LUZLUNAR_SKIP_DMG=1)"
+  create-dmg "$APP" "$INSTALLER_FOLDER" --no-version-in-filename --no-code-sign
   case $? in
     0) ;;
-    2) ;;  # no signing identity, expected
     *) fail "create-dmg failed!";;
   esac
 

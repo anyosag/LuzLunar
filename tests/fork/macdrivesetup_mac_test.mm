@@ -6,6 +6,8 @@
 #include "fork/mac/macdrivesetup.h"
 
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 
 #include <unistd.h>
@@ -44,11 +46,19 @@ int main()
     CHECK(!computer.empty());
     CHECK(!volume.empty());
 
-    // What this Mac has; CI's runner has File Sharing off and no share of its disk
+    // What this Mac has; GitHub's runner has File Sharing off and no share of its disk. Shown on
+    // GitHub's own machines only: on a self-hosted runner it's the Mac owner's account, computer
+    // name and sharing, and CI's logs are public.
     std::string disk = MacDriveSetup::diskShareName();
-    std::printf("account %s (%s), computer \"%s\", startup volume \"%s\", File Sharing %s, disk share \"%s\", Windows File Sharing %s\n",
-                user.c_str(), MacDriveSetup::isAdmin() ? "administrator" : "standard", computer.c_str(), volume.c_str(),
-                MacDriveSetup::fileSharingOn() ? "on" : "off", disk.c_str(), sharingName(MacDriveSetup::windowsSharing()));
+    bool admin = MacDriveSetup::isAdmin();
+    bool fileSharing = MacDriveSetup::fileSharingOn();
+    MacDriveSetup::WindowsSharing windows = MacDriveSetup::windowsSharing();
+    const char* runner = std::getenv("RUNNER_ENVIRONMENT");
+    if (runner != nullptr && std::strcmp(runner, "github-hosted") == 0) {
+        std::printf("account %s (%s), computer \"%s\", startup volume \"%s\", File Sharing %s, disk share \"%s\", Windows File Sharing %s\n",
+                    user.c_str(), admin ? "administrator" : "standard", computer.c_str(), volume.c_str(),
+                    fileSharing ? "on" : "off", disk.c_str(), sharingName(windows));
+    }
 
     // Never a password that isn't the account's
     CHECK(!MacDriveSetup::verifyPassword(""));

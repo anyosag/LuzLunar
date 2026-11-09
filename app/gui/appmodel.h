@@ -45,6 +45,20 @@ public:
 
     Q_INVOKABLE void setAppDirectLaunch(int appIndex, bool directLaunch);
 
+    // [fork] The apps page's search: only apps whose names contain this text (in any case) stay,
+    // and the running app always does, so the header's Resume and Quit can still reach it. Empty
+    // shows every app again.
+    Q_INVOKABLE void forkSetNameFilter(const QString& text);
+
+    // [fork] The PC for the apps page's header: "address" (the one LuzLunar uses now), "local" or
+    // "remote" (whether that's its address on this network or the one from outside), "software"
+    // ("Apollo", "Sunshine" or "GeForce Experience") and "uuid"
+    Q_INVOKABLE QVariantMap forkHostInfo();
+
+    // [fork] The app that runs, for the apps page's header, whether or not the grid shows its tile:
+    // "id", "name", and "boxart" when it's one of this model's rows; empty with nothing running
+    Q_INVOKABLE QVariantMap forkRunningApp();
+
     QVariant data(const QModelIndex &index, int role) const override;
 
     int rowCount(const QModelIndex &parent) const override;
@@ -66,10 +80,11 @@ private:
 
     bool isAppCurrentlyVisible(const NvApp& app);
 
-    NvComputer* m_Computer;
+    NvComputer* m_Computer = nullptr; // [fork] null until initialize(), which forkHostInfo() checks
     BoxArtManager m_BoxArtManager;
     ComputerManager* m_ComputerManager;
     QVector<NvApp> m_VisibleApps, m_AllApps;
-    int m_CurrentGameId;
-    bool m_ShowHiddenGames;
+    int m_CurrentGameId = 0; // [fork] set for an empty model too (initialize())
+    bool m_ShowHiddenGames = false; // [fork]
+    QString m_ForkNameFilter; // [fork] forkSetNameFilter()
 };

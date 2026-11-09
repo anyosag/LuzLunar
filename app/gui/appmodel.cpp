@@ -16,7 +16,11 @@ void AppModel::initialize(ComputerManager* computerManager, int computerIndex, b
     connect(m_ComputerManager, &ComputerManager::computerStateChanged,
             this, &AppModel::handleComputerStateChanged);
 
-    Q_ASSERT(computerIndex < m_ComputerManager->getComputers().count());
+    // [fork] No PC at this row (as for the screenshot harness's sample apps) leaves the model empty,
+    // where upstream asserted
+    if (computerIndex < 0 || computerIndex >= m_ComputerManager->getComputers().count()) {
+        return;
+    }
     m_Computer = m_ComputerManager->getComputers().at(computerIndex);
     m_CurrentGameId = m_Computer->currentGameId;
     m_ShowHiddenGames = showHiddenGames;
@@ -63,6 +67,58 @@ int AppModel::forkIndexOfApp(int appId)
         }
     }
     return -1;
+}
+
+void AppModel::forkSetNameFilter(const QString& text)
+{
+    QString filter = text.trimmed();
+    if (filter == m_ForkNameFilter) {
+        return;
+    }
+
+    m_ForkNameFilter = filter;
+    updateAppList(m_AllApps);
+}
+
+QVariantMap AppModel::forkHostInfo()
+{
+    QVariantMap info;
+    if (m_Computer == nullptr) {
+        return info;
+    }
+
+    QReadLocker lock(&m_Computer->lock);
+
+    info.insert(QStringLiteral("address"), m_Computer->activeAddress.isNull() ? QString() : m_Computer->activeAddress.address());
+    info.insert(QStringLiteral("local"), !m_Computer->activeAddress.isNull() && m_Computer->activeAddress == m_Computer->localAddress);
+    info.insert(QStringLiteral("remote"), !m_Computer->activeAddress.isNull() && m_Computer->activeAddress == m_Computer->remoteAddress);
+    // As ComputerModel names it for the PC cards
+    info.insert(QStringLiteral("software"), m_Computer->isApolloServerSoftware ? QStringLiteral("Apollo")
+                                          : m_Computer->isNvidiaServerSoftware ? QStringLiteral("GeForce Experience")
+                                          : QStringLiteral("Sunshine"));
+    info.insert(QStringLiteral("uuid"), m_Computer->uuid);
+    return info;
+}
+
+QVariantMap AppModel::forkRunningApp()
+{
+    QVariantMap info;
+    if (m_Computer == nullptr || m_CurrentGameId == 0) {
+        return info;
+    }
+
+    for (const NvApp& app : std::as_const(m_AllApps)) {
+        if (app.id == m_CurrentGameId) {
+            info.insert(QStringLiteral("id"), app.id);
+            info.insert(QStringLiteral("name"), app.name);
+            int row = forkIndexOfApp(app.id);
+            if (row >= 0) {
+                info.insert(QStringLiteral("boxart"), data(createIndex(row, 0), BoxArtRole));
+            }
+            break;
+        }
+    }
+    return info;
 }
 
 int AppModel::getDirectLaunchAppIndex()
@@ -159,6 +215,12 @@ QVector<NvApp> AppModel::getVisibleApps(const QVector<NvApp>& appList)
         // displays, or while it runs (so it can be quit)
         if (ForkMultiDisplay::isGroupApp(m_Computer, app) && app.id != m_CurrentGameId &&
                 !ForkMultiDisplay::canStreamGroup(m_Computer)) {
+            continue;
+        }
+
+        // [fork] The apps page's search (forkSetNameFilter()); the running app always stays
+        if (!m_ForkNameFilter.isEmpty() && app.id != m_CurrentGameId &&
+                !app.name.contains(m_ForkNameFilter, Qt::CaseInsensitive)) {
             continue;
         }
 

@@ -11,6 +11,8 @@ import QtQuick.Templates as T
 //   quiet     no outline until hovered (toolbar-like and icon-only buttons)
 //   danger    a red outline ("Remove")
 //   link      gold text only, underlined on hover
+//   pc        a fill in the PC's color (ForkTheme.pcFill), on the apps page's band ("Resume")
+//   glass     white on a faint white fill, for the band's dark sky ("Quit")
 // symbol is an optional SF Symbol before the text; with no text the button is square. Keyboard
 // focus draws a gold ring just outside the button.
 T.Button {
@@ -22,6 +24,7 @@ T.Button {
 
     // The text and symbol color; set it to override the kind's (on box art, say)
     property color foreground: kind === "primary" ? ForkTheme.textOnAccent
+                              : kind === "pc" || kind === "glass" ? "#FFFFFF"
                               : kind === "strong" ? ForkTheme.bg
                               : kind === "accent" || kind === "link" ? ForkTheme.accentInk
                               : kind === "danger" ? ForkTheme.danger
@@ -38,7 +41,7 @@ T.Button {
 
     font.family: ForkTheme.uiFamily
     font.pixelSize: kind === "link" ? 13 : 14
-    font.weight: kind === "primary" || kind === "strong" || kind === "accent" ? Font.DemiBold : Font.Medium
+    font.weight: kind === "primary" || kind === "strong" || kind === "accent" || kind === "pc" ? Font.DemiBold : Font.Medium
     font.underline: kind === "link" && hovered
 
     Accessible.name: text !== "" ? text : (Accessible.description || symbol)
@@ -90,11 +93,20 @@ T.Button {
                 if (control.kind === "link") {
                     return "transparent"
                 }
+                if (control.kind === "pc") {
+                    // Darker, not lighter, on hover: white text keeps 4.5:1 or more
+                    return control.down ? Qt.darker(ForkTheme.pcFill, 1.18)
+                                        : (control.hovered ? Qt.darker(ForkTheme.pcFill, 1.08) : ForkTheme.pcFill)
+                }
+                if (control.kind === "glass") {
+                    return control.down ? Qt.rgba(1, 1, 1, 0.06) : (control.hovered ? Qt.rgba(1, 1, 1, 0.17) : Qt.rgba(1, 1, 1, 0.1))
+                }
                 return control.down ? ForkTheme.lineSoft : (control.hovered ? ForkTheme.raised : "transparent")
             }
-            border.width: control.kind === "default" || control.kind === "accent" || control.kind === "danger" ? 1 : 0
+            border.width: control.kind === "default" || control.kind === "accent" || control.kind === "danger" || control.kind === "glass" ? 1 : 0
             border.color: control.kind === "accent" ? ForkTheme.selEdge
                         : control.kind === "danger" ? ForkTheme.dangerLine
+                        : control.kind === "glass" ? Qt.rgba(1, 1, 1, 0.18)
                         : ForkTheme.line
         }
 
