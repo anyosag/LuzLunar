@@ -17,12 +17,13 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: macOS runner. macos-15, as for every run; upstream's (macOS 26) to build on that instead.
+        description: macOS runner. auto is your own Mac when the repository variable LUZLUNAR_RUNNER is self-hosted (see FORK.md), else macos-15; upstream is macOS 26.
         type: choice
         options:
+          - auto
           - macos-15
           - upstream
-        default: macos-15
+        default: auto
   # Used by sync-upstream.yml, since pushes made with GITHUB_TOKEN don't trigger workflows.
   workflow_call:
     inputs:
@@ -41,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       os: ${{ steps.read.outputs.os }}
+      runs_on: ${{ steps.read.outputs.runs_on }}
       qt_version: ${{ steps.read.outputs.qt_version }}
       aqtsource: ${{ steps.read.outputs.aqtsource }}
       version: ${{ steps.luzlunar.outputs.version }}
@@ -59,19 +61,34 @@ jobs:
       # is macos-15 for every run (its Xcode 26 is picked below): GitHub is often short of the
       # macOS 26 machines upstream builds on, and cancels jobs that wait 15 minutes for one. A run
       # started by hand can still pick upstream's runner.
+      # With the repository variable LUZLUNAR_RUNNER set to self-hosted, this repository's own
+      # pushes, pull requests and runs by hand build on your own Mac instead (a self-hosted runner
+      # with the luzlunar label, see FORK.md). A pull request from another repository still goes
+      # to GitHub's machines; one can change this file, though, which is why the repository must
+      # require approval before running workflows from outside contributors.
       - name: Read build-win-mac.yml
         id: read
         shell: bash
         env:
           RUNNER_OVERRIDE: ${{ inputs.runner }}
+          RUNNER_PREF: ${{ vars.LUZLUNAR_RUNNER }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
         run: |
           f=.github/workflows/build-win-mac.yml
           upstream_os=$(grep -oE 'os: macos-[0-9A-Za-z.-]+' "$f" | head -n1 | cut -d' ' -f2)
           qt=$(grep -A1 -E 'os: macos-' "$f" | grep -oE 'qt_version: [0-9.]+' | head -n1 | cut -d' ' -f2)
           aqt=$(grep -oE "aqtsource: '[^']+'" "$f" | head -n1 | sed -E "s/aqtsource: '(.*)'/\1/")
           os=macos-15
+          runs_on='"macos-15"'
           if [ "$RUNNER_OVERRIDE" = "upstream" ]; then
             os=${upstream_os:-macos-26}
+            runs_on="\"$os\""
+          elif [ "$RUNNER_OVERRIDE" != "macos-15" ] && [ "$RUNNER_PREF" = "self-hosted" ] &&
+               { [ "$EVENT" != "pull_request" ] || [ "$HEAD_REPO" = "$REPO" ]; }; then
+            os=self-hosted
+            runs_on='["self-hosted", "macOS", "ARM64", "luzlunar"]'
           fi
           # Upstream pins aqtinstall to a commit. Falling back to whatever PyPI serves would install
           # an unpinned tool into the build, so stop instead.
@@ -80,6 +97,7 @@ jobs:
             exit 1
           fi
           echo "os=$os" >> "$GITHUB_OUTPUT"
+          echo "runs_on=$runs_on" >> "$GITHUB_OUTPUT"
           echo "qt_version=${qt:-6.11.2}" >> "$GITHUB_OUTPUT"
           echo "aqtsource=$aqt" >> "$GITHUB_OUTPUT"
           echo "Using $os, Qt ${qt:-6.11.2}, $aqt"
@@ -111,7 +129,7 @@ jobs:
   build:
     name: macOS arm64
     needs: setup
-    runs-on: ${{ needs.setup.outputs.os }}
+    runs-on: ${{ fromJSON(needs.setup.outputs.runs_on) }}
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -132,9 +150,27 @@ jobs:
           version=$(xcodebuild -version)
           major=$(echo "$version" | grep -oE '[0-9]+' | head -n1)
           if [ "${major:-0}" -lt 26 ]; then
-            xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
-            [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
-            sudo xcode-select -s "$xcode"
+            if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+              # Your own Mac: point this job at its newest Xcode, 26 or later, without changing
+              # the Mac's default (no sudo)
+              xcode=""
+              best=0
+              for app in /Applications/Xcode*.app; do
+                v=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null || true)
+                vmajor=$(echo "$v" | grep -oE '[0-9]+' | head -n1)
+                if [ "${vmajor:-0}" -ge 26 ] && [ "${vmajor:-0}" -gt "$best" ]; then
+                  best=$vmajor
+                  xcode=$app
+                fi
+              done
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 or later in /Applications on this Mac"; exit 1; }
+              echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+              export DEVELOPER_DIR="$xcode/Contents/Developer"
+            else
+              xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+              sudo xcode-select -s "$xcode"
+            fi
           fi
           xcodebuild -version
 
@@ -230,7 +266,11 @@ jobs:
       - name: Install ccache
         shell: bash
         run: |
-          HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ccache
+          # Your own Mac keeps it installed (see FORK.md), so a runner account without Homebrew
+          # rights doesn't need to install it
+          if ! command -v ccache > /dev/null; then
+            HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install ccache
+          fi
           {
             echo "CCACHE_DIR=$RUNNER_TEMP/ccache"
             echo "CCACHE_MAXSIZE=2G"
@@ -277,7 +317,7 @@ jobs:
   tests:
     name: Fork unit tests
     needs: setup
-    runs-on: ${{ needs.setup.outputs.os }}
+    runs-on: ${{ fromJSON(needs.setup.outputs.runs_on) }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
@@ -294,9 +334,27 @@ jobs:
           version=$(xcodebuild -version)
           major=$(echo "$version" | grep -oE '[0-9]+' | head -n1)
           if [ "${major:-0}" -lt 26 ]; then
-            xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
-            [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
-            sudo xcode-select -s "$xcode"
+            if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+              # Your own Mac: point this job at its newest Xcode, 26 or later, without changing
+              # the Mac's default (no sudo)
+              xcode=""
+              best=0
+              for app in /Applications/Xcode*.app; do
+                v=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null || true)
+                vmajor=$(echo "$v" | grep -oE '[0-9]+' | head -n1)
+                if [ "${vmajor:-0}" -ge 26 ] && [ "${vmajor:-0}" -gt "$best" ]; then
+                  best=$vmajor
+                  xcode=$app
+                fi
+              done
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 or later in /Applications on this Mac"; exit 1; }
+              echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+              export DEVELOPER_DIR="$xcode/Contents/Developer"
+            else
+              xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n1)
+              [ -n "$xcode" ] || { echo "::error::No Xcode 26 on this runner"; exit 1; }
+              sudo xcode-select -s "$xcode"
+            fi
           fi
           xcodebuild -version
 
@@ -531,7 +589,7 @@ jobs:
   screenshots:
     name: UI screenshots
     needs: [setup, build]
-    runs-on: ${{ needs.setup.outputs.os }}
+    runs-on: ${{ fromJSON(needs.setup.outputs.runs_on) }}
     steps:
       - name: Download the update zip
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
