@@ -477,6 +477,22 @@ void ForkPreferences::openCameraSettings()
 QVariantMap ForkPreferences::macDriveSetup() const
 {
     QVariantMap setup;
+
+    // CI's screenshot run shows a fixed Mac, as GitHub's machines have it, rather than this Mac's
+    // account, sharing and keychain: on a self-hosted runner they're the Mac owner's, and CI
+    // publishes its screenshots
+    if (qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS")) {
+        setup.insert(QStringLiteral("fileSharing"), false);
+        setup.insert(QStringLiteral("windowsSharing"), QStringLiteral("off"));
+        setup.insert(QStringLiteral("diskShare"), QString());
+        setup.insert(QStringLiteral("admin"), true);
+        setup.insert(QStringLiteral("volumeName"), QStringLiteral("Macintosh HD"));
+        setup.insert(QStringLiteral("userName"), QStringLiteral("runner"));
+        setup.insert(QStringLiteral("passwordSaved"), false);
+        setup.insert(QStringLiteral("last"), QString());
+        return setup;
+    }
+
     MacDriveSetup::WindowsSharing sharing = MacDriveSetup::windowsSharing();
     setup.insert(QStringLiteral("fileSharing"), MacDriveSetup::fileSharingOn());
     setup.insert(QStringLiteral("windowsSharing"), sharing == MacDriveSetup::WindowsSharing::On    ? QStringLiteral("on")

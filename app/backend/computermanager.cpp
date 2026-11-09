@@ -377,7 +377,12 @@ void ComputerManager::startPolling()
         return;
     }
 
-    if (m_Prefs->enableMdns) {
+    // [fork] CI's screenshot run doesn't look for PCs: on a self-hosted runner it would find the PCs
+    // on the Mac owner's network, and CI publishes its screenshots
+    if (!qEnvironmentVariableIsEmpty("LUZLUNAR_SCREENSHOTS")) {
+        qInfo() << "[fork] mDNS is off for the screenshot run";
+    }
+    else if (m_Prefs->enableMdns) {
         // Start an MDNS query for GameStream hosts
         m_MdnsServer.reset(new QMdnsEngine::Server());
         m_MdnsBrowser = new QMdnsEngine::Browser(m_MdnsServer.data(), "_nvstream._tcp.local.");

@@ -12,6 +12,7 @@
 #include <QCursor>
 #include <QElapsedTimer>
 #include <QTemporaryFile>
+#include <QTemporaryDir> // [fork] the screenshot run's own settings
 #include <QRegularExpression>
 
 #ifdef Q_OS_UNIX
@@ -437,7 +438,24 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
     QCoreApplication::setApplicationName("Moonlight");
 
-    if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
+    // [fork] CI's screenshot run (app/fork/screenshotharness.cpp) keeps its settings, caches and logs
+    // in a new, empty folder, like portable mode does in the current one. On a self-hosted runner
+    // the Mac owner's settings, paired PCs and pairing key would otherwise be in the screenshots
+    // CI publishes, and the run could change them. The folder goes when the app quits.
+    QScopedPointer<QTemporaryDir> forkScreenshotHome;
+    if (!qEnvironmentVariableIsEmpty("LUZLUNAR_SCREENSHOTS")) {
+        forkScreenshotHome.reset(new QTemporaryDir(QDir::tempPath() + "/luzlunar-screenshots-XXXXXX"));
+        if (!forkScreenshotHome->isValid() || !QDir::setCurrent(forkScreenshotHome->path())) {
+            fprintf(stderr, "[fork] Screenshot run: no folder of its own for settings (%s)\n",
+                    qPrintable(forkScreenshotHome->errorString()));
+            return 1;
+        }
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, forkScreenshotHome->path());
+        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, forkScreenshotHome->path());
+        Path::initialize(true);
+    }
+    else if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QDir::currentPath());
         QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, QDir::currentPath());

@@ -481,7 +481,8 @@ CenteredGridView {
 
     // [fork] ⌘F goes to the search, scrolling up to it
     Shortcut {
-        sequence: StandardKey.Find
+        // Every key the platform binds to Find (a single sequence takes only the first, and warns)
+        sequences: [StandardKey.Find]
         enabled: appGrid.activated
         onActivated: {
             if (appGrid.headerItem) {
