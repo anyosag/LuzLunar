@@ -60,7 +60,11 @@ ApplicationWindow {
 
     Component.onCompleted: {
         // Show the window according to the user's preferences
-        if (SystemProperties.hasDesktopEnvironment) {
+        if (forkHiddenScreenshots) {
+            // [fork] CI's screenshot run on a self-hosted runner leaves it hidden: the harness grabs
+            // it rendered offscreen (main.cpp, screenshotharness.cpp)
+        }
+        else if (SystemProperties.hasDesktopEnvironment) {
             if (StreamingPreferences.uiDisplayMode == StreamingPreferences.UI_MAXIMIZED) {
                 window.showMaximized()
             }

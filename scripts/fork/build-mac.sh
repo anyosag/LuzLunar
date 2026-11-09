@@ -199,7 +199,14 @@ else
 fi
 
 echo Smoke test: launching $APP_NAME --version
-perl -e 'alarm 60; exec @ARGV' "$APP/Contents/MacOS/$APP_NAME" --version
+# On a self-hosted CI runner, a Mac someone may be using, Qt runs offscreen (the plugin added above),
+# so the app doesn't appear in the Dock even for a moment. The screenshot job still starts it with
+# Qt's Cocoa platform there.
+SMOKE_ENV=()
+if [ "$RUNNER_ENVIRONMENT" == "self-hosted" ]; then
+  SMOKE_ENV=(QT_QPA_PLATFORM=offscreen)
+fi
+env "${SMOKE_ENV[@]}" perl -e 'alarm 60; exec @ARGV' "$APP/Contents/MacOS/$APP_NAME" --version
 STATUS=$?
 case $STATUS in
   0) echo "$APP_NAME started and exited cleanly" ;;
@@ -217,10 +224,12 @@ if [ "$LUZLUNAR_SKIP_DMG" == "1" ]; then
   echo Skipping the DMG
 else
   echo Creating DMG
-  create-dmg "$APP" "$INSTALLER_FOLDER" --no-version-in-filename
+  # The image itself isn't signed (the app in it is): create-dmg would sign it with any Apple
+  # developer certificate in the keychains, which on someone's own Mac is theirs, with their name
+  # in it. It mounts the image hidden from Finder (appdmg's hdiutil attach -nobrowse).
+  create-dmg "$APP" "$INSTALLER_FOLDER" --no-version-in-filename --no-code-sign
   case $? in
     0) ;;
-    2) ;;  # no signing identity, expected
     *) fail "create-dmg failed!";;
   esac
 

@@ -2,6 +2,12 @@
 // app opens its main views and dialogs one after another, saves each window as a PNG with Qt's own
 // window grab (no screen recording permission needed), and quits. QML warnings and failed step
 // scripts go to harness-log.txt in the same folder, since the app's own log isn't in CI's output.
+// The run has settings of its own and no PCs (main.cpp, computermanager.cpp).
+//
+// With LUZLUNAR_SCREENSHOTS_HIDDEN=1 (CI on a self-hosted runner, a Mac someone may be using)
+// nothing shows on the screen: main.qml never shows the window, so Qt's grab renders it offscreen
+// (with Metal, like on screen), and main.cpp keeps the app out of the Dock and from becoming the
+// active app. There's no native capture of the title bar then.
 //
 //   LUZLUNAR_SCREENSHOTS=/tmp/shots LUZLUNAR_SCREENSHOT_SCHEME=dark LuzLunar
 
@@ -142,17 +148,53 @@ namespace
         qWarning().noquote() << "[fork] Screenshot harness:" << line;
     }
 
+    // LUZLUNAR_SCREENSHOTS_HIDDEN=1: nothing on the screen (see the top)
+    bool hiddenRun()
+    {
+        static const bool hidden = qEnvironmentVariableIntValue("LUZLUNAR_SCREENSHOTS_HIDDEN") == 1;
+        return hidden;
+    }
+
+    // The app's window: the shown one, or in a hidden run, where main.qml doesn't show it, the one
+    // main.qml made
     QQuickWindow* mainWindow()
     {
         for (QWindow* window : QGuiApplication::topLevelWindows()) {
             if (auto quickWindow = qobject_cast<QQuickWindow*>(window)) {
-                if (quickWindow->isVisible()) {
+                if (quickWindow->isVisible() || hiddenRun()) {
                     return quickWindow;
                 }
             }
         }
         return nullptr;
     }
+
+    // In a hidden run, a window that shows anyway (a step opening one, say) is made invisible and
+    // click-through before it reaches the screen, and logged: Qt sends the show event before the
+    // native window is ordered in
+    class HiddenWindowGuard : public QObject
+    {
+    public:
+        HiddenWindowGuard(const QString& outputDir, QObject* parent)
+            : QObject(parent), m_OutputDir(outputDir)
+        {
+        }
+
+        bool eventFilter(QObject* watched, QEvent* event) override
+        {
+            if (event->type() == QEvent::Show && watched->isWindowType()) {
+                QWindow* window = static_cast<QWindow*>(watched);
+                window->setFlags(window->flags() | Qt::WindowTransparentForInput | Qt::WindowDoesNotAcceptFocus);
+                window->setOpacity(0.0);
+                logLine(m_OutputDir, QString("A window showed in the hidden run, kept invisible: %1 (%2)")
+                                         .arg(window->objectName(), QString::fromUtf8(window->metaObject()->className())));
+            }
+            return false;
+        }
+
+    private:
+        QString m_OutputDir;
+    };
 
     void runStep(const QString& outputDir, size_t index, int attempt = 0)
     {
@@ -175,6 +217,11 @@ namespace
                 QCoreApplication::exit(1);
             }
             return;
+        }
+
+        // A window that isn't shown can still be grabbed once it's created (QQuickWindow::grabWindow())
+        if (hiddenRun() && window->handle() == nullptr) {
+            window->create();
         }
 
         // QML's warnings while the steps run, once the main window's engine is there
@@ -224,8 +271,10 @@ namespace
                 }
 
                 // Qt's grab only has the QML content. The window server's capture also has the
-                // title bar and native toolbar, if the CI Mac allows screen capture.
-                if (long number = MacIntegration::windowNumber(window)) {
+                // title bar and native toolbar, if the CI Mac allows screen capture; a hidden run
+                // has nothing on the screen to capture.
+                long number = hiddenRun() ? 0 : MacIntegration::windowNumber(window);
+                if (number != 0) {
                     QProcess capture;
                     capture.start("/usr/sbin/screencapture",
                                   { "-x", "-o", QString("-l%1").arg(number),
@@ -246,6 +295,10 @@ namespace
             return;
         }
         QDir().mkpath(outputDir);
+
+        if (hiddenRun()) {
+            QCoreApplication::instance()->installEventFilter(new HiddenWindowGuard(outputDir, QCoreApplication::instance()));
+        }
 
         // Starts once the event loop runs, when the app is fully set up
         QTimer::singleShot(0, [outputDir]() {

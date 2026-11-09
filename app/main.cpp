@@ -57,6 +57,7 @@
 #include "gui/sdlgamepadkeynavigation.h"
 #include "fork/forkdebugchannel.h" // [fork]
 #include "fork/forkhelper.h" // [fork]
+#include "fork/mac/macintegration.h" // [fork] the hidden screenshot run
 
 #if defined(Q_OS_WIN32)
 #define IS_UNSPECIFIED_HANDLE(x) ((x) == INVALID_HANDLE_VALUE || (x) == NULL)
@@ -454,6 +455,12 @@ int main(int argc, char *argv[])
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, forkScreenshotHome->path());
         QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, forkScreenshotHome->path());
         Path::initialize(true);
+
+        // Nor does it open the Mac's gamepads (their lights, rumble and names on the Gamepads
+        // page), like a multi-display helper (forkhelper.cpp)
+        SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
+        SDL_SetHint("SDL_JOYSTICK_MFI", "0");
+        SDL_SetHint("SDL_JOYSTICK_IOKIT", "0");
     }
     else if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -801,6 +808,19 @@ int main(int argc, char *argv[])
         ForkHelper::prepareProcess(argc, argv);
     }
 
+    // [fork] CI's screenshot run on a self-hosted runner (LUZLUNAR_SCREENSHOTS_HIDDEN=1) stays off
+    // the Mac's screen, where someone may be working: main.qml doesn't show the window (the harness
+    // grabs it all the same, rendered offscreen), the app isn't in the Dock, and it never becomes
+    // the active app. Qt would otherwise activate it as its launch finishes and when a window is
+    // raised, taking the keyboard from the app in front.
+    const bool forkHiddenScreenshots = !qEnvironmentVariableIsEmpty("LUZLUNAR_SCREENSHOTS") &&
+                                       qEnvironmentVariableIntValue("LUZLUNAR_SCREENSHOTS_HIDDEN") == 1;
+    if (forkHiddenScreenshots) {
+        qputenv("QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM", "1");
+        qputenv("QT_MAC_SET_RAISE_PROCESS", "0");
+        MacIntegration::stayInBackground();
+    }
+
     QGuiApplication app(argc, argv);
 
 #ifdef Q_OS_DARWIN
@@ -1132,6 +1152,7 @@ int main(int argc, char *argv[])
     if (hasGUI) {
         engine.rootContext()->setContextProperty("initialView", initialView);
         engine.rootContext()->setContextProperty("isGuiLaunch", commandLineParserResult == GlobalCommandLineParser::NormalStartRequested);
+        engine.rootContext()->setContextProperty("forkHiddenScreenshots", forkHiddenScreenshots); // [fork]
 
         // Load the main.qml file
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));

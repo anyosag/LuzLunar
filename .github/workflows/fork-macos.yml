@@ -674,9 +674,19 @@ jobs:
         run: |
           ditto -x -k artifacts/LuzLunar-macOS-arm64.zip "$RUNNER_TEMP/app"
           app="$RUNNER_TEMP/app/LuzLunar.app/Contents/MacOS/LuzLunar"
+          # On your own Mac, where you may be working, nothing shows on the screen: no window (the
+          # app grabs it offscreen), no Dock icon, no taking the keyboard (screenshotharness.cpp)
+          hidden=0
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            hidden=1
+          fi
+          # The run's own settings folder (main.cpp) goes in the job's temporary folder, which the
+          # runner empties even if a run is stopped
+          mkdir -p "$RUNNER_TEMP/tmp"
           for scheme in dark light; do
-            LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
-              perl -e 'alarm 120; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
+            TMPDIR="$RUNNER_TEMP/tmp" LUZLUNAR_SCREENSHOTS_HIDDEN=$hidden \
+              LUZLUNAR_SCREENSHOTS="$RUNNER_TEMP/screenshots/$scheme" LUZLUNAR_SCREENSHOT_SCHEME=$scheme \
+              perl -e 'alarm 180; exec @ARGV' "$app" || echo "::warning::Screenshot run ($scheme) exited with status $?"
           done
           # The app icon as older macOS shows it (actool's flattened .icns)
           sips -s format png "$RUNNER_TEMP/app/LuzLunar.app/Contents/Resources/LuzLunar.icns" --out "$RUNNER_TEMP/screenshots/app-icon.png" || true

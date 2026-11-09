@@ -132,6 +132,13 @@ void ForkUpdater::start()
     }
     m_Started = true;
 
+    // The CI screenshot run shouldn't reach out to GitHub, nor touch the updates folder: it's in the
+    // Mac's own cache, where on a self-hosted runner a swap helper of the Mac owner's LuzLunar may
+    // wait for "started" or leave its "result"
+    if (qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS")) {
+        return;
+    }
+
     QDir().mkpath(updatesDir());
 
     // Tells a swap helper waiting on this build that it started
@@ -151,10 +158,6 @@ void ForkUpdater::start()
     });
     connect(qApp, &QCoreApplication::aboutToQuit, this, &ForkUpdater::onQuit);
 
-    // The CI screenshot run shouldn't reach out to GitHub
-    if (qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS")) {
-        return;
-    }
     QTimer::singleShot(k_FirstCheckDelayMs, this, &ForkUpdater::check);
     m_CheckTimer.start();
     m_IdleTimer.start();

@@ -157,14 +157,42 @@ bool MacIntegration::lowPowerModeEnabled()
     return false;
 }
 
+void MacIntegration::stayInBackground()
+{
+    static id s_LaunchObserver = nil;
+    @autoreleasepool {
+        // Without NSApp yet (Qt makes it in QGuiApplication), as the launch finishes: before then
+        // macOS hasn't put the app in the Dock, and Qt doesn't change the policy afterwards
+        // without its foreground transform (QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM)
+        if (s_LaunchObserver == nil) {
+            s_LaunchObserver = [[[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationWillFinishLaunchingNotification
+                                                                                  object:nil
+                                                                                   queue:nil
+                                                                              usingBlock:^(NSNotification*) {
+                [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+            }] retain];
+        }
+        if (NSApp != nil) {
+            [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+        }
+    }
+}
+
 bool MacIntegration::isRunningCopy(long pid)
 {
-    if (pid <= 0 || kill(static_cast<pid_t>(pid), 0) != 0) {
+    // This process has only just started, so it isn't the copy that left a record
+    if (pid <= 0 || pid == static_cast<long>(getpid()) || kill(static_cast<pid_t>(pid), 0) != 0) {
         return false;
     }
     char other[PROC_PIDPATHINFO_MAXSIZE];
     char self[PROC_PIDPATHINFO_MAXSIZE];
-    return proc_pidpath(static_cast<int>(pid), other, sizeof(other)) > 0 &&
-           proc_pidpath(getpid(), self, sizeof(self)) > 0 &&
-           strcmp(other, self) == 0;
+    if (proc_pidpath(static_cast<int>(pid), other, sizeof(other)) <= 0 ||
+        proc_pidpath(getpid(), self, sizeof(self)) <= 0) {
+        return false;
+    }
+    // By the program's name, not its path: a copy somewhere else (a build CI runs on this Mac, one
+    // opened from a disk image) mustn't hand back what the installed copy is holding off
+    const char* otherName = strrchr(other, '/');
+    const char* selfName = strrchr(self, '/');
+    return strcmp(otherName != nullptr ? otherName + 1 : other, selfName != nullptr ? selfName + 1 : self) == 0;
 }
