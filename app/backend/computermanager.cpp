@@ -526,23 +526,16 @@ QVector<NvComputer*> ComputerManager::getComputers()
 class DeferredHostDeletionTask : public QRunnable
 {
 public:
-    DeferredHostDeletionTask(ComputerManager* cm, NvComputer* computer)
+    // [fork] The host and its polling entry are already out of the manager's maps (deleteHost()),
+    // so getComputers() never returns a PC that this task is about to delete
+    DeferredHostDeletionTask(ComputerManager* cm, NvComputer* computer, ComputerPollingEntry* pollingEntry)
         : m_Computer(computer),
-          m_ComputerManager(cm) {}
+          m_ComputerManager(cm),
+          m_PollingEntry(pollingEntry) {}
 
     void run()
     {
-        ComputerPollingEntry* pollingEntry;
-
-        // Only do the minimum amount of work while holding the writer lock.
-        // We must release it before calling saveHosts().
-        {
-            QWriteLocker lock(&m_ComputerManager->m_Lock);
-
-            pollingEntry = m_ComputerManager->m_PollEntries.take(m_Computer->uuid);
-
-            m_ComputerManager->m_KnownHosts.remove(m_Computer->uuid);
-        }
+        ComputerPollingEntry* pollingEntry = m_PollingEntry;
 
         // Persist the new host list with this computer deleted
         m_ComputerManager->saveHosts();
@@ -561,13 +554,25 @@ public:
 private:
     NvComputer* m_Computer;
     ComputerManager* m_ComputerManager;
+    ComputerPollingEntry* m_PollingEntry; // [fork]
 };
 
 void ComputerManager::deleteHost(NvComputer* computer)
 {
+    // [fork] Take the host out of the maps now, on the caller's thread, with only the minimum under
+    // the writer lock: a model that re-reads getComputers() right after (or while the task runs)
+    // must not get a PC that is about to be deleted
+    ComputerPollingEntry* pollingEntry;
+    {
+        QWriteLocker lock(&m_Lock);
+
+        pollingEntry = m_PollEntries.take(computer->uuid);
+        m_KnownHosts.remove(computer->uuid);
+    }
+
     // Punt to a worker thread to avoid stalling the
     // UI while waiting for the polling thread to die
-    QThreadPool::globalInstance()->start(new DeferredHostDeletionTask(this, computer));
+    QThreadPool::globalInstance()->start(new DeferredHostDeletionTask(this, computer, pollingEntry));
 }
 
 void ComputerManager::renameHost(NvComputer* computer, QString name)

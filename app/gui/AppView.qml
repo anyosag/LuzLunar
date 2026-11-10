@@ -838,8 +838,8 @@ FocusScope {
         Item {
             id: backdrop
             anchors.fill: parent
-            readonly property Item sky: typeof window !== "undefined" && typeof sky !== "undefined" && sky && sky.shown ? sky : null
-            readonly property bool blurring: sky !== null && GraphicsInfo.api !== GraphicsInfo.Software
+            readonly property Item skyItem: typeof sky !== "undefined" && sky && sky.shown ? sky : null
+            readonly property bool blurring: skyItem !== null && GraphicsInfo.api !== GraphicsInfo.Software
             layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
             layer.effect: MultiEffect {
                 maskEnabled: true
@@ -857,9 +857,9 @@ FocusScope {
                 id: skyCapture
                 visible: false
                 live: backdrop.blurring && appGrid.visible
-                sourceItem: backdrop.blurring ? backdrop.sky : null
+                sourceItem: backdrop.blurring ? backdrop.skyItem : null
                 sourceRect: {
-                    var p = backdrop.blurring ? sheet.mapToItem(backdrop.sky, 0, 0) : Qt.point(0, 0)
+                    var p = backdrop.blurring ? sheet.mapToItem(backdrop.skyItem, 0, 0) : Qt.point(0, 0)
                     return Qt.rect(p.x, p.y, sheet.width, sheet.height)
                 }
                 // The blur is wide, so a quarter of the resolution does

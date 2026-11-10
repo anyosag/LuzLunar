@@ -77,8 +77,21 @@ NavigableDialog {
     function save() {
         var name = nameField.text.trim()
         var renamed = name !== "" && name !== savedName
-        if (renamed && computerModel && pcIndex >= 0) {
-            computerModel.renameComputer(pcIndex, name)
+        var w = sheet.parent ? sheet.parent.Window.window : null
+        var hasToast = w && typeof w["forkToast"] === "function"
+        if (computerModel) {
+            // The model can reorder or change while the sheet is open: find the PC's row again
+            var row = computerModel.forkIndexOf(pcUuid)
+            if (row < 0) {
+                if (hasToast) {
+                    w["forkToast"](qsTr("%1 was removed, so nothing was saved").arg(savedName))
+                }
+                close()
+                return
+            }
+            if (renamed) {
+                computerModel.renameComputer(row, name)
+            }
         }
         if (colorKey !== ForkPcPrefs.colorKey(pcUuid)) {
             ForkPcPrefs.setColorKey(pcUuid, colorKey)
@@ -90,8 +103,7 @@ NavigableDialog {
             ForkPcPrefs.setKeepFirst(pcUuid, keepFirst)
         }
         var shown = renamed ? name : savedName
-        var w = sheet.parent ? sheet.parent.Window.window : null
-        if (renamed && w && typeof w["forkToast"] === "function") {
+        if (renamed && hasToast) {
             w["forkToast"](qsTr("Renamed to %1").arg(name))
         }
         saved(pcUuid, shown, colorKey, wakeOnPick, keepFirst)
