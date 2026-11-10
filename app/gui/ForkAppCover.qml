@@ -114,7 +114,7 @@ Item {
         readonly property real size: cover.kind === "tile" ? 66 * cover.width / 173.333 : (cover.kind === "thumb" ? 36 : 28)
         anchors.left: parent.left
         anchors.right: parent.right
-        y: cover.height * (cover.kind === "dialog" ? 0.30 : 0.24)
+        y: cover.height * (cover.kind === "dialog" ? 0.30 : 0.24) - 0.09 * size
         horizontalAlignment: Text.AlignHCenter
         text: cover.initial(cover.name)
         color: "#F5EBD3"

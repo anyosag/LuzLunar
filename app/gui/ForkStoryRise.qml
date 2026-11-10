@@ -10,6 +10,8 @@ Item {
     property bool active: false
     property int delay: 0
     property real dy: 8
+    // Show at once, no motion (screenshots and Reduce Motion)
+    property bool instant: false
     default property alias content: holder.data
 
     implicitWidth: holder.childrenRect.width
@@ -23,7 +25,7 @@ Item {
         height: parent.height
     }
 
-    readonly property bool _instant: ForkTheme.reduceMotion
+    readonly property bool _instant: ForkTheme.reduceMotion || instant
 
     function _show() {
         if (_instant) {
@@ -35,6 +37,7 @@ Item {
         }
     }
     onActiveChanged: if (active) _show()
+    onInstantChanged: if (instant && active) _show()
     Component.onCompleted: if (active) _show()
 
     SequentialAnimation {

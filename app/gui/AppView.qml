@@ -55,8 +55,6 @@ FocusScope {
     // [fork] The PC, from PcView (ForkPcPrefs and the PC model have these; see contract-library.md)
     property string forkColorKey: forkSample && forkSampleHost.colorKey ? forkSampleHost.colorKey : "indigo"
     property bool forkAsleep: false // the PC is off or asleep: the apps are the last visit's, and picking one wakes it
-    property bool forkOnline: !forkAsleep // turns true when a PC that was woken answers
-    property bool forkWakeOnPick: true // ForkPcPrefs.wakeOnPick(uuid)
     property bool forkWakeReady: true // wake from off works for this PC
     property int forkLatencyMs: -1 // the last network round trip, -1 when unknown
     property var forkComputerModel: null // PcView's ComputerModel, which wakes the PC (wakeComputer(index))
@@ -467,72 +465,31 @@ FocusScope {
 
     // ---- What a pick does ------------------------------------------------------------------
 
-    // The app that was picked on a sleeping PC, started once the PC answers
-    property var forkPending: null
-    property bool forkWaking: false
-
-    // Wake PC: sends the wake-up and waits (up to 3 minutes: a PC that was off boots)
-    function forkWakeNow() {
-        forkWaking = true
-        forkWakeTimeout.restart()
+    // Wake PC: sends the wake-up (the card shows it waking, and ForkHostPower toasts once it's up)
+    function forkWakeButton() {
+        forkSay(qsTr("Waking %1…").arg(objectName))
         if (forkSample) {
             return
         }
         ForkHostPower.noteWakeSent(forkHostUuid)
         if (forkComputerModel) {
-            forkComputerModel.wakeComputer(computerIndex)
+            forkComputerModel.wakeComputer(forkComputerModel.forkIndexOf(forkHostUuid))
         }
     }
 
-    function forkWakeButton() {
-        forkPending = null
-        forkSay(qsTr("Waking %1…").arg(objectName))
-        forkWakeNow()
-    }
-
+    // Picking an app on a sleeping PC wakes it first, then starts the app (ForkWakeLaunch)
     function forkPickAsleep(id, name) {
-        if (!forkWakeOnPick) {
-            forkSay(qsTr("%1 is asleep. Choose Wake PC first.").arg(objectName))
-            return
+        if (forkSample) {
+            forkSay(qsTr("Waking %1, then starting %2…").arg(objectName).arg(name))
         }
-        forkPending = { "id": id, "name": name }
-        forkSay(qsTr("Waking %1, then starting %2…").arg(objectName).arg(name))
-        forkWakeNow()
-    }
-
-    // The PC answered: say so, and start what was picked
-    onForkIsAsleepChanged: {
-        if (!forkIsAsleep && forkWaking) {
-            forkWaking = false
-            forkWakeTimeout.stop()
-            if (!forkSample) {
-                ForkHostPower.noteOnline(forkHostUuid) // its poweredOn() toasts
-            }
-            if (forkPending) {
-                forkStartPending.restart() // once its apps are read again
-            }
+        else if (forkComputerModel) {
+            wakeLaunch.start(forkComputerModel, forkComputerModel.forkIndexOf(forkHostUuid), id, name)
         }
     }
 
-    Timer {
-        id: forkWakeTimeout
-        interval: 180000
-        onTriggered: {
-            appGrid.forkWaking = false
-            appGrid.forkPending = null
-        }
-    }
-
-    Timer {
-        id: forkStartPending
-        interval: 900
-        onTriggered: {
-            var pending = appGrid.forkPending
-            appGrid.forkPending = null
-            if (pending && appGrid.forkRunning.id !== pending.id) {
-                appGrid.forkLaunchById(pending.id, pending.name, false)
-            }
-        }
+    ForkWakeLaunch {
+        id: wakeLaunch
+        summaryFor: function(appName) { return appGrid.forkStreamSummary(appName) }
     }
 
     // Click, Return or the menu's first row

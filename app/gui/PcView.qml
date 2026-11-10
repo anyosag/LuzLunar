@@ -38,6 +38,8 @@ Item {
     readonly property bool forkHasPcs: pcCount > 0
     // The shared sky behind the page (main.qml): none while the first run shows
     readonly property string forkSkyVariant: showFirstRun ? "none" : "main"
+    // The first run's bars are opaque (the Empty board has no sky behind them)
+    readonly property bool forkChromeOpaque: showFirstRun
     // The header's Add PC and the new-PC key: the dialog, or on the first run the address field
     function forkAddPc() {
         if (showFirstRun && firstRun.item) firstRun.item.focusAddress()
@@ -65,8 +67,10 @@ Item {
     function forkStopDemo() { demo = false }
     function forkSkipEntrance() {
         introTimer.stop(); revealTimer.stop(); settleTimer.stop()
+        noEntrance = true
         intro = true; revealed = true; settled = true
     }
+    property bool noEntrance: false
     function forkTickDemo() { if (demo) go(idx + 1, 1, true) }
     function forkShowToast(text) { forkToast(text) }
     readonly property alias forkStage: stage
@@ -158,6 +162,7 @@ Item {
             computerModel = createModel()
         }
         if (ForkTheme.reduceMotion || !forkEntrance) {
+            noEntrance = true
             intro = true; revealed = true; settled = true
         } else {
             introTimer.start(); revealTimer.start(); settleTimer.start()
@@ -343,7 +348,7 @@ Item {
     }
     readonly property bool canLaunch: !forkSample && computerModel !== null && typeof computerModel.createSessionForApp === "function"
     readonly property bool canQuit: !forkSample && computerModel !== null && typeof computerModel.quitRunningApp === "function"
-    readonly property bool canWakeThenStream: typeof ForkHostPower.wake === "function"
+    readonly property bool canWakeThenStream: typeof ForkWakeLaunch !== "undefined" && !forkSample && computerModel !== null
 
     function forkWake(i) {
         var m = rowOf(i)
@@ -447,6 +452,12 @@ Item {
                                            })
         stackView.push(segue)
     }
+    // An app picked on a sleeping or shut-down PC: wake it, wait, then start the app (ForkWakeLaunch,
+    // which respects "Wake it when I pick an app"); without that helper it just wakes the PC
+    function wakeThenLaunch(i, appId, label) {
+        if (canWakeThenStream && appId) ForkWakeLaunch.start(computerModel, i, appId, label)
+        else forkWake(i)
+    }
     function quitRunning(i) {
         var m = rowOf(i)
         if (!m) return
@@ -472,8 +483,7 @@ Item {
         switch (stateOf(m)) {
         case "streaming": runAction(i, "resume"); break
         case "ready": runAction(i, "stream"); break
-        case "asleep": runAction(i, "wake"); break
-        case "off": runAction(i, "turnOn"); break
+        case "asleep": case "off": runAction(i, "wakeAndStream"); break
         case "offNoWake": runAction(i, "setupWake"); break
         case "pair": runAction(i, "pair"); break
         case "lost": runAction(i, "testNetwork"); break
@@ -491,7 +501,7 @@ Item {
         case "wake": case "turnOn": forkWake(i); break
         case "wakeAndStream":
             // Wakes it, then starts the app once it answers (ForkHostPower, when the backend has it)
-            if (canWakeThenStream) ForkHostPower.wake(m.uuid, m.mainAppId); else forkWake(i)
+            wakeThenLaunch(i, m.mainAppId, appName(m))
             break
         case "setupWake": wakeSetupDialog.openFor(m.uuid, m.name); break
         case "pair": pairPc(i); break
@@ -675,6 +685,7 @@ Item {
                 greeting: pcPage.greetingText
                 lines: pcPage.storyLines
                 intro: pcPage.intro
+                instant: pcPage.noEntrance
                 onPick: function (i) { pcPage.pick(i) }
                 onAct: function (i) { pcPage.runAction(i, "resume") }
             }
@@ -685,6 +696,7 @@ Item {
                 anchors.rightMargin: 64
                 anchors.bottom: parent.bottom
                 active: pcPage.intro
+                instant: pcPage.noEntrance
                 delay: 420
                 dy: 8
                 width: Math.max(moon.width, pill.width)
@@ -807,7 +819,10 @@ Item {
                 var apps = pcPage.appsOf(m)
                 var a = apps[index]
                 pcPage.demo = false
-                if (a) pcPage.launchApp(slot.slotIndex, a.appid, a.name, a.running === true)
+                if (!a) return
+                var asleep = pc.st === "asleep" || pc.st === "off"
+                if (asleep) pcPage.wakeThenLaunch(slot.slotIndex, a.appid, a.name)
+                else pcPage.launchApp(slot.slotIndex, a.appid, a.name, a.running === true)
             }
             onAllAppsClicked: function (origin) {
                 if (!slot) return

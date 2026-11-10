@@ -13,10 +13,17 @@ Column {
     // [{ name, before, after, dot (color), action (label or ""), }]
     property var lines: []
     property bool intro: false
+    property bool instant: false
     signal pick(int index)
     signal act(int index)
 
     spacing: 6
+
+    // The sentences' line is as tall as its tallest item (the Resume pill), the others centered in it
+    readonly property bool anyAction: {
+        for (var i = 0; i < lines.length; i++) if (lines[i].action !== "") return true
+        return false
+    }
 
     readonly property bool _dark: ForkTheme.dark
     readonly property color shadowColor: Qt.rgba(5 / 255, 7 / 255, 15 / 255, 0.75)
@@ -24,6 +31,7 @@ Column {
     // Greeting
     ForkStoryRise {
         active: story.intro
+        instant: story.instant
         delay: 0
         dy: 8
         height: 16
@@ -74,6 +82,7 @@ Column {
                     required property string modelData
                     required property int index
                     active: story.intro
+        instant: story.instant
                     delay: 80 + index * 40
                     dy: 16
                     height: 48
@@ -105,6 +114,7 @@ Column {
     ForkStoryRise {
         id: sentences
         active: story.intro
+        instant: story.instant
         delay: 420
         dy: 8
         width: story.width
@@ -122,7 +132,7 @@ Column {
                     required property int index
                     readonly property bool hasAction: modelData.action !== ""
                     width: itemRow.width
-                    height: hasAction ? 24 : 22
+                    height: story.anyAction ? 24 : 22
                     Row {
                         id: itemRow
                         spacing: 7

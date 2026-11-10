@@ -107,8 +107,8 @@ Item {
     }
 
     // The glow the curtains cast: the curtains again at 1/4 size (the canvas's glow bitmap is 320 x 130),
-    // blurred there by a box blur done with shifted copies (Context2D has no blur and no smooth
-    // up-scaling), then blown up 4 times. Each stage is its own canvas: Canvas to Canvas copies work
+    // blurred there by a box blur made of eight 2-tap averages (Context2D has no blur, and it only
+    // scales images up without smoothing), then blown up 4 times. Each stage is its own tiny canvas
     Canvas {
         id: glowA
         width: aurora.gw; height: aurora.gh
@@ -116,26 +116,28 @@ Item {
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.drawCurtains(glowA.getContext("2d"), aurora.gw, aurora.gh, 0.75)
-        onPainted: glowH.requestPaint()
+        onPainted: h1.requestPaint()
     }
-    Canvas {
-        id: glowH
+    component Stage: Canvas {
+        property Canvas src
+        property int dx: 0
+        property int dy: 0
+        property Item next
         width: aurora.gw; height: aurora.gh
         canvasSize: Qt.size(aurora.gw, aurora.gh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
-        onPaint: aurora.blurPass(glowH.getContext("2d"), glowA, true)
-        onPainted: glow.requestPaint()
+        onPaint: aurora.average(getContext("2d"), src, dx, dy)
+        onPainted: if (next) next.requestPaint()
     }
-    Canvas {
-        id: glow
-        width: aurora.gw; height: aurora.gh
-        canvasSize: Qt.size(aurora.gw, aurora.gh)
-        renderTarget: Canvas.Image
-        renderStrategy: Canvas.Cooperative
-        onPaint: aurora.blurPass(glow.getContext("2d"), glowH, false)
-        onPainted: out.requestPaint()
-    }
+    Stage { id: h1; src: glowA; dx: 1; dy: 0; next: h2 }
+    Stage { id: h2; src: h1; dx: 2; dy: 0; next: h3 }
+    Stage { id: h3; src: h2; dx: 4; dy: 0; next: h4 }
+    Stage { id: h4; src: h3; dx: 8; dy: 0; next: v1 }
+    Stage { id: v1; src: h4; dx: 0; dy: 1; next: v2 }
+    Stage { id: v2; src: v1; dx: 0; dy: 2; next: v3 }
+    Stage { id: v3; src: v2; dx: 0; dy: 4; next: glow }
+    Stage { id: glow; src: v3; dx: 0; dy: 8; next: out }
 
     Canvas {
         id: out
@@ -214,18 +216,16 @@ Item {
         ctx.globalCompositeOperation = "source-over"
     }
 
-    // A box blur of the previous stage along one axis: 13 shifted copies averaged by running mean
-    function blurPass(ctx, src, horizontal) {
+    // The mean of a stage and itself shifted by (dx, dy): half of each, added
+    function average(ctx, src, dx, dy) {
         ctx.reset()
         ctx.globalCompositeOperation = "copy"
-        ctx.drawImage(src, -6 * (horizontal ? 1 : 0), -6 * (horizontal ? 0 : 1))
-        ctx.globalCompositeOperation = "source-over"
-        for (var i = 1; i < 13; i++) {
-            ctx.globalAlpha = 1 / (i + 1)
-            var o = i - 6
-            ctx.drawImage(src, horizontal ? o : 0, horizontal ? 0 : o)
-        }
+        ctx.globalAlpha = 0.5
+        ctx.drawImage(src, 0, 0)
+        ctx.globalCompositeOperation = "lighter"
+        ctx.drawImage(src, dx, dy)
         ctx.globalAlpha = 1
+        ctx.globalCompositeOperation = "source-over"
     }
 
     function drawOut(ctx) {
@@ -239,7 +239,8 @@ Item {
         ctx.fillRect(0, 0, bw, bh)
         ctx.globalCompositeOperation = "qt-screen"
         ctx.globalAlpha = 0.85
-        ctx.drawImage(glow, 0, 0, aurora.gw, aurora.gh, 0, 0, bw, bh)
+        // the 15 px box shifts the glow by 7.5 stage px; put it back
+        ctx.drawImage(glow, 0, 0, aurora.gw, aurora.gh, -30 * bw / aurora.skyWidth, -30 * bh / 520, bw, bh)
         ctx.globalAlpha = 0.92
         ctx.drawImage(curtains, 0, 0, bw, bh, 0, 0, bw, bh)
         ctx.globalAlpha = 1
