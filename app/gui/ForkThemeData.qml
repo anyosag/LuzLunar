@@ -99,4 +99,55 @@ QtObject {
 
     // The pages' content column: at most this wide, centered, with at least 24 on each side
     readonly property real contentMaxWidth: 1152
+
+    // [fork] The redesign canvas ("LuzLunar · Your PCs, redesigned"): Your PCs, All apps, Customize
+    // and the first run use these. cv is the canvas's t tokens, st its S state colors; hue() a PC's
+    // own color. The older tokens above stay for the pages the canvas doesn't cover.
+    readonly property QtObject cv: QtObject {
+        readonly property color bg: theme.dark ? "#0D0F17" : "#F2F2F7"
+        readonly property color bar: theme.dark ? "#141722" : "#FAFAFC"
+        readonly property color barGlass: theme.dark ? Qt.rgba(16 / 255, 19 / 255, 32 / 255, 0.55) : Qt.rgba(250 / 255, 250 / 255, 252 / 255, 0.62)
+        readonly property color surface: theme.dark ? "#161925" : "#FFFFFF"
+        readonly property color raised: theme.dark ? "#1E2230" : "#F6F6F9"
+        readonly property color chip: theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.045)
+        readonly property color glass: theme.dark ? Qt.rgba(1, 1, 1, 0.07) : "#FFFFFF"
+        readonly property color line: theme.dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.08)
+        readonly property color lineStrong: theme.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.18)
+        readonly property color text: theme.dark ? "#F2F3F7" : "#1D1D1F"
+        readonly property color text2: theme.dark ? "#C9CCD8" : "#3A3A42"
+        readonly property color muted: theme.dark ? "#9EA3B5" : "#5F616E"
+        readonly property color faint: theme.dark ? "#868B9E" : "#6B6D7B"
+        readonly property color menu: theme.dark ? "#1F2230" : "#FCFCFE"
+        readonly property color gold: theme.dark ? "#F5C878" : "#A8720F"
+        // The ring around the discovery pill's dot, and the menu's highlighted row
+        readonly property color discRing: theme.dark ? Qt.rgba(48 / 255, 209 / 255, 88 / 255, 0.18) : Qt.rgba(26 / 255, 127 / 255, 55 / 255, 0.14)
+        readonly property color menuHi: "#0A6CDB"
+    }
+
+    readonly property QtObject st: QtObject {
+        readonly property color green: theme.dark ? "#30D158" : "#1A7F37"
+        readonly property color blue: theme.dark ? "#409CFF" : "#0062CC"
+        readonly property color purple: theme.dark ? "#C17DF5" : "#8E3BB8"
+        readonly property color gold: theme.dark ? "#F5C878" : "#8A5A00"
+        readonly property color orange: theme.dark ? "#FF9F0A" : "#A85A00"
+        readonly property color red: theme.dark ? "#FF6961" : "#C1272D"
+    }
+
+    // A PC's color by key: fill (its main button, focus ring, switches), onFill (text and icons on
+    // the fill), tile (its tiles' tint) and sky (its card's header band). Bindings that call it
+    // follow the theme.
+    function hue(key) {
+        switch (key) {
+        case "teal":
+            return { fill: dark ? "#40C8E0" : "#0E7C93", onFill: dark ? "#05232B" : "#FFFFFF", tile: "#0E7C93", sky: "#0A2A33" }
+        case "pink":
+            return { fill: "#D7264B", onFill: "#FFFFFF", tile: "#D7264B", sky: "#36111F" }
+        case "gray":
+            // A PC that isn't paired yet stays grey: it isn't one of yours until it's paired
+            return { fill: dark ? "#5A5E6E" : "#4B4F5C", onFill: "#FFFFFF", tile: "#4B4F5C", sky: "#202229" }
+        case "indigo":
+        default:
+            return { fill: "#5E5CE6", onFill: "#FFFFFF", tile: "#5E5CE6", sky: "#17163F" }
+        }
+    }
 }
