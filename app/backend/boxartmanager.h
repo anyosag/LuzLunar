@@ -18,6 +18,10 @@ public:
     QUrl
     loadBoxArt(NvComputer* computer, NvApp& app);
 
+    // [fork] The cached art of an app, or the placeholder; never fetches (for a PC that's away)
+    QUrl
+    cachedBoxArt(NvComputer* computer, int appId);
+
     static
     void
     deleteBoxArt(NvComputer* computer);

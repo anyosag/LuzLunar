@@ -3,6 +3,7 @@
 #include "nvhttp.h"
 #include "nvpairingmanager.h"
 #include "fork/forknetworklink.h" // [fork]
+#include "fork/forkpcprefs.h" // [fork]
 
 #include <Limelight.h>
 #include <QtEndian>
@@ -505,9 +506,18 @@ QVector<NvComputer*> ComputerManager::getComputers()
 {
     QReadLocker lock(&m_Lock);
 
+    // [fork] The PC kept first in Your PCs (Customize's "Keep it first in the carousel") comes first,
+    // the rest by name as before. Done here so every index-based API sees the same order.
+    const QString forkFirst = ForkPcPrefs::firstPcUuid();
+
     // Return a sorted host list
     auto hosts = QVector<NvComputer*>::fromList(m_KnownHosts.values());
-    std::stable_sort(hosts.begin(), hosts.end(), [](const NvComputer* host1, const NvComputer* host2) {
+    std::stable_sort(hosts.begin(), hosts.end(), [&forkFirst](const NvComputer* host1, const NvComputer* host2) {
+        const bool first1 = !forkFirst.isEmpty() && host1->uuid == forkFirst;
+        const bool first2 = !forkFirst.isEmpty() && host2->uuid == forkFirst;
+        if (first1 != first2) {
+            return first1;
+        }
         return host1->name.toLower() < host2->name.toLower();
     });
     return hosts;

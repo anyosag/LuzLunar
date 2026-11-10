@@ -48,7 +48,7 @@ Item {
         offset.y: 8
         blur: 22
         radius: face.radius
-        color: Qt.rgba(btn.hue.fill.r, btn.hue.fill.g, btn.hue.fill.b, 0.4)
+        color: Qt.alpha(btn.hue.fill, 0.4)
         Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.OutQuad } }
     }
 
@@ -73,7 +73,6 @@ Item {
             size: btn.iconSize
             color: btn.kind === "quiet" || btn.kind === "icon" ? btn.iconColor : btn.ink
             filled: btn.iconFilled
-            stroked: btn.kind === "icon" || !btn.iconFilled || btn.kind !== "primary" ? true : true
             strokeWidth: btn.kind === "icon" ? 2.6 : (btn.kind === "primary" ? 1.9 : btn.iconStrokeWidth)
         }
 

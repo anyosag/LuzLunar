@@ -10,6 +10,7 @@
 #include <QThreadPool>
 
 #include "apolloclient.h"
+#include "forkpcprefs.h"
 #include "backend/computermanager.h"
 #include "backend/nvcomputer.h"
 
@@ -290,6 +291,7 @@ void ForkHostPower::requestPower(const QString& uuid, const QString& appToQuit, 
 
     ApolloClient::Target target = ApolloClient::targetFor(computer);
     m_Hosts[uuid].inFlight++;
+    m_Hosts[uuid].lastOff = off; // [fork] for onSlept(): the card tells Asleep from Off
     m_Revision++;
     emit changed();
 
@@ -420,6 +422,8 @@ void ForkHostPower::onSlept(const QString& uuid, bool ok, const QString& text, c
     if (ok) {
         host.available = false;
         host.reason = QStringLiteral("sleeping");
+        // [fork] What this Mac asked, for the PC's card while it's away (Asleep, or Off)
+        ForkPcPrefs::get()->notePowerAction(uuid, host.lastOff ? QStringLiteral("off") : QStringLiteral("sleep"));
     }
     m_Revision++;
     emit changed();

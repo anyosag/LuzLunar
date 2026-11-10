@@ -107,6 +107,7 @@ private:
         WakeSetupRules::Status wake;
         int wakeInFlight = 0;
         qint64 wakeSentAtMs = 0;    // when Wake PC was sent, until the PC is online
+        bool lastOff = false;       // the request in flight shuts the PC down (not sleep), for ForkPcPrefs
     };
 
     struct Answer {

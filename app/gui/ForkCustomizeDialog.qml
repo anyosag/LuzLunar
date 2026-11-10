@@ -346,7 +346,7 @@ NavigableDialog {
                 Text {
                     height: 16; verticalAlignment: Text.AlignVCenter
                     text: row.label; color: sheet.cText
-                    font.family: ForkTheme.uiFamily; font.pixelSize: 13.5; font.weight: Font.Medium
+                    font.family: ForkTheme.uiFamily; font.pixelSize: 14; font.weight: Font.Medium
                 }
                 Text {
                     height: 15; verticalAlignment: Text.AlignVCenter
@@ -425,7 +425,7 @@ NavigableDialog {
                 anchors.centerIn: parent
                 text: qsTr("Save")
                 color: sheet.current.on
-                font.family: ForkTheme.uiFamily; font.pixelSize: 13.5; font.weight: Font.DemiBold
+                font.family: ForkTheme.uiFamily; font.pixelSize: 14; font.weight: Font.DemiBold
             }
             Rectangle {
                 anchors.fill: parent; anchors.margins: -3; radius: 12; color: "transparent"
@@ -452,7 +452,7 @@ NavigableDialog {
                 anchors.centerIn: parent
                 text: qsTr("Cancel")
                 color: sheet.cText
-                font.family: ForkTheme.uiFamily; font.pixelSize: 13.5; font.weight: Font.Medium
+                font.family: ForkTheme.uiFamily; font.pixelSize: 14; font.weight: Font.Medium
             }
             Rectangle {
                 anchors.fill: parent; anchors.margins: -3; radius: 12; color: "transparent"

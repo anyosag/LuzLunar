@@ -10,6 +10,7 @@
 #include "fork/forklaunchargs.h" // [fork]
 #include "fork/forkmic.h" // [fork]
 #include "fork/forkmultidisplay.h" // [fork]
+#include "fork/forkpcprefs.h" // [fork]
 #include "fork/forknetworklink.h" // [fork]
 #include "fork/forkreconnect.h" // [fork]
 #include "fork/forkstreamextensions.h" // [fork]
@@ -2116,6 +2117,19 @@ void Session::exec()
 
     // [fork] Per-stream fork features (shortcut guard, clipboard sync, notch bar, fullscreen stretch, ...)
     ForkStreamExtensions forkExtensions(m_Computer, m_App, m_Window, *m_Preferences, m_ForkOwnBitrateKbps, m_ForkChoices);
+
+    // [fork] What this Mac streams, for the PC's card in Your PCs once the stream ends ("On this Mac ·
+    // 3024×1890 · 120 fps · HDR"), and the app's place in the PC's recent apps. Extra displays of a
+    // multi-display stream (helpers) don't count.
+    if (!ForkMultiDisplay::isHelper()) {
+        const QString codec = (m_ActiveVideoFormat & VIDEO_FORMAT_MASK_H264) ? QStringLiteral("H.264")
+                            : (m_ActiveVideoFormat & VIDEO_FORMAT_MASK_H265) ? QStringLiteral("HEVC")
+                            : (m_ActiveVideoFormat & VIDEO_FORMAT_MASK_AV1) ? QStringLiteral("AV1")
+                            : QString();
+        ForkPcPrefs::get()->noteStream(m_Computer->uuid, m_App.id, m_App.name, m_ActiveVideoWidth,
+                                       m_ActiveVideoHeight, m_ActiveVideoFrameRate,
+                                       (m_ActiveVideoFormat & VIDEO_FORMAT_MASK_10BIT) != 0, codec);
+    }
 
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
