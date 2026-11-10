@@ -1,5 +1,6 @@
 #include "forkpcprefs.h"
 #include "pccardrules.h"
+#include "pcorderrules.h"
 
 #include <QTimer>
 
@@ -46,6 +47,45 @@ namespace
         } else {
             settings.setValue(k_FirstPcKey, uuid);
         }
+    }
+
+    // The order the person dragged the PCs into: uuids, read from any thread like the one above
+    const QString k_OrderKey = QStringLiteral("fork/pcOrder");
+    QMutex s_OrderMutex;
+    QStringList s_Order;
+    bool s_OrderLoaded = false;
+
+    QStringList loadOrder()
+    {
+        QMutexLocker locker(&s_OrderMutex);
+        if (!s_OrderLoaded) {
+            QSettings settings;
+            s_Order = settings.value(k_OrderKey).toStringList();
+            s_OrderLoaded = true;
+        }
+        return s_Order;
+    }
+
+    void storeOrder(const QStringList& order)
+    {
+        QMutexLocker locker(&s_OrderMutex);
+        s_Order = order;
+        s_OrderLoaded = true;
+        QSettings settings;
+        if (order.isEmpty()) {
+            settings.remove(k_OrderKey);
+        } else {
+            settings.setValue(k_OrderKey, order);
+        }
+    }
+
+    std::vector<std::string> toStd(const QStringList& list)
+    {
+        std::vector<std::string> out;
+        for (const QString& s : list) {
+            out.push_back(s.toStdString());
+        }
+        return out;
     }
 
     QSettings& settings()
@@ -275,6 +315,44 @@ QString ForkPcPrefs::firstPcUuid()
     return loadFirstPc();
 }
 
+QStringList ForkPcPrefs::pcOrder()
+{
+    return loadOrder();
+}
+
+QString ForkPcPrefs::setPcOrder(const QStringList& uuids)
+{
+    QStringList order;
+    for (const QString& uuid : uuids) {
+        if (validUuid(uuid) && !order.contains(uuid)) {
+            order.append(uuid);
+        }
+    }
+
+    // Dragging another PC to the front ends "keep it first"
+    QString dropped;
+    const QString first = loadFirstPc();
+    if (PcOrderRules::dropsKeepFirst(toStd(order), first.toStdString())) {
+        dropped = first;
+    }
+
+    const bool orderChanged_ = order != loadOrder();
+    if (!orderChanged_ && dropped.isEmpty()) {
+        return QString();
+    }
+    if (orderChanged_) {
+        storeOrder(order);
+    }
+    if (!dropped.isEmpty()) {
+        storeFirstPc(QString());
+    }
+    emit orderChanged();
+    if (!dropped.isEmpty()) {
+        bump(dropped);
+    }
+    return dropped;
+}
+
 bool ForkPcPrefs::wakeOnPick(const QString& uuid) const
 {
     // On unless set otherwise: Customize's toggle starts on
@@ -301,8 +379,13 @@ void ForkPcPrefs::forget(const QString& uuid)
     if (wasFirst) {
         storeFirstPc(QString());
     }
+    QStringList order = loadOrder();
+    const bool wasOrdered = order.removeAll(uuid) > 0;
+    if (wasOrdered) {
+        storeOrder(order);
+    }
     bump(uuid);
-    if (wasFirst) {
+    if (wasFirst || wasOrdered) {
         emit orderChanged();
     }
 }

@@ -163,6 +163,7 @@ HEADERS += \
     $$PWD/streamsettingsrules.h \
     $$PWD/notchstatus.h \
     $$PWD/pccardrules.h \
+    $$PWD/pcorderrules.h \
     $$PWD/powernotice.h \
     $$PWD/screenshotharness.h \
     $$PWD/sfsymbols.h \

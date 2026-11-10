@@ -9,6 +9,7 @@ import ForkHostPower // [fork]
 import ForkPcPrefs // [fork]
 
 import "ForkLibraryLaunch.js" as Launch // [fork] the launch screen's summary chips
+import "ForkStoryLines.js" as StoryLines // [fork] the story line's sentences, one per state
 
 import ComputerManager
 import StreamingPreferences
@@ -79,6 +80,9 @@ Item {
     property bool noEntrance: false
     function forkTickDemo() { if (demo) go(idx + 1, 1, true) }
     function forkShowToast(text) { forkToast(text) }
+    // Screenshot hooks: the grid frozen mid-drag (slot `from` lifted over cell `to`), and its end
+    function forkDragPreview(from, to) { stage.previewDrag(from, to) }
+    function forkDragEnd() { stage.endPreview() }
     readonly property alias forkStage: stage
     readonly property bool forkMenuOpen: menuOpen
     readonly property bool forkDemoOn: demo
@@ -281,26 +285,13 @@ Item {
     // ---- the story under the title (carousel.md §2.3)
     readonly property var storyLines: {
         var rev = stage.itemsRevision
-        var out = []
+        var pcs = []
         for (var i = 0; i < pcCount; i++) {
             var m = rowOf(i)
             if (!m) continue
-            var st = stateOf(m)
-            var line = { name: m.name, before: "", after: "", dot: ForkTheme.st.green, action: "" }
-            switch (st) {
-            case "streaming":
-                line.before = qsTr("%1 is running on ").arg(appName(m)); line.dot = ForkTheme.st.blue; line.action = qsTr("Resume"); break
-            case "asleep": line.after = qsTr(" is asleep"); line.dot = ForkTheme.st.purple; break
-            case "pair": line.after = qsTr(" is waiting to pair"); line.dot = ForkTheme.st.gold; break
-            case "waking": line.after = qsTr(" is waking up…"); line.dot = ForkTheme.st.amber; break
-            case "off": case "offNoWake": line.after = qsTr(" is shut down"); line.dot = ForkTheme.st.gray; break
-            case "lost": line.before = qsTr("Can’t reach "); line.dot = ForkTheme.st.red; break
-            case "checking": line.before = qsTr("Looking for "); line.after = qsTr("…"); line.dot = ForkTheme.st.gray; break
-            default: line.after = qsTr(" is ready"); break
-            }
-            out.push(line)
+            pcs.push({ index: i, name: m.name, state: stateOf(m), app: appName(m) })
         }
-        return out
+        return StoryLines.build(pcs, ForkTheme.st)
     }
     readonly property var navChips: {
         var rev = stage.itemsRevision
@@ -311,6 +302,38 @@ Item {
         }
         out.push({ name: qsTr("Add a PC"), dot: ForkTheme.cv.muted })
         return out
+    }
+
+    // ---- the owner's own order (dragging cards or chips, or ⌥⌘← / ⌥⌘→): move the PC in slot `from`
+    // to slot `to`. The saved order is ForkPcPrefs.setPcOrder; the sample PCs reorder their model.
+    function reorderPc(from, to) {
+        if (from === to || from < 0 || to < 0 || from >= pcCount || to >= pcCount) return
+        var moved = rowOf(from)
+        if (!moved) return
+        demo = false
+        menuOpen = false
+        focusUuid = moved.uuid
+        if (forkSample) {
+            if (typeof forkSampleModel.move === "function") forkSampleModel.move(from, to, 1)
+            return
+        }
+        var uuids = []
+        var names = {}
+        for (var i = 0; i < pcCount; i++) {
+            var m = rowOf(i)
+            if (!m) return
+            uuids.push(m.uuid)
+            names[m.uuid] = m.name
+        }
+        uuids.splice(to, 0, uuids.splice(from, 1)[0])
+        var dropped = ForkPcPrefs.setPcOrder(uuids)
+        if (dropped !== undefined && dropped !== "") forkToast(qsTr("%1 is no longer kept first").arg(names[dropped] !== undefined ? names[dropped] : ""))
+    }
+    function moveFocused(delta) {
+        if (isAddSlot(idx)) return
+        var to = idx + delta
+        if (to < 0 || to >= pcCount) return
+        reorderPc(idx, to)
     }
 
     // Keep the focus on the same PC when PCs come and go (carousel.md §11.9)
@@ -750,6 +773,13 @@ Item {
                 instant: pcPage.noEntrance
                 onPick: function (i) { pcPage.pick(i) }
                 onAct: function (i) { pcPage.runAction(i, "resume") }
+                // "N PCs": the first of them, or the next one after the PC in front when it's one of them
+                onPickGroup: function (indexes) {
+                    var next = indexes[0]
+                    var at = indexes.indexOf(pcPage.idx)
+                    if (at >= 0) next = indexes[(at + 1) % indexes.length]
+                    pcPage.pick(next)
+                }
             }
 
             ForkStoryRise {
@@ -811,6 +841,9 @@ Item {
                     addCard: addCardComp
                     onPick: function (i) { pcPage.pick(i) }
                     onStep: function (d) { pcPage.step(d) }
+                    onReorder: function (from, to) { pcPage.reorderPc(from, to) }
+                    // So Escape reaches the page while a card is held
+                    onDragActiveChanged: if (dragActive && !ForkPcPrefs.screenshotMode) pcPage.forceActiveFocus()
                 }
 
                 ForkDotsNav {
@@ -824,6 +857,7 @@ Item {
                     demoOn: pcPage.demo
                     onPicked: function (i) { pcPage.pick(i) }
                     onToggleDemo: pcPage.demo = !pcPage.demo
+                    onReorder: function (from, to) { pcPage.reorderPc(from, to) }
                 }
 
                 ForkCanvasText {
@@ -973,15 +1007,28 @@ Item {
     Keys.onPressed: function (event) {
         if (showFirstRun || appsOpen) return
         keyFocus = true
+        // While a card is held only Escape (cancel) does anything
+        if (stage.dragActive) {
+            if (event.key === Qt.Key_Escape) stage.cancelDrag()
+            event.accepted = true
+            return
+        }
+        // A Mac adds Qt.KeypadModifier to every arrow key
+        var mods = event.modifiers & ~Qt.KeypadModifier
         var grid = forkViewMode === "grid"
         if (event.matches(StandardKey.New)) {
             forkAddPc()
             event.accepted = true
-        } else if (event.key === Qt.Key_Left && event.modifiers === Qt.NoModifier) {
+        } else if ((event.key === Qt.Key_Left || event.key === Qt.Key_Right)
+                   && mods === (Qt.AltModifier | Qt.ControlModifier)) {
+            // ⌥⌘← / ⌥⌘→ (⌘ is Control in Qt on a Mac): move this PC one place
+            moveFocused(event.key === Qt.Key_Left ? -1 : 1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Left && mods === Qt.NoModifier) {
             step(-1); event.accepted = true
-        } else if (event.key === Qt.Key_Right && event.modifiers === Qt.NoModifier) {
+        } else if (event.key === Qt.Key_Right && mods === Qt.NoModifier) {
             step(1); event.accepted = true
-        } else if (event.key === Qt.Key_Up && event.modifiers === Qt.NoModifier) {
+        } else if (event.key === Qt.Key_Up && mods === Qt.NoModifier) {
             // Up inside the grid moves a row; from the carousel or the grid's top row it goes on to the
             // window's header (before the page in the focus chain), as AppView does. Down or Escape
             // there give the page focus back.

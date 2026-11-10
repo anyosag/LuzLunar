@@ -534,6 +534,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/pccardrules_test.cpp -o "$RUNNER_TEMP/pccardrules_test"
           "$RUNNER_TEMP/pccardrules_test"
+          # The order of the PCs: the one kept first, the dragged order, then by name
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/pcorderrules_test.cpp -o "$RUNNER_TEMP/pcorderrules_test"
+          "$RUNNER_TEMP/pcorderrules_test"
           # Update Apollo: how an update that this Mac asked for ended, and an Apollo stuck checking
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/hostupdaterules_test.cpp -o "$RUNNER_TEMP/hostupdaterules_test"

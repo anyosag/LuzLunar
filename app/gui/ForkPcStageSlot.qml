@@ -34,17 +34,41 @@ Item {
     property bool _ready: false
     readonly property bool _anim: _ready && stage && stage.animate
 
+    // Being dragged by the pointer (grid): the card follows it, so its own place isn't animated
+    readonly property bool dragging: stage ? (stage.grid && stage.dragActive && stage.dragFrom === slotIndex) : false
+    readonly property real dragX: stage ? stage.dragCx - 280 : 0
+    readonly property real dragY: stage ? stage.dragCy - 270 : 0
+    onDraggingChanged: {
+        if (dragging || !stage) return
+        // Let go: from where the pointer left it to the cell, animated
+        var wasJump = jumpNow
+        jumpNow = true
+        curX = dragX
+        curY = dragY
+        jumpNow = wasJump
+        _apply()
+    }
+
     function _apply() {
         jumpNow = tgt.jump || !_anim
         focusNow = tgt.focused
-        curX = tgt.x
-        curY = tgt.y
+        if (!dragging) {
+            curX = tgt.x
+            curY = tgt.y
+        }
         curScale = tgt.s
         curAngle = tgt.rot
         curOpacity = tgt.o
         curSat = tgt.sat
     }
     onTgtChanged: _apply()
+    // The pointer is still over this card after the cards reorder: the hover lift follows its new slot
+    onSlotIndexChanged: {
+        if (!stage) return
+        if (hover.hovered) stage.hoverIndex = slotIndex
+        else if (stage.hoverIndex === slotIndex) stage.hoverIndex = -1
+    }
+    Component.onDestruction: if (stage && stage.dragActive && stage.dragFrom === slotIndex) stage.endPreview()
     Component.onCompleted: {
         _apply()
         _ready = true
@@ -52,9 +76,9 @@ Item {
 
     width: 560
     height: 540
-    x: curX
-    y: curY
-    z: tgt.z
+    x: dragging ? dragX : curX
+    y: dragging ? dragY : curY
+    z: stage && stage.grid && stage.dragFrom === slotIndex ? 200 : tgt.z
     scale: curScale
     transformOrigin: Item.Center
     visible: curOpacity > 0.003
@@ -127,6 +151,26 @@ Item {
             if (hovered) slot.stage.hoverIndex = slot.slotIndex
             else if (slot.stage.hoverIndex === slot.slotIndex) slot.stage.hoverIndex = -1
         }
+    }
+
+    // Drag a PC card to another cell (grid only; never the Add card). It takes over from the card's
+    // own buttons only past the drag threshold, so a plain click still works.
+    DragHandler {
+        id: dragHandler
+        target: null
+        enabled: slot.stage && slot.stage.grid && !slot.isAdd && slot.visible
+        acceptedButtons: Qt.LeftButton
+        cursorShape: Qt.ClosedHandCursor
+        onActiveChanged: {
+            if (!slot.stage) return
+            if (active) {
+                slot.stage.beginDrag(slot.slotIndex, centroid.scenePressPosition)
+                slot.stage.moveDrag(slot.slotIndex, centroid.scenePosition)
+            } else {
+                slot.stage.endDrag(slot.slotIndex)
+            }
+        }
+        onCentroidChanged: if (active && slot.stage) slot.stage.moveDrag(slot.slotIndex, centroid.scenePosition)
     }
 
     // A card that isn't in focus is one button: clicking it brings it to the front
