@@ -190,7 +190,7 @@ NavigableDialog {
             Shape {
                 id: moon
                 x: 408; y: 22; width: 46; height: 46
-                preferredRendererType: Shape.CurveRenderer
+                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                 ShapePath {
                     fillColor: "#F5C878"
                     strokeColor: "transparent"

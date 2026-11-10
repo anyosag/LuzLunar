@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 import ForkTheme 1.0
 import ComputerManager
@@ -94,7 +95,7 @@ Item {
                 Shape {
                     // the crescent: the 54 px circle minus itself moved (14, -7)
                     anchors.fill: parent
-                    preferredRendererType: Shape.CurveRenderer
+                    preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                     ShapePath {
                         fillColor: page.cv.gold
                         strokeColor: "transparent"

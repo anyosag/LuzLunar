@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import ForkTheme 1.0
 
 // [fork] The moon art in the small card's header band (279 x 64; band coordinates). Static, as on
@@ -25,7 +26,7 @@ Item {
         Rectangle { x: 220; y: 14; width: 34; height: 34; radius: 17; color: moon.sky }
         Shape {
             x: 220; y: 14; width: 34; height: 34
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0; fillColor: "#F5C878"
                 PathSvg { path: "M13.63 0.34A17 17 0 1 0 29.37 28.66A17 17 0 0 1 13.63 0.34Z" }
@@ -45,7 +46,7 @@ Item {
         Rectangle { x: 4; y: 12; width: 34; height: 34; radius: 17; color: moon.sky }
         Shape {
             x: 4; y: 12; width: 34; height: 34
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0; fillColor: "#FFC46B"
                 PathSvg { path: "M13.63 0.34A17 17 0 1 0 29.37 28.66A17 17 0 0 1 13.63 0.34Z" }
@@ -59,7 +60,7 @@ Item {
         clip: true
         Shape {
             x: 4; y: 14; width: 34; height: 34
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0; fillColor: "#CFC8F3"
                 PathSvg { path: "M13.67 0.33A17 17 0 1 0 28.33 29.67A17 17 0 0 1 13.67 0.33Z" }
@@ -93,7 +94,7 @@ Item {
     Shape {
         visible: moon.kind === "pair"
         x: 220; y: 15; width: 17; height: 34
-        preferredRendererType: Shape.CurveRenderer
+        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
         ShapePath {
             strokeColor: "transparent"; strokeWidth: 0; fillColor: "#F5C878"
             PathSvg { path: "M17 0A17 17 0 0 0 17 34Z" }

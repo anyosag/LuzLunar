@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import ForkTheme 1.0
 
 // [fork] The "Add a PC" card of Your PCs (the canvas's Main board): a dashed card with a plus disc
@@ -205,7 +206,7 @@ Item {
                     Shape {
                         visible: card.dark
                         anchors.fill: parent
-                        preferredRendererType: Shape.CurveRenderer
+                        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                         // a 1 px crescent: the circle minus itself moved 1 px down
                         ShapePath {
                             strokeColor: "transparent"; strokeWidth: 0; fillColor: Qt.rgba(1, 1, 1, 0.7)
@@ -249,7 +250,7 @@ Item {
                             scale: 0.81
                             transformOrigin: Item.TopLeft
                             Shape {
-                                preferredRendererType: Shape.CurveRenderer
+                                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                                 ShapePath {
                                     strokeColor: "transparent"; strokeWidth: 0; fillColor: card.gFill
                                     PathSvg { path: "M -0.99 -33.99 A 34 34 0 1 0 28.77 18.11 A 30 30 0 0 1 -0.99 -33.99 Z" }
@@ -260,7 +261,7 @@ Item {
                             Shape {
                                 opacity: !card.awake || card.blink ? 1 : 0
                                 Behavior on opacity { NumberAnimation { duration: 150 } }
-                                preferredRendererType: Shape.CurveRenderer
+                                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                                 ShapePath {
                                     strokeColor: "#2B2B30"; strokeWidth: 1.6; fillColor: "transparent"; capStyle: ShapePath.RoundCap
                                     PathSvg { path: "M -23 4 Q -20 7.5 -17 4" }
@@ -286,7 +287,7 @@ Item {
                             Shape {
                                 opacity: card.awake ? 1 : 0
                                 Behavior on opacity { NumberAnimation { duration: 300 } }
-                                preferredRendererType: Shape.CurveRenderer
+                                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                                 ShapePath {
                                     strokeColor: "#2B2B30"; strokeWidth: 1.6; fillColor: "transparent"; capStyle: ShapePath.RoundCap
                                     PathSvg { path: "M -22.5 12.5 Q -19 16 -15.5 12.5" }
@@ -340,7 +341,7 @@ Item {
                     Behavior on scale { NumberAnimation { duration: 400 } }
                     Shape {
                         x: 7; y: 7
-                        preferredRendererType: Shape.CurveRenderer
+                        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                         ShapePath {
                             strokeColor: "transparent"; strokeWidth: 0; fillColor: card.gSparkA
                             PathSvg { path: "M0 -6.5 L1.6 -1.6 L6.5 0 L1.6 1.6 L0 6.5 L-1.6 1.6 L-6.5 0 L-1.6 -1.6 Z" }
@@ -357,7 +358,7 @@ Item {
                         x: 5; y: 5
                         scale: 10 / 14
                         transformOrigin: Item.TopLeft
-                        preferredRendererType: Shape.CurveRenderer
+                        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                         ShapePath {
                             strokeColor: "transparent"; strokeWidth: 0; fillColor: card.gSparkB
                             PathSvg { path: "M0 -6.5 L1.6 -1.6 L6.5 0 L1.6 1.6 L0 6.5 L-1.6 1.6 L-6.5 0 L-1.6 -1.6 Z" }

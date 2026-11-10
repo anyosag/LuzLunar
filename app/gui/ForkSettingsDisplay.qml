@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 import AspectRatios 1.0
 import ClientHardware 1.0
@@ -349,7 +350,7 @@ Column {
                                 anchors.centerIn: parent
                                 width: 44
                                 height: 30
-                                preferredRendererType: Shape.CurveRenderer
+                                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
                                 ShapePath {
                                     strokeColor: ForkTheme.faint

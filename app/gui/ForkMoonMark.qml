@@ -2,6 +2,7 @@ import QtQuick
 
 import ForkTheme 1.0
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 // [fork] LuzLunar's "moon path" mark: a crescent above its reflection on water, broken into lines
 // like a video signal. On its tile it's the app icon; without one (tile: false) it's drawn in the
@@ -38,7 +39,7 @@ Item {
         // The crescent: the circle (50, 40, r 18) less the circle (58, 34, r 16)
         Shape {
             anchors.fill: parent
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
             ShapePath {
                 strokeColor: "transparent"

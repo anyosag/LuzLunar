@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 import ClientHardware 1.0
 import ForkPreferences 1.0
@@ -219,7 +220,7 @@ Column {
                                 visible: !displayCard.fullShown
                                 width: parent.width
                                 height: 1
-                                preferredRendererType: Shape.CurveRenderer
+                                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
                                 ShapePath {
                                     strokeColor: ForkTheme.selEdge

@@ -7,6 +7,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import ForkTheme
 
 Item {
@@ -138,7 +139,7 @@ Item {
             Shape {
                 width: 1280; height: 160
                 transform: Scale { xScale: root.width / 1280 }
-                preferredRendererType: Shape.CurveRenderer
+                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                 ShapePath {
                     fillColor: root.dark ? "#0D1A2C" : "#D8D2EE"
                     strokeColor: "transparent"

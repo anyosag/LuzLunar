@@ -5,6 +5,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import QtQuick.Effects
 
 Item {
@@ -90,7 +91,7 @@ Item {
                 }
                 Shape {
                     anchors.fill: parent
-                    preferredRendererType: Shape.CurveRenderer
+                    preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                     ShapePath {
                         strokeColor: "transparent"
                         fillGradient: LinearGradient {

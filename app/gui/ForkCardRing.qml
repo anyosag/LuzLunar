@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 // [fork] A 1 px ring (the canvas draws its 1.5 px borders at 1 px), solid or dashed, in a size x size
 // box. dashed uses the canvas's pattern: dashes of 3 px with gaps of 1.9 px.
@@ -16,7 +17,7 @@ Item {
 
     Shape {
         anchors.fill: parent
-        preferredRendererType: ring.dashed ? Shape.GeometryRenderer : Shape.CurveRenderer
+        preferredRendererType: (ring.dashed || ForkPcPrefs.screenshotMode) ? Shape.GeometryRenderer : Shape.CurveRenderer
         ShapePath {
             id: sp
             readonly property real r: (ring.size - 1) / 2

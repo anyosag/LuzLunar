@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import QtQuick.Effects
 
 import ForkTheme 1.0
@@ -69,7 +70,7 @@ Item {
         width: 120
         height: 160
         transform: Scale { xScale: cover.width / 120; yScale: cover.height / 160 }
-        preferredRendererType: Shape.CurveRenderer
+        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
         ShapePath {
             strokeColor: "transparent"
@@ -90,7 +91,7 @@ Item {
         width: 120
         height: 160
         transform: Scale { xScale: cover.width / 120; yScale: cover.height / 160 }
-        preferredRendererType: Shape.CurveRenderer
+        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
         ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.7); strokeColor: "transparent"
             PathSvg { path: "M17 10L18.25 13.75L22 15L18.25 16.25L17 20L15.75 16.25L12 15L15.75 13.75Z" } }

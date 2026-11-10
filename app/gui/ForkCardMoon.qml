@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import ForkTheme 1.0
 
 // [fork] The moon art in the big card's header band (558 x 104; this item fills the band, so the
@@ -34,7 +35,7 @@ Item {
         Rectangle { x: 456; y: 22; width: 58; height: 58; radius: 29; color: moon.sky }
         Shape {
             x: 456; y: 22; width: 58; height: 58
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0; fillColor: "#F5C878"
                 PathSvg { path: "M23.45 0.54A29 29 0 1 0 49.55 49.46A29 29 0 0 1 23.45 0.54Z" }
@@ -55,7 +56,7 @@ Item {
         Rectangle { x: 7; y: 20; width: 58; height: 58; radius: 29; color: moon.sky }
         Shape {
             x: 7; y: 20; width: 58; height: 58
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0; fillColor: "#FFC46B"
                 PathSvg { path: "M23.45 0.54A29 29 0 1 0 49.55 49.46A29 29 0 0 1 23.45 0.54Z" }
@@ -72,7 +73,7 @@ Item {
         Behavior on y { NumberAnimation { duration: 1100; easing.type: Easing.InOutQuad } }
         Shape {
             x: 10; y: 24; width: 54; height: 54
-            preferredRendererType: Shape.CurveRenderer
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0; fillColor: "#CFC8F3"
                 PathSvg { path: "M22.59 0.36A27 27 0 1 0 44.41 47.64A27 27 0 0 1 22.59 0.36Z" }
@@ -119,7 +120,7 @@ Item {
     Shape {
         visible: moon.kind === "pair"
         x: 458; y: 24; width: 27; height: 54
-        preferredRendererType: Shape.CurveRenderer
+        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
         ShapePath {
             strokeColor: "transparent"; strokeWidth: 0; fillColor: "#F5C878"
             PathSvg { path: "M27 0A27 27 0 0 0 27 54Z" }

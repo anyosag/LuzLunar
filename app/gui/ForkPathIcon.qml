@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 import "ForkIconPaths.js" as Paths
 
@@ -44,7 +45,7 @@ Item {
         // Scale from the top left; the viewBox origin moves to 0,0
         transformOrigin: Item.TopLeft
         scale: root.size / root.box[2]
-        preferredRendererType: Shape.CurveRenderer
+        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
         ShapePath {
             strokeColor: root.stroked && root.effectiveStroke > 0 ? root.color : "transparent"

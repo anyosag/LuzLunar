@@ -977,8 +977,18 @@ Item {
             step(-1); event.accepted = true
         } else if (event.key === Qt.Key_Right && event.modifiers === Qt.NoModifier) {
             step(1); event.accepted = true
-        } else if (event.key === Qt.Key_Up && grid) {
-            if (idx - stage.gridCols >= 0) go(idx - stage.gridCols, -1, false)
+        } else if (event.key === Qt.Key_Up && event.modifiers === Qt.NoModifier) {
+            // Up inside the grid moves a row; from the carousel or the grid's top row it goes on to the
+            // window's header (before the page in the focus chain), as AppView does. Down or Escape
+            // there give the page focus back.
+            if (grid && idx - stage.gridCols >= 0) {
+                go(idx - stage.gridCols, -1, false)
+            } else {
+                menuOpen = false
+                keyFocus = false
+                var previous = pcPage.nextItemInFocusChain(false)
+                if (previous && previous !== pcPage) previous.forceActiveFocus(Qt.TabFocusReason)
+            }
             event.accepted = true
         } else if (event.key === Qt.Key_Down && grid) {
             if (idx + stage.gridCols < slotCount) go(idx + stage.gridCols, 1, false)

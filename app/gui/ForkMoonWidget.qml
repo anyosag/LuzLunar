@@ -3,6 +3,7 @@
 // counted from the new moon of 6 Jan 2000 18:14 UTC). `nowMs` can be pinned for screenshots.
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import QtQuick.Effects
 import ForkTheme
 
@@ -102,7 +103,7 @@ Item {
             Shape {
                 x: 24; y: 24
                 visible: moon.info.visible
-                preferredRendererType: Shape.CurveRenderer
+                preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
                 ShapePath {
                     fillColor: "#F5C878"
                     strokeColor: "transparent"
