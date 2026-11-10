@@ -671,6 +671,10 @@ Item {
         onPressed: function (mouse) { pcPage.keyFocus = false; mouse.accepted = false }
     }
 
+    // The first run gives way to the cards with a 400 ms cross-fade (instant under Reduce Motion)
+    property real arrive: showFirstRun ? 0 : 1
+    Behavior on arrive { enabled: !ForkTheme.reduceMotion && !pcPage.forkSample; NumberAnimation { duration: 400; easing.type: Easing.Bezier; easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1] } }
+
     // ---- the board (everything but the sky, the menu and the toast), which steps back when All
     // apps opens over it (carousel.md §8)
     Item {
@@ -724,6 +728,7 @@ Item {
         // Greeting row: the story at the left, the moon and the discovery pill at the right
         Item {
             id: section
+            opacity: pcPage.arrive
             y: pcPage.sectionTop
             width: parent.width
             height: Math.max(story.height, rightCol.height)
@@ -769,6 +774,7 @@ Item {
         // The stage block, scaled down in small windows
         Item {
             id: stageBlock
+            opacity: pcPage.arrive
             y: pcPage.stageTop
             width: parent.width
             height: pcPage.stageBlockHeight * pcPage.stageScale
