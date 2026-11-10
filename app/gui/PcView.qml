@@ -7,6 +7,9 @@ import ForkTheme // [fork]
 import ForkHostUpdates // [fork]
 import ForkHostPower // [fork]
 import ForkPcPrefs // [fork]
+import ForkPreferences // [fork] the remembered view
+
+import "ForkLibraryLaunch.js" as Launch // [fork] the launch screen's summary chips
 
 import ComputerManager
 import StreamingPreferences
@@ -49,6 +52,8 @@ Item {
         if (mode === "grid") demo = false
         menuOpen = false
         forkViewMode = mode
+        // Remembered per Mac when ForkPreferences has the key (DATA: pcsView, "carousel" | "grid")
+        if (ForkPreferences.pcsView !== undefined && !forkSample) ForkPreferences.pcsView = mode
     }
 
     // ---- the harness's hooks (contract-pcview.md)
@@ -134,7 +139,7 @@ Item {
     Timer {
         interval: 1100
         repeat: true
-        running: pcPage.motionOn
+        running: pcPage.motionOn && !ForkPcPrefs.screenshotMode
         onTriggered: pcPage.tick++
     }
     // The greeting and the moon follow the clock
@@ -166,6 +171,7 @@ Item {
         } else {
             introTimer.start(); revealTimer.start(); settleTimer.start()
         }
+        if (!forkSample && ForkPreferences.pcsView === "grid") forkViewMode = "grid"
         forceActiveFocus()
     }
 
@@ -226,6 +232,9 @@ Item {
         if (!m) return "ready"
         var w = wakingUuids[m.uuid] === true && !m.online
         if (w) return "waking"
+        // An online, paired host whose software Moonlight refuses: the "can't reach" look, and its
+        // main action says why (today's errorDialog)
+        if (m.online === true && m.paired === true && m.serverSupported === false) return "lost"
         var s = m.state
         if (s !== undefined && s !== "") return normState(s)
         if (m.statusUnknown) return "waking"
@@ -348,7 +357,11 @@ Item {
     readonly property bool canLaunch: !forkSample && computerModel !== null && typeof computerModel.createSessionForApp === "function"
     readonly property bool canQuit: !forkSample && computerModel !== null && typeof computerModel.quitRunningApp === "function"
     readonly property bool canWakeThenStream: !forkSample && computerModel !== null
-    ForkWakeLaunch { id: wakeLaunch }
+    ForkWakeLaunch {
+        id: wakeLaunch
+        summaryFor: function (appName) { return Launch.streamSummary(pcPage.wakeUuid, appName) }
+    }
+    property string wakeUuid: ""
 
     function forkWake(i) {
         var m = rowOf(i)
@@ -414,13 +427,26 @@ Item {
     // All apps: the PC's page grows out of `origin` (page coordinates)
     function openApps(i, origin) {
         var m = rowOf(i)
-        if (!m || forkSample || !computerModel) { forkToast(qsTr("Opens all of %1's apps").arg(m ? m.name : "")); return }
+        if (!m || (forkSample && forkSampleApps === null) || (!forkSample && !computerModel)) { forkToast(qsTr("Opens all of %1's apps").arg(m ? m.name : "")); return }
         var component = Qt.createComponent("AppView.qml")
         var online = m.online === true
         var props = {"computerIndex": i, "objectName": m.name, "showHiddenGames": true,
                      "forkHostStatus": online ? (m.hostSoftware !== "" && m.hostSoftware !== undefined ? qsTr("%1 · online").arg(m.hostSoftware) : qsTr("Online")) : qsTr("Asleep"),
                      "forkAsleep": !online, "forkColorKey": hueOf(m), "forkComputerModel": computerModel,
                      "forkLatencyMs": m.latencyMs !== undefined ? m.latencyMs : -1, "forkWakeReady": m.wakeFromOff === "ready"}
+        if (forkSample) {
+            props["forkSampleModel"] = forkSampleApps
+            var host = forkSampleHostInfo ? Object.assign({}, forkSampleHostInfo) : {}
+            host.software = m.hostSoftware
+            host.version = m.apolloVersion
+            host.address = m.address
+            host.latencyMs = m.latencyMs
+            host.colorKey = hueOf(m)
+            host.wakeReady = m.wakeFromOff === "ready"
+            host.asleep = !online
+            props["forkSampleHost"] = host
+            delete props["forkComputerModel"]
+        }
         if (origin) {
             props["forkOriginX"] = origin.x
             props["forkOriginY"] = origin.y
@@ -430,6 +456,11 @@ Item {
         appsOpen = true
         stackView.push(appView)
     }
+    // Sample apps for the harness: a ListModel with AppModel's roles and the host's facts; forkOpenApps(i)
+    // pushes AppView with them (the model's own apps when the page isn't in sample mode)
+    property var forkSampleApps: null
+    property var forkSampleHostInfo: null
+    function forkOpenApps(i) { openApps(i, geoOrigin(i)) }
     function geoOrigin(i, local) {
         // `local` is a point in the card's own 560 x 540 box, or undefined for the card's center
         var g = stage.geoOf(i)
@@ -451,13 +482,15 @@ Item {
                                                "session": session,
                                                "isResume": resume,
                                                "hostName": m.name,
-                                               "summary": []
+                                               "summary": Launch.streamSummary(m.uuid, appLabel)
                                            })
         stackView.push(segue)
     }
     // An app picked on a sleeping or shut-down PC: wake it, wait, then start the app (ForkWakeLaunch,
     // which respects "Wake it when I pick an app"); without that helper it just wakes the PC
     function wakeThenLaunch(i, appId, label) {
+        var m = rowOf(i)
+        if (m) wakeUuid = m.uuid
         if (canWakeThenStream && appId) wakeLaunch.start(computerModel, i, appId, label)
         else forkWake(i)
     }
@@ -468,6 +501,7 @@ Item {
         quitDialog.pcIndex = i
         quitDialog.appName = runningAppOf(m)
         quitDialog.pcName = m.name
+        quitDialog.pcUuid = m.uuid
         quitDialog.open()
     }
     function copyAddress(text) {
@@ -509,7 +543,11 @@ Item {
         case "setupWake": wakeSetupDialog.openFor(m.uuid, m.name); break
         case "pair": pairPc(i); break
         case "testNetwork":
-            if (computerModel) { computerModel.testConnectionForComputer(i); testConnectionDialog.open() }
+            if (m.online === true && m.paired === true && m.serverSupported === false) {
+                errorDialog.text = qsTr("The version of GeForce Experience on %1 is not supported by this build of Moonlight. You must update Moonlight to stream from %1.").arg(m.name)
+                errorDialog.helpText = ""
+                errorDialog.open()
+            } else if (computerModel) { computerModel.testConnectionForComputer(i); testConnectionDialog.open() }
             else forkToast(qsTr("Testing the network to %1…").arg(m.name))
             break
         case "sleep": case "shutDown":
@@ -624,6 +662,15 @@ Item {
         menuOpen = !menuOpen
     }
 
+    // A pointer press hides the keyboard focus ring
+    MouseArea {
+        anchors.fill: parent
+        z: -1
+        acceptedButtons: Qt.AllButtons
+        propagateComposedEvents: true
+        onPressed: function (mouse) { pcPage.keyFocus = false; mouse.accepted = false }
+    }
+
     // ---- the board (everything but the sky, the menu and the toast), which steps back when All
     // apps opens over it (carousel.md §8)
     Item {
@@ -714,7 +761,7 @@ Item {
                     anchors.right: parent.right
                     y: moon.height + 10
                     active: !!StreamingPreferences.enableMdns
-                    text: !!StreamingPreferences.enableMdns ? qsTr("Looking for PCs on your network") : qsTr("Automatic discovery is off")
+                    text: !!StreamingPreferences.enableMdns ? qsTr("Looking for PCs on your network") : qsTr("Automatic PC discovery is off")
                 }
             }
         }
@@ -744,6 +791,7 @@ Item {
                     view: pcPage.forkViewMode
                     settled: pcPage.settled
                     revealed: pcPage.revealed
+                    keyFocusRing: pcPage.keyFocus && pcPage.activeFocus
                     pcCard: pcCardComp
                     addCard: addCardComp
                     onPick: function (i) { pcPage.pick(i) }
@@ -894,8 +942,10 @@ Item {
     }
 
     // ---- keys (carousel.md §3.11)
+    property bool keyFocus: false
     Keys.onPressed: function (event) {
         if (showFirstRun || appsOpen) return
+        keyFocus = true
         var grid = forkViewMode === "grid"
         if (event.matches(StandardKey.New)) {
             forkAddPc()
@@ -1010,23 +1060,18 @@ Item {
         onSaved: stage.itemsRevision++
     }
 
-    // [fork] Quit the running app (the card's Quit button and the menu's)
-    NavigableMessageDialog {
+    // [fork] Quit the running app (the card's Quit button and the menu's), in the All apps alert
+    ForkLibraryDialog {
         id: quitDialog
         property int pcIndex: -1
-        property string appName: ""
         property string pcName: ""
+        property string pcUuid: ""
         title: qsTr("Quit %1?").arg(appName)
-        text: qsTr("It closes on %1. Anything you haven't saved is lost.").arg(pcName)
-        destructive: true
-        forkShowIcon: false
-        standardButtons: Dialog.Yes | Dialog.No
-
-        onAboutToShow: {
-            if (standardButton(Dialog.Yes)) standardButton(Dialog.Yes).text = qsTr("Quit")
-            if (standardButton(Dialog.No)) standardButton(Dialog.No).text = qsTr("Cancel")
-        }
-        onAccepted: {
+        body: qsTr("It closes on %1. Anything you haven’t saved is lost.").arg(pcName)
+        confirmText: qsTr("Quit")
+        confirmFill: "#D93A33"
+        colorKey: pcPage.hueOf(pcPage.rowOf(pcIndex))
+        onConfirmed: {
             var component = Qt.createComponent("QuitSegue.qml")
             var index = pcIndex
             var name = appName

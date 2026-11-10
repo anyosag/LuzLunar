@@ -48,15 +48,15 @@ FocusScope {
         x: button.stretch ? (button.width - width) / 2 : button.padLeft
         spacing: button.gap
 
-        ForkLibraryIcon {
+        ForkPathIcon {
             anchors.verticalCenter: parent.verticalCenter
             visible: button.iconName !== ""
             name: button.iconName
             size: button.iconSize
             color: button.ink
-            filled: button.iconFilled
-            stroked: button.iconStroked
-            strokeWidth: button.iconStrokeWidth
+            filled: button.iconFilled === 1
+            stroked: button.iconStroked !== 0
+            strokeWidth: button.iconStrokeWidth > 0 ? button.iconStrokeWidth : -1
         }
 
         ForkCanvasText {

@@ -14,6 +14,7 @@ import ForkTheme // [fork]
 import StreamProfiles // [fork]
 import StreamingPreferences // [fork]
 import SystemProperties // [fork]
+import "ForkLibraryLaunch.js" as Launch // [fork] the launch summaries
 
 // [fork] A PC's All apps page, as in the design's Library and LibraryAsleep boards: a big rounded
 // panel inset in the window (the window's sky shows around it, so the page is transparent there),
@@ -26,7 +27,7 @@ FocusScope {
     property int computerIndex
     // [fork] What the window's header asks of the page that's showing (see contract-library.md)
     readonly property string forkHeaderVariant: "apps"
-    property string forkSkyVariant: "library"
+    property string forkSkyVariant: "main"
     property string forkBackTitle: qsTr("Your PCs")
     readonly property string forkSearchPlaceholder: qsTr("Search %1’s apps").arg(objectName)
 
@@ -319,87 +320,19 @@ FocusScope {
         textFormat: TextEdit.PlainText
     }
 
-    // What a stream of this app would use: the global settings with its profile applied, as
-    // StreamProfiles::createSession does.
-    function forkEffectiveStream(appName) {
-        var p = StreamProfiles.profile(forkHostUuid, appName)
-        function has(key) { return p[key] !== undefined }
-        var w = has("width") ? p.width : StreamingPreferences.width
-        var h = has("height") ? p.height : StreamingPreferences.height
-        var fps = has("fps") ? p.fps : StreamingPreferences.fps
-        var yuv = has("enableYUV444") ? p.enableYUV444 : StreamingPreferences.enableYUV444
-        var codec = has("videoCodecConfig") ? p.videoCodecConfig : StreamingPreferences.videoCodecConfig
-        // H.264 has no HDR, so an HDR setting leaves that stream in SDR
-        var hdr = SystemProperties.supportsHdr && codec !== StreamingPreferences.VCC_FORCE_H264 &&
-                  (has("enableHdr") ? p.enableHdr : StreamingPreferences.enableHdr)
-        var bitrate = has("bitrateKbps") ? p.bitrateKbps : StreamingPreferences.bitrateKbps
-        if (!has("bitrateKbps") && (has("width") || has("height") || has("fps") || has("enableYUV444")) &&
-                StreamingPreferences.bitrateKbps === StreamingPreferences.getDefaultBitrate(StreamingPreferences.width, StreamingPreferences.height,
-                                                                                            StreamingPreferences.fps, StreamingPreferences.enableYUV444)) {
-            bitrate = StreamingPreferences.getDefaultBitrate(w, h, fps, yuv)
-        }
-        var trackpad = has("trackpadMode") ? p.trackpadMode : StreamingPreferences.trackpadMode
-        return { "profile": p, "width": w, "height": h, "fps": fps, "yuv": yuv, "hdr": hdr, "codec": codec, "bitrate": bitrate,
-                 "trackpad": trackpad }
-    }
-
-    // "Mac trackpad" or "Touchpad" (the Windows touchpad), or nothing for a trackpad that's a mouse
-    function forkTrackpadChip(mode) {
-        return mode === StreamingPreferences.TM_MAC_TRACKPAD ? qsTr("Mac trackpad")
-             : mode === StreamingPreferences.TM_WINDOWS_TOUCHPAD ? qsTr("Touchpad")
-             : ""
-    }
-
-    function forkCodecName(codec) {
-        return codec === StreamingPreferences.VCC_FORCE_H264 ? "H.264"
-             : codec === StreamingPreferences.VCC_FORCE_AV1 ? "AV1"
-             : codec === StreamingPreferences.VCC_FORCE_HEVC ? "HEVC"
-             : qsTr("Automatic codec")
-    }
-
-    // The name a profile goes by everywhere: "Office profile", "Gaming profile" or "Custom profile";
-    // empty for an app with none
+    // What a stream of this app would use, and the lines that say so: ForkLibraryLaunch.js (PcView
+    // uses it too); the profile's name comes from the stream settings dialog
     function forkProfileName(profile) {
         return Object.keys(profile).length > 0 ? streamProfileDialog.profileName(profile) : ""
     }
-
-    // The same name for a preset ("office", "gaming" or "custom"), for the screenshot harness's samples
-    function forkPresetName(preset) {
-        return preset === "office" ? qsTr("Office profile") : preset === "gaming" ? qsTr("Gaming profile") : qsTr("Custom profile")
-    }
-
-    // Chips for the launch screen. The profile's name is last, as an object so the panel shows it
-    // in the text font like the design.
+    function forkTrackpadChip(mode) { return Launch.trackpadChip(mode) }
+    function forkPresetName(preset) { return Launch.presetName(preset) }
     function forkStreamSummary(appName) {
-        var e = forkEffectiveStream(appName)
-        var chips = [e.width + "×" + e.height + " · " + AspectRatios.ratioLabel(e.width, e.height), qsTr("%1 fps").arg(e.fps),
-                     qsTr("%1 Mb/s").arg(e.bitrate / 1000), forkCodecName(e.codec) + (e.hdr ? " · HDR" : "")]
-        if (e.yuv) {
-            chips.push("4:4:4")
-        }
-        if (forkTrackpadChip(e.trackpad) !== "") {
-            chips.push(forkTrackpadChip(e.trackpad))
-        }
-        var profile = forkProfileName(e.profile)
-        if (profile !== "") {
-            chips.push({ "text": profile, "plain": true })
-        }
-        return chips
+        return Launch.streamSummary(forkHostUuid, appName, streamProfileDialog.profileName)
     }
-
-    // The band's one line for the running app, like "3024×1890 · 120 fps · HEVC 10-bit · Office profile"
+    // The band's one line for the running app
     function forkBannerSummary(appName) {
-        var e = forkEffectiveStream(appName)
-        var codec = forkCodecName(e.codec)
-        if (e.hdr) {
-            codec += e.codec === StreamingPreferences.VCC_AUTO ? " · HDR" : " 10-bit"
-        }
-        var parts = [e.width + "×" + e.height, qsTr("%1 fps").arg(e.fps), codec]
-        var profile = forkProfileName(e.profile)
-        if (profile !== "") {
-            parts.push(profile)
-        }
-        return parts.join(" · ")
+        return Launch.bannerSummary(forkHostUuid, appName, streamProfileDialog.profileName)
     }
 
     // [fork] A chip's fill and text: a profile in its own color (Office blue, Gaming orange, Custom
@@ -1154,9 +1087,9 @@ FocusScope {
                         bottomPadding: 40
                         spacing: 12
 
-                        ForkLibraryIcon {
+                        ForkPathIcon {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            name: "magnifier"
+                            name: "search"
                             size: 30
                             strokeWidth: 1.8
                             color: ForkTheme.cv.faint

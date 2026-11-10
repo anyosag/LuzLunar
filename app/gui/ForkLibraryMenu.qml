@@ -112,14 +112,14 @@ FocusScope {
                         color: row.hi ? ForkTheme.cv.menuHi : "transparent"
                         opacity: row.modelData.disabled ? 0.4 : 1
 
-                        ForkLibraryIcon {
+                        ForkPathIcon {
                             x: 10
                             anchors.verticalCenter: parent.verticalCenter
                             name: row.modelData.icon || ""
                             size: 16
                             color: row.iconInk
                             strokeWidth: 1.8
-                            filled: row.modelData.filled ? 1 : 0
+                            filled: !!row.modelData.filled
                         }
 
                         ForkCanvasText {
@@ -132,11 +132,11 @@ FocusScope {
                             px: 13
                         }
 
-                        ForkLibraryIcon {
+                        ForkPathIcon {
                             anchors.verticalCenter: parent.verticalCenter
                             x: parent.width - 10 - 14 - (row.modelData.key ? 22 : 0)
                             visible: !!(row.modelData.check && row.modelData.checked)
-                            name: "check"
+                            name: "menuCheck"
                             size: 14
                             color: row.ink
                         }

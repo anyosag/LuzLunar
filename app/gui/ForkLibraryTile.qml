@@ -238,10 +238,12 @@ Item {
                         radius: 11
                         color: "#9B45D9"
 
-                        ForkLibraryIcon {
+                        ForkPathIcon {
                             anchors.centerIn: parent
                             name: "moon"
                             size: 12
+                            filled: true
+                            stroked: false
                             color: "#FFFFFF"
                         }
                     }
@@ -278,14 +280,14 @@ Item {
                             }
                             Behavior on opacity { NumberAnimation { duration: 180 } }
 
-                            ForkLibraryIcon {
+                            ForkPathIcon {
                                 anchors.centerIn: parent
                                 anchors.horizontalCenterOffset: tile.asleep ? 0 : 1.5
                                 name: tile.asleep ? "power" : "play"
                                 size: 22
                                 color: tile.pcOnFill
                                 strokeWidth: 2
-                                filled: tile.asleep ? 0 : 1
+                                filled: !tile.asleep
                             }
                         }
                     }
@@ -356,13 +358,13 @@ Item {
                         anchors.centerIn: parent
                         spacing: 4
 
-                        ForkLibraryIcon {
+                        ForkPathIcon {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: !!chip.modelData.icon
                             name: chip.modelData.icon || ""
                             size: 11
                             strokeWidth: 2.2
-                            filled: 0
+                            filled: false
                             color: chip.colors[1]
                         }
 
@@ -428,10 +430,11 @@ Item {
                 color: Qt.rgba(10 / 255, 14 / 255, 28 / 255, tile.hov || tile.menuOpen ? 0.8 : 0.55)
                 Behavior on color { ColorAnimation { duration: 200 } }
 
-                ForkLibraryIcon {
+                ForkPathIcon {
                     anchors.centerIn: parent
                     name: "more"
                     size: 16
+                    strokeWidth: 2.8
                     color: "#ECEEF6"
                 }
             }

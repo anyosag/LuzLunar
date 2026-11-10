@@ -298,7 +298,7 @@ Item {
                         Accessible.name: qsTr("Copy the IP address of %1").arg(band.pcName)
                         Accessible.onPressAction: band.copyAddress()
 
-                        ForkLibraryIcon {
+                        ForkPathIcon {
                             anchors.centerIn: parent
                             name: "copy"
                             size: 12
@@ -539,10 +539,11 @@ Item {
                     radius: 22
                     color: "#30D158"
 
-                    ForkLibraryIcon {
+                    ForkPathIcon {
                         anchors.centerIn: parent
-                        name: "checkCircle"
+                        name: "check"
                         size: 22
+                        strokeWidth: 2
                         color: "#05230F"
                     }
                 }
@@ -593,10 +594,12 @@ Item {
                     radius: 22
                     color: "#9B45D9"
 
-                    ForkLibraryIcon {
+                    ForkPathIcon {
                         anchors.centerIn: parent
                         name: "moon"
                         size: 20
+                        filled: true
+                        stroked: false
                         color: "#FFFFFF"
                     }
                 }

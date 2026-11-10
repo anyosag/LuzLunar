@@ -107,6 +107,18 @@ Item {
         }
     }
 
+    // Keyboard focus ring (the app's gold), a little outside the card
+    Rectangle {
+        visible: slot.focused && slot.stage && slot.stage.keyFocusRing
+        x: -6; y: -6; width: parent.width + 12; height: parent.height + 12
+        radius: 30
+        color: "transparent"
+        border.width: 2
+        border.color: ForkTheme.selEdge
+        z: 90
+        Accessible.ignored: true
+    }
+
     HoverHandler {
         id: hover
         enabled: slot.visible

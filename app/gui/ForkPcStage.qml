@@ -23,6 +23,14 @@ Item {
     property bool settled: true
     property bool revealed: true
     property bool animate: !ForkTheme.reduceMotion
+    // Keyboard focus is on the page: a ring around the focused card (the app's gold, not the PC's)
+    property bool keyFocusRing: false
+    // More than two rows of cards in the grid scroll with the wheel
+    property real gridScroll: 0
+    readonly property int gridRows: Math.ceil(n / gridCols)
+    readonly property real gridContent: 10 + gridRows * 266.14 + (gridRows - 1) * 16
+    readonly property real gridMax: Math.max(0, gridContent - height + 6)
+    clip: grid && gridMax > 0
 
     readonly property int pcCount: pcRepeater.count
     readonly property int n: pcCount + 1
@@ -63,7 +71,7 @@ Item {
             var col = i % gridCols
             var row = Math.floor(i / gridCols)
             cx = gridLeft + col * 292 + 138
-            cy = 10 + row * (ch * s + 16) + (ch * s) / 2
+            cy = 10 + row * (ch * s + 16) + (ch * s) / 2 - gridScroll
             o = 1
             z = focused ? 5 : 1
             lift = hovered ? -4 : 0
@@ -98,6 +106,24 @@ Item {
 
     function slotAt(i) {
         return i === pcCount ? addSlot : pcRepeater.itemAt(i)
+    }
+
+    // Keeps the focused card in view in the grid
+    onIndexChanged: {
+        if (!grid || gridMax <= 0) return
+        var top = 10 + Math.floor(index / gridCols) * (ch * 276 / cw + 16)
+        var h = ch * 276 / cw
+        if (top - gridScroll < 6) gridScroll = Math.max(0, top - 10)
+        else if (top + h - gridScroll > height - 6) gridScroll = Math.min(gridMax, top + h - height + 10)
+    }
+    onGridChanged: gridScroll = 0
+    Behavior on gridScroll { enabled: stageRoot.animate; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+    WheelHandler {
+        enabled: stageRoot.grid && stageRoot.gridMax > 0
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onWheel: function (event) {
+            stageRoot.gridScroll = Math.max(0, Math.min(stageRoot.gridMax, stageRoot.gridScroll - event.angleDelta.y / 2))
+        }
     }
 
     Repeater {

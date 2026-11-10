@@ -196,8 +196,10 @@ ApplicationWindow {
         }
         pageTitle: window.isSettingsPage ? qsTr("Settings") : ""
         searchPlaceholder: pageValue("forkSearchPlaceholder", qsTr("Search apps"))
-        searchAccessibleName: searchPlaceholder
-        updateReady: updateButton.browserUrl !== ""
+        searchAccessibleName: pageValue("forkSearchAccessibleName",
+                                        window.forkPage && window.forkPage.objectName !== ""
+                                        ? qsTr("Search the apps on %1").arg(window.forkPage.objectName) : searchPlaceholder)
+        updateReady: ForkUpdater.updateReady && updateButton.browserUrl !== ""
         updateTip: updateButton.tip
         discordVisible: SystemProperties.hasBrowser && window.isSettingsPage
         addPcTip: qsTr("Add PC manually") + (newPcShortcut.nativeText ? (" (" + newPcShortcut.nativeText + ")") : "")
@@ -368,6 +370,26 @@ ApplicationWindow {
         anchors.bottom: pageFooter.visible ? pageFooter.top : parent.bottom
         focus: true
 
+        // [fork] Hold transitions: pages don't slide. Your PCs steps back and All apps grows from its
+        // tile on their own (sky-chrome.md §7.3), so the page leaving only stays for as long as that
+        // takes (its forkHoldMs: PcView 480, AppView 440), when the page coming in animates too.
+        // Pages without forkHoldMs (Settings) change at once.
+        function holdFor(item) {
+            var entering = stackView.currentItem
+            if (!item || !entering || item.forkHoldMs === undefined || entering.forkHoldMs === undefined) {
+                return 0
+            }
+            return item.forkHoldMs
+        }
+        pushEnter: Transition { }
+        popEnter: Transition { }
+        pushExit: Transition {
+            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(ViewTransition.item) }
+        }
+        popExit: Transition {
+            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(ViewTransition.item) }
+        }
+
         Component.onCompleted: {
             // [fork] CI's hidden screenshot run only renders when the harness grabs the window, and
             // the style's XAnimator transitions start at a render and stop at the grab's teardown,
@@ -496,8 +518,11 @@ ApplicationWindow {
 
     // [fork] The redesign's toasts: a short confirmation at the bottom of the window, above dialogs
     // ("Renamed to Office PC"). Any page can call window.forkToast(text).
-    function forkToast(text) {
-        forkToasts.show(text)
+    function forkToast(text, ms) {
+        forkToasts.show(text, ms)
+    }
+    function forkToastHide() {
+        forkToasts.hide()
     }
 
     // In the window's overlay, where dialogs and menus go, above them all. The Overlay type has to
@@ -509,7 +534,7 @@ ApplicationWindow {
         z: 1000
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 24 + (pageFooter.visible ? pageFooter.height : 0) // [fork] above the footer
+        anchors.bottomMargin: 18 + (pageFooter.visible ? pageFooter.height : 0) // [fork] the canvas's 54 above the bottom, clear of the footer
     }
 
     function navigateTo(url, objectType)
