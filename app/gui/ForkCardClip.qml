@@ -13,26 +13,22 @@ Item {
     property real dim: 0
     default property alias content: holder.data
 
-    layer.enabled: true
-    layer.smooth: true
-    layer.effect: MultiEffect {
-        maskEnabled: true
-        maskSource: maskItem
-        maskThresholdMin: 0.5
-        maskSpreadAtMin: 1.0
-        saturation: -0.2 * clip.dim
-        brightness: -0.12 * clip.dim
-    }
-
-    Rectangle {
-        anchors.fill: parent
-        radius: clip.radius
-        color: clip.background
-    }
-
     Item {
-        id: holder
+        id: source
         anchors.fill: parent
+        visible: false
+        layer.enabled: true
+        layer.smooth: true
+
+        Rectangle {
+            anchors.fill: parent
+            radius: clip.radius
+            color: clip.background
+        }
+        Item {
+            id: holder
+            anchors.fill: parent
+        }
     }
 
     Item {
@@ -46,5 +42,16 @@ Item {
             radius: clip.radius
             color: "black"
         }
+    }
+
+    MultiEffect {
+        anchors.fill: parent
+        source: source
+        maskEnabled: true
+        maskSource: maskItem
+        maskThresholdMin: 0.5
+        maskSpreadAtMin: 1.0
+        saturation: -0.2 * clip.dim
+        brightness: -0.12 * clip.dim
     }
 }

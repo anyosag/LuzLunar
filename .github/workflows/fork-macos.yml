@@ -529,6 +529,11 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/wakesetuprules_test.cpp -o "$RUNNER_TEMP/wakesetuprules_test"
           "$RUNNER_TEMP/wakesetuprules_test"
+          # The PC card in Your PCs: its state from what the poll and this Mac know, where a PC is reached,
+          # the address note, the apps on the card, the PC's color
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/pccardrules_test.cpp -o "$RUNNER_TEMP/pccardrules_test"
+          "$RUNNER_TEMP/pccardrules_test"
           # Update Apollo: how an update that this Mac asked for ended, and an Apollo stuck checking
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/hostupdaterules_test.cpp -o "$RUNNER_TEMP/hostupdaterules_test"

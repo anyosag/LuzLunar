@@ -7,6 +7,7 @@
 #include "fork/streamprofiles.h" // [fork]
 
 #include <QCoreApplication> // [fork]
+#include <memory> // [fork]
 #include <QDateTime> // [fork]
 #include <QElapsedTimer> // [fork]
 #include <QGuiApplication> // [fork]
@@ -350,6 +351,548 @@ void ComputerModel::handleComputerStateChanged(NvComputer* computer)
         // Let the view know that this specific computer changed
         int index = m_Computers.indexOf(computer);
         emit dataChanged(createIndex(index, 0), createIndex(index, 0));
+    }
+}
+
+// [fork] ---- The redesigned PC card ------------------------------------------------------------
+
+// Everything a card needs from the NvComputer, copied under its lock. Roles that ask other objects
+// (ForkMultiDisplay, ForkHostPower) work from the copy, because NvComputer's lock isn't recursive.
+struct ComputerModel::Facts
+{
+    QString uuid;
+    QString name;
+    bool online = false;
+    bool unknown = false;
+    bool paired = false;
+    bool knownPaired = false;
+    bool wakeable = false;
+    bool hasActive = false;
+    bool activeIsLocal = false;
+    bool activeIsRemote = false;
+    bool foundAutomatically = true;
+    int currentGameId = 0;     // 0 unless online
+    int groupAppId = 0;
+    QString activeAddress;
+    QString localAddress;
+    QString manualAddress;
+    QString remoteAddress;
+    QString ipv6Address;
+    QVector<NvApp> apps;
+};
+
+ComputerModel::Facts ComputerModel::forkFacts(NvComputer* computer) const
+{
+    Facts f;
+    QReadLocker lock(&computer->lock);
+    f.uuid = computer->uuid;
+    f.name = computer->name;
+    f.online = computer->state == NvComputer::CS_ONLINE;
+    f.unknown = computer->state == NvComputer::CS_UNKNOWN;
+    f.paired = computer->pairState == NvComputer::PS_PAIRED;
+    // A PC not asked yet since LuzLunar started has no pair state, but a pinned certificate means
+    // it was paired from this Mac
+    f.knownPaired = f.paired || (computer->pairState == NvComputer::PS_UNKNOWN && !computer->serverCert.isNull());
+    f.wakeable = !computer->macAddress.isEmpty();
+    f.hasActive = !computer->activeAddress.isNull();
+    f.activeIsLocal = f.hasActive && computer->activeAddress == computer->localAddress;
+    f.activeIsRemote = f.hasActive && computer->activeAddress == computer->remoteAddress;
+    f.foundAutomatically = computer->manualAddress.isNull();
+    // The running app is the PC's while it answers; the number goes stale once it's away
+    f.currentGameId = f.online ? computer->currentGameId : 0;
+    f.groupAppId = computer->forkDisplayGroupAppId;
+    auto addr = [](const NvAddress& a) { return a.isNull() ? QString() : a.address(); };
+    f.activeAddress = addr(computer->activeAddress);
+    f.localAddress = addr(computer->localAddress);
+    f.manualAddress = addr(computer->manualAddress);
+    f.remoteAddress = addr(computer->remoteAddress);
+    f.ipv6Address = addr(computer->ipv6Address);
+    f.apps = computer->appList;
+    return f;
+}
+
+static QVariantMap appMap(const NvApp& app, int runningId, const QUrl& art)
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("appid"), app.id);
+    map.insert(QStringLiteral("name"), app.name);
+    map.insert(QStringLiteral("boxart"), art.toString());
+    map.insert(QStringLiteral("running"), runningId != 0 && app.id == runningId);
+    return map;
+}
+
+QVariantList ComputerModel::forkPreviewApps(const Facts& f, NvComputer* computer) const
+{
+    // The multi-display app only shows when this Mac and the PC can stream several displays, or
+    // while it runs (so it can be quit); same test as AppModel
+    QVector<NvApp> visible;
+    const bool groupOk = ForkMultiDisplay::canStreamGroup(computer);
+    for (const NvApp& app : f.apps) {
+        if (f.groupAppId != 0 && app.id == f.groupAppId && app.id != f.currentGameId && !groupOk) {
+            continue;
+        }
+        visible.append(app);
+    }
+
+    std::vector<PcCardRules::App> rules;
+    for (const NvApp& app : visible) {
+        PcCardRules::App a;
+        a.id = app.id;
+        a.name = app.name.toStdString();
+        a.hidden = app.hidden;
+        rules.push_back(a);
+    }
+    std::vector<std::string> recent;
+    for (const QString& name : ForkPcPrefs::get()->recentApps(f.uuid)) {
+        recent.push_back(name.toStdString());
+    }
+
+    QVariantList list;
+    for (int i : PcCardRules::previewOrder(rules, f.currentGameId, recent)) {
+        NvApp app = visible[i];
+        QUrl art;
+        if (!f.online) {
+            art = m_ForkBoxArt.cachedBoxArt(computer, app.id);   // never fetches while the PC is away
+        } else {
+            art = m_ForkBoxArt.cachedBoxArt(computer, app.id);
+            const QPair<QString, int> request(f.uuid, app.id);
+            if (art.scheme() == QLatin1String("qrc") && !m_ForkArtRequested.contains(request)) {
+                m_ForkArtRequested.insert(request);
+                art = m_ForkBoxArt.loadBoxArt(computer, app);    // starts a fetch; dataChanged when it lands
+            }
+        }
+        list.append(appMap(app, f.currentGameId, art));
+    }
+    return list;
+}
+
+static qint64 nowSecs()
+{
+    return QDateTime::currentSecsSinceEpoch();
+}
+
+QVariant ComputerModel::forkData(NvComputer* computer, int role) const
+{
+    ForkPcPrefs* prefs = ForkPcPrefs::get();
+    const Facts f = forkFacts(computer);
+    const QString uuid = f.uuid;
+
+    // What Apollo told ForkHostUpdates and ForkHostPower this session
+    const QVariantMap updates = ForkHostUpdates::get()->status(uuid);
+    const QVariantMap sleepInfo = ForkHostPower::get()->status(uuid);
+    const QVariantMap wakeInfo = ForkHostPower::get()->wakeStatus(uuid);
+
+    const bool updatesAnswered = updates.value(QStringLiteral("known")).toBool() &&
+                                 updates.value(QStringLiteral("supported")).toBool() &&
+                                 updates.value(QStringLiteral("permitted")).toBool();
+    const QString liveVersion = updatesAnswered ? updates.value(QStringLiteral("version")).toString() : QString();
+    const QString version = !liveVersion.isEmpty() ? liveVersion : prefs->apolloVersion(uuid);
+
+    QString wakeFromOff = prefs->wakeFromOff(uuid);
+    if (wakeInfo.value(QStringLiteral("known")).toBool() && wakeInfo.value(QStringLiteral("supported")).toBool()) {
+        wakeFromOff = wakeInfo.value(QStringLiteral("fromOff")).toString();
+    }
+    if (wakeFromOff == QLatin1String("unsupported")) {
+        wakeFromOff.clear();
+    }
+
+    const qint64 now = nowSecs();
+    const qint64 wakeSent = prefs->wakeSentSecs(uuid);
+    const bool waking = !f.online && wakeSent > 0 && now - wakeSent < PcCardRules::k_WakeWaitSecs;
+    const bool wakeTimedOut = !f.online && wakeSent > 0 && now - wakeSent >= PcCardRules::k_WakeWaitSecs;
+
+    const QString via = f.online ? (f.activeIsLocal ? QStringLiteral("home") : f.activeIsRemote ? QStringLiteral("internet") : prefs->lastSeenVia(uuid))
+                                 : prefs->lastSeenVia(uuid);
+    const QString network = QString::fromStdString(
+        PcCardRules::network(f.online, f.hasActive, f.activeIsLocal, f.activeIsRemote));
+    const bool remoteWorked = prefs->remoteWorkedSecs(uuid) > 0;
+
+    const QVariantMap stream = prefs->lastStream(uuid);
+    const bool startedHere = f.currentGameId != 0 && stream.value(QStringLiteral("appId")).toInt() == f.currentGameId;
+
+    const qint64 powerAt = prefs->powerActionSecs(uuid);
+
+    switch (role) {
+    case StateRole: {
+        PcCardRules::Inputs in;
+        in.online = f.online;
+        in.unknown = f.unknown;
+        in.paired = f.paired;
+        in.knownPaired = f.knownPaired;
+        in.running = f.currentGameId != 0;
+        in.wakeable = f.wakeable;
+        in.waking = waking;
+        in.wakeTimedOut = wakeTimedOut;
+        in.powerAction = prefs->powerAction(uuid).toStdString();
+        in.powerActionAgeSecs = powerAt > 0 ? now - powerAt : -1;
+        in.wakeFromOff = wakeFromOff.toStdString();
+        // Not known: whether this Mac is on the PC's home network now. Only a PC last seen over
+        // the internet counts as away from home.
+        in.atHome = prefs->lastSeenVia(uuid) != QLatin1String("internet");
+        return QString::fromStdString(PcCardRules::state(in));
+    }
+    case KnownPairedRole:
+        return f.knownPaired;
+    case ColorKeyRole:
+        // A PC that isn't paired is gray; a paired one has its own (and gets one the first time)
+        return f.knownPaired ? prefs->colorKey(uuid) : QStringLiteral("gray");
+    case KeepFirstRole:
+        return prefs->keepFirst(uuid);
+    case WakeOnPickRole:
+        return prefs->wakeOnPick(uuid);
+    case ApolloVersionRole:
+        return version;
+    case NetworkRole:
+        return network;
+    case LatencyMsRole:
+    {
+        const QVector<int> samples = m_ForkLatency.value(uuid);
+        return f.online ? PcCardRules::median(std::vector<int>(samples.begin(), samples.end())) : -1;
+    }
+    case AddressRole: {
+        if (f.online && !f.activeAddress.isEmpty()) {
+            return f.activeAddress;
+        }
+        if (via == QLatin1String("internet") && !f.remoteAddress.isEmpty()) {
+            return f.remoteAddress;
+        }
+        for (const QString& a : { f.localAddress, f.manualAddress, f.remoteAddress, f.ipv6Address }) {
+            if (!a.isEmpty()) {
+                return a;
+            }
+        }
+        return QString();
+    }
+    case AddressNoteRole:
+        return QString::fromStdString(PcCardRules::addressNote(f.online, f.knownPaired, network.toStdString(),
+                                                               remoteWorked, f.foundAutomatically));
+    case HasRemoteAddressRole:
+        return !f.remoteAddress.isEmpty();
+    case RemoteWorkedRole:
+        return remoteWorked;
+    case FoundAutomaticallyRole:
+        return f.foundAutomatically;
+    case LastSeenSecsRole:
+        return prefs->lastSeenSecs(uuid);
+    case LastSeenViaRole:
+        return prefs->lastSeenVia(uuid);
+    case RunningAppIdRole:
+        return f.currentGameId;
+    case RunningAppRole:
+        for (const NvApp& app : f.apps) {
+            if (f.currentGameId != 0 && app.id == f.currentGameId) {
+                return app.name;
+            }
+        }
+        return QString();
+    case StreamStartedHereRole:
+        return startedHere;
+    case StreamWidthRole:
+        return startedHere ? stream.value(QStringLiteral("width")).toInt() : 0;
+    case StreamHeightRole:
+        return startedHere ? stream.value(QStringLiteral("height")).toInt() : 0;
+    case StreamFpsRole:
+        return startedHere ? stream.value(QStringLiteral("fps")).toInt() : 0;
+    case StreamHdrRole:
+        return startedHere && stream.value(QStringLiteral("hdr")).toBool();
+    case StreamCodecRole:
+        return startedHere ? stream.value(QStringLiteral("codec")).toString() : QString();
+    case HostUpdateRole:
+        return f.online && updates.value(QStringLiteral("update")).toBool() && updatesAnswered &&
+               !updates.value(QStringLiteral("updating")).toBool();
+    case ApolloUpToDateRole:
+        if (f.online) {
+            return updatesAnswered && !updates.value(QStringLiteral("update")).toBool() && !liveVersion.isEmpty();
+        }
+        return !prefs->apolloVersion(uuid).isEmpty() && !prefs->apolloUpdate(uuid);
+    case ApolloUpdatingRole:
+        return updates.value(QStringLiteral("updating")).toBool();
+    case WakeFromOffRole:
+        return wakeFromOff;
+    case WakingRole:
+        return waking;
+    case WakeTimedOutRole:
+        return wakeTimedOut;
+    case PowerActionRole:
+        return prefs->powerAction(uuid);
+    case CanSleepRole:
+        return f.online && f.paired && sleepInfo.value(QStringLiteral("supported")).toBool() &&
+               sleepInfo.value(QStringLiteral("permitted")).toBool();
+    case CanShutDownRole:
+        return f.online && f.paired && sleepInfo.value(QStringLiteral("supported")).toBool() &&
+               sleepInfo.value(QStringLiteral("permitted")).toBool() && sleepInfo.value(QStringLiteral("canShutDown")).toBool();
+    case CanSetUpWakeRole:
+        return f.online ? wakeInfo.value(QStringLiteral("supported")).toBool() : !wakeFromOff.isEmpty();
+    case PreviewAppsRole:
+        return forkPreviewApps(f, computer);
+    case AppCountRole:
+    case HiddenAppCountRole: {
+        const bool groupOk = ForkMultiDisplay::canStreamGroup(computer);
+        int count = 0, hidden = 0;
+        for (const NvApp& app : f.apps) {
+            if (f.groupAppId != 0 && app.id == f.groupAppId && app.id != f.currentGameId && !groupOk) {
+                continue;
+            }
+            count++;
+            if (app.hidden) {
+                hidden++;
+            }
+        }
+        return role == AppCountRole ? count : hidden;
+    }
+    case AppsCachedRole:
+        return !f.online && !f.apps.isEmpty();
+    case MainAppIdRole:
+    case MainAppRole: {
+        std::vector<PcCardRules::App> rules;
+        std::vector<bool> direct;
+        for (const NvApp& app : f.apps) {
+            PcCardRules::App a;
+            a.id = app.id;
+            a.name = app.name.toStdString();
+            a.hidden = app.hidden;
+            rules.push_back(a);
+            direct.push_back(app.directLaunch);
+        }
+        std::vector<std::string> recent;
+        for (const QString& name : prefs->recentApps(uuid)) {
+            recent.push_back(name.toStdString());
+        }
+        const int i = PcCardRules::mainApp(rules, direct, f.currentGameId, recent);
+        if (role == MainAppIdRole) {
+            return i >= 0 ? f.apps[i].id : 0;
+        }
+        return i >= 0 ? f.apps[i].name : QString();
+    }
+    default:
+        return QVariant();
+    }
+}
+
+int ComputerModel::forkIndexOf(const QString& uuid) const
+{
+    for (int i = 0; i < m_Computers.count(); i++) {
+        if (m_Computers[i]->uuid == uuid) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+Session* ComputerModel::createSessionForApp(int computerIndex, int appId)
+{
+    if (computerIndex < 0 || computerIndex >= m_Computers.count()) {
+        return nullptr;
+    }
+
+    NvComputer* computer = m_Computers[computerIndex];
+    NvApp found;
+    {
+        QReadLocker lock(&computer->lock);
+        for (const NvApp& app : computer->appList) {
+            if (app.id == appId) {
+                found = app;
+                break;
+            }
+        }
+    }
+    if (found.id == 0) {
+        return nullptr;
+    }
+    return StreamProfiles::createSession(computer, found);
+}
+
+void ComputerModel::quitRunningApp(int computerIndex)
+{
+    if (computerIndex < 0 || computerIndex >= m_Computers.count()) {
+        return;
+    }
+    m_ComputerManager->quitRunningApp(m_Computers[computerIndex]);
+}
+
+void ComputerModel::forkRefreshAll()
+{
+    if (!m_Computers.isEmpty()) {
+        emit dataChanged(createIndex(0, 0), createIndex(m_Computers.count() - 1, 0));
+    }
+}
+
+// The PC kept first can change the order: reset when it does, else refresh the PC's row
+void ComputerModel::forkRecheckOrder(const QString& changedUuid)
+{
+    QVector<NvComputer*> newList = m_ComputerManager->getComputers();
+    if (m_Computers != newList) {
+        beginResetModel();
+        m_Computers = newList;
+        endResetModel();
+        return;
+    }
+    const int row = changedUuid.isEmpty() ? -1 : forkIndexOf(changedUuid);
+    if (row >= 0) {
+        emit dataChanged(createIndex(row, 0), createIndex(row, 0));
+    } else {
+        forkRefreshAll();
+    }
+}
+
+void ComputerModel::forkHandlePrefsChanged(const QString& uuid)
+{
+    forkRecheckOrder(uuid);
+
+    // The card shows the result of Sleep PC or Shut Down PC for a minute, then goes by what the poll says
+    if (!uuid.isEmpty() && !ForkPcPrefs::get()->powerAction(uuid).isEmpty()) {
+        QTimer::singleShot((PcCardRules::k_GoingDownSecs + 1) * 1000, this, &ComputerModel::forkRefreshAll);
+    }
+}
+
+// Apollo answered ForkHostPower or ForkHostUpdates: remember what a card needs while the PC is away,
+// then refresh the rows
+void ComputerModel::forkHandleHostInfoChanged()
+{
+    for (NvComputer* computer : m_Computers) {
+        QString uuid;
+        {
+            QReadLocker lock(&computer->lock);
+            uuid = computer->uuid;
+        }
+        const QVariantMap updates = ForkHostUpdates::get()->status(uuid);
+        if (updates.value(QStringLiteral("known")).toBool() && updates.value(QStringLiteral("supported")).toBool() &&
+                updates.value(QStringLiteral("permitted")).toBool() &&
+                !updates.value(QStringLiteral("version")).toString().isEmpty()) {
+            ForkPcPrefs::get()->noteApollo(uuid, updates.value(QStringLiteral("version")).toString(),
+                                           updates.value(QStringLiteral("update")).toBool());
+        }
+        const QVariantMap wake = ForkHostPower::get()->wakeStatus(uuid);
+        if (wake.value(QStringLiteral("known")).toBool()) {
+            ForkPcPrefs::get()->noteWakeFromOff(uuid, wake.value(QStringLiteral("supported")).toBool()
+                                                      ? wake.value(QStringLiteral("fromOff")).toString()
+                                                      : QStringLiteral("unsupported"));
+        }
+    }
+    forkRefreshAll();
+}
+
+void ComputerModel::forkHandleBoxArtLoaded(NvComputer* computer, NvApp app, QUrl)
+{
+    const int row = m_Computers.indexOf(computer);
+    m_ForkArtRequested.remove(QPair<QString, int>(computer->uuid, app.id));
+    if (row >= 0) {
+        emit dataChanged(createIndex(row, 0), createIndex(row, 0), QVector<int>() << PreviewAppsRole);
+    }
+}
+
+// Called on the main thread whenever a PC's poll changed: what a card remembers about a PC that's away
+void ComputerModel::forkNoteTransitions(NvComputer* computer)
+{
+    const Facts f = forkFacts(computer);
+    ForkPcPrefs* prefs = ForkPcPrefs::get();
+    const bool was = m_ForkWasOnline.value(f.uuid, false);
+    const bool known = m_ForkWasOnline.contains(f.uuid);
+    const qint64 now = nowSecs();
+
+    if (f.online) {
+        // Which address it's reached at, for "last seen at home" later
+        if (f.activeIsLocal) {
+            m_ForkVia.insert(f.uuid, QStringLiteral("home"));
+        } else if (f.activeIsRemote) {
+            m_ForkVia.insert(f.uuid, QStringLiteral("internet"));
+            // The only proof that its outside address works: it answered there
+            if (now - prefs->remoteWorkedSecs(f.uuid) > 3600) {
+                prefs->noteRemoteWorked(f.uuid, now);
+            }
+        }
+
+        if (!was) {
+            // Back: the wake worked, a request to go down is over, art that failed can be asked again
+            prefs->clearWakeSent(f.uuid);
+            m_ForkArtRequested.clear();
+            m_ForkProbing.remove(f.uuid);
+            if (f.knownPaired) {
+                // Ask Apollo once now, so a PC that came online after launch shows its version and wake setup
+                ForkHostUpdates::get()->refresh(f.uuid);
+                ForkHostPower::get()->refresh(f.uuid);
+            }
+        }
+        // A request to go down is history once the PC is up again, was never seen going down (a
+        // leftover from an earlier run), or still answers a minute after the request
+        const qint64 powerAt = prefs->powerActionSecs(f.uuid);
+        if (!prefs->powerAction(f.uuid).isEmpty() &&
+                (!known || !was || now - powerAt >= PcCardRules::k_GoingDownSecs)) {
+            prefs->clearPowerAction(f.uuid);
+        }
+    } else if (known && was) {
+        // Online until now: it went away
+        prefs->noteLastSeen(f.uuid, now, m_ForkVia.value(f.uuid));
+        m_ForkLatency.remove(f.uuid);
+    }
+
+    m_ForkWasOnline.insert(f.uuid, f.online);
+}
+
+void ComputerModel::forkWriteLastSeen()
+{
+    const qint64 now = nowSecs();
+    for (NvComputer* computer : m_Computers) {
+        const Facts f = forkFacts(computer);
+        if (f.online) {
+            ForkPcPrefs::get()->noteLastSeen(f.uuid, now, m_ForkVia.value(f.uuid));
+        }
+    }
+}
+
+// Times a TCP connect to each online PC's HTTP port: about one round trip. Never blocks.
+void ComputerModel::forkProbeLatency()
+{
+    if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
+        return;
+    }
+    for (NvComputer* computer : m_Computers) {
+        QString uuid, host;
+        quint16 port = 0;
+        {
+            QReadLocker lock(&computer->lock);
+            if (computer->state != NvComputer::CS_ONLINE || computer->activeAddress.isNull()) {
+                continue;
+            }
+            uuid = computer->uuid;
+            host = computer->activeAddress.address();
+            port = computer->activeAddress.port();
+        }
+        if (m_ForkProbing.contains(uuid)) {
+            continue;
+        }
+        m_ForkProbing.insert(uuid);
+
+        QTcpSocket* socket = new QTcpSocket(this);
+        QElapsedTimer* timer = new QElapsedTimer();
+        timer->start();
+        auto done = std::make_shared<bool>(false);
+        auto finish = [this, socket, timer, done, uuid](bool connected) {
+            if (*done) {
+                return;
+            }
+            *done = true;
+            if (connected) {
+                QVector<int>& samples = m_ForkLatency[uuid];
+                samples.append(qMax(1, int((timer->nsecsElapsed() + 500000) / 1000000)));
+                while (samples.size() > 5) {
+                    samples.removeFirst();
+                }
+                const int row = forkIndexOf(uuid);
+                if (row >= 0) {
+                    emit dataChanged(createIndex(row, 0), createIndex(row, 0), QVector<int>() << LatencyMsRole);
+                }
+            }
+            m_ForkProbing.remove(uuid);
+            delete timer;
+            socket->abort();
+            socket->deleteLater();
+        };
+        connect(socket, &QTcpSocket::connected, this, [finish]() { finish(true); });
+        connect(socket, &QTcpSocket::errorOccurred, this, [finish](QAbstractSocket::SocketError) { finish(false); });
+        // A silent PC: give up after 2 s
+        QTimer::singleShot(2000, this, [finish]() { finish(false); });
+        socket->connectToHost(host, port);
     }
 }
 

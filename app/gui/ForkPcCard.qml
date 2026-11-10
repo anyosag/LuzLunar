@@ -243,21 +243,21 @@ Item {
                 x: 86
                 y: (104 - height) / 2
                 spacing: 4
-                Text {
+                ForkCardLabel {
                     width: Math.min(360, implicitWidth)
                     text: card.pcName
                     elide: Text.ElideRight
                     color: "white"
-                    font.family: ForkTheme.uiFamily; font.pixelSize: 22; font.weight: 700
+                    px: 22; font.weight: 700
                     font.letterSpacing: -0.33
                     lineHeightMode: Text.FixedHeight; lineHeight: 28
                 }
-                Text {
+                ForkCardLabel {
                     width: Math.min(360, implicitWidth)
                     text: card.info.subLine
                     elide: Text.ElideRight
                     color: Qt.rgba(1, 1, 1, 0.78)
-                    font.family: ForkTheme.uiFamily; font.pixelSize: 13; font.weight: 400
+                    px: 13; font.weight: 400
                     lineHeightMode: Text.FixedHeight; lineHeight: 17
                 }
                 Item {
@@ -274,18 +274,18 @@ Item {
                             x: 8
                             height: parent.height
                             spacing: 6
-                            Text {
+                            ForkCardLabel {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "IP"
                                 color: "white"; opacity: 0.7
-                                font.family: ForkTheme.uiFamily; font.pixelSize: 10; font.weight: 700
+                                px: 10; font.weight: 700
                                 font.letterSpacing: 0.6
                             }
-                            Text {
+                            ForkCardLabel {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: card.address
                                 color: "white"
-                                font.family: ForkTheme.monoFamily; font.pixelSize: 12
+                                font.family: ForkTheme.monoFamily; px: 12
                             }
                             Item {
                                 id: copyBtn
@@ -305,7 +305,7 @@ Item {
                             }
                         }
                     }
-                    Text {
+                    ForkCardLabel {
                         anchors.left: ipChip.right
                         anchors.leftMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
@@ -313,7 +313,7 @@ Item {
                         text: card.info.ipNote
                         elide: Text.ElideRight
                         color: Qt.rgba(1, 1, 1, 0.62)
-                        font.family: ForkTheme.uiFamily; font.pixelSize: 11.5
+                        px: 11.5
                     }
                 }
             }
@@ -373,31 +373,31 @@ Item {
                         x: 60
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
-                        Text {
+                        ForkCardLabel {
                             width: Math.min(implicitWidth, 518 - 60 - 14 - statusLabel.implicitWidth - 12)
                             text: card.info.title
                             elide: Text.ElideRight
                             color: ForkTheme.cv.text
-                            font.family: ForkTheme.uiFamily; font.pixelSize: 15; font.weight: 650
+                            px: 15; font.weight: 650
                             lineHeightMode: Text.FixedHeight; lineHeight: 20
                         }
-                        Text {
+                        ForkCardLabel {
                             width: Math.min(implicitWidth, 518 - 60 - 14 - statusLabel.implicitWidth - 12)
                             text: card.info.sub
                             elide: Text.ElideRight
                             color: ForkTheme.cv.muted
-                            font.family: ForkTheme.uiFamily; font.pixelSize: 12.5
+                            px: 12.5
                             lineHeightMode: Text.FixedHeight; lineHeight: 17
                         }
                     }
-                    Text {
+                    ForkCardLabel {
                         id: statusLabel
                         anchors.right: parent.right
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
                         text: card.info.label
                         color: card.stateInk(card.info.labelKey)
-                        font.family: ForkTheme.uiFamily; font.pixelSize: 11; font.weight: 700
+                        px: 11; font.weight: 700
                         font.letterSpacing: 0.66
                         font.capitalization: Font.AllUppercase
                     }
@@ -415,20 +415,20 @@ Item {
                     Item {
                         width: 518
                         height: card.info.tilesNote !== "" ? 15 : 14
-                        Text {
+                        ForkCardLabel {
                             id: appsTitle
                             text: card.info.tilesTitle
                             color: ForkTheme.cv.faint
-                            font.family: ForkTheme.uiFamily; font.pixelSize: 11; font.weight: 700
+                            px: 11; font.weight: 700
                             font.letterSpacing: 0.88
                             font.capitalization: Font.AllUppercase
                         }
-                        Text {
+                        ForkCardLabel {
                             anchors.right: parent.right
                             anchors.baseline: appsTitle.baseline
                             text: card.info.tilesNote
                             color: ForkTheme.cv.muted
-                            font.family: ForkTheme.uiFamily; font.pixelSize: 12
+                            px: 12
                         }
                     }
                 }
@@ -482,10 +482,10 @@ Item {
                     shown: card.settled || card.revealed
                     revealed: card.revealed
                     delay: 130
-                    Text {
+                    ForkCardLabel {
                         text: "How to pair"
                         color: ForkTheme.cv.faint
-                        font.family: ForkTheme.uiFamily; font.pixelSize: 11; font.weight: 700
+                        px: 11; font.weight: 700
                         font.letterSpacing: 0.88
                         font.capitalization: Font.AllUppercase
                     }
@@ -504,21 +504,21 @@ Item {
                             Rectangle {
                                 width: 24; height: 24; radius: 12
                                 color: card.tileDisc
-                                Text {
+                                ForkCardLabel {
                                     anchors.centerIn: parent
                                     text: stepEnter.index + 1
                                     color: card.tileInk
-                                    font.family: ForkTheme.uiFamily; font.pixelSize: 12; font.weight: 700
+                                    px: 12; font.weight: 700
                                 }
                             }
-                            Text {
+                            ForkCardLabel {
                                 x: 34
                                 width: 518 - 34
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: stepEnter.modelData
                                 elide: Text.ElideRight
                                 color: ForkTheme.cv.text2
-                                font.family: ForkTheme.uiFamily; font.pixelSize: 13.5
+                                px: 13.5
                                 lineHeightMode: Text.FixedHeight; lineHeight: 19
                             }
                         }

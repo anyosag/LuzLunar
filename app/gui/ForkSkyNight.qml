@@ -86,7 +86,7 @@ Item {
     SequentialAnimation {
         id: satAnim
         running: night.active
-        paused: !night.running
+        paused: night.active && !night.running
         PauseAnimation { duration: 3000 }
         SequentialAnimation {
             loops: Animation.Infinite
@@ -155,7 +155,7 @@ Item {
     SequentialAnimation {
         id: shootAnim
         running: night.active
-        paused: !night.running
+        paused: night.active && !night.running
         PauseAnimation { duration: 1800 }
         // each shot: start (jump), fly, fade, idle 3.5 - 9 s
         SequentialAnimation {

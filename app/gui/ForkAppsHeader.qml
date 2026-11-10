@@ -181,11 +181,6 @@ Item {
         settled: band.settled
         delay: 90
 
-        RectangularShadow {
-            visible: false
-            anchors.fill: parent
-        }
-
         Image {
             id: logo
             anchors.fill: parent
@@ -342,7 +337,7 @@ Item {
         id: status
         x: band.width - 18 - width
         y: 16
-        width: 1 + 10 + content.implicitWidth + 12 + 1
+        width: 1 + 10 + statusRow.implicitWidth + 12 + 1
         height: 92
         entered: band.entered
         settled: band.settled
@@ -357,7 +352,7 @@ Item {
         }
 
         Row {
-            id: content
+            id: statusRow
             x: 11
             anchors.verticalCenter: parent.verticalCenter
             spacing: 14

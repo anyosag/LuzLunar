@@ -76,13 +76,13 @@ Item {
             strokeWidth: btn.kind === "icon" ? 2.6 : (btn.kind === "primary" ? 1.9 : btn.iconStrokeWidth)
         }
 
-        Text {
+        ForkCardLabel {
             visible: btn.kind !== "icon"
             anchors.verticalCenter: parent.verticalCenter
             text: btn.text
             color: btn.ink
             font.family: ForkTheme.uiFamily
-            font.pixelSize: btn.kind === "primary" ? (btn.big ? 14.5 : 13) : (btn.big ? 13.5 : 13)
+            px: btn.kind === "primary" ? (btn.big ? 14.5 : 13) : (btn.big ? 13.5 : 13)
             font.weight: btn.kind === "primary" ? (btn.big ? 650 : 600) : (btn.big ? 500 : 600)
         }
     }

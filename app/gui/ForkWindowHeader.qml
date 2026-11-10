@@ -77,6 +77,7 @@ Item {
 
     // The bar's controls fade as the page changes (sky-chrome.md §5.8, §5.10, §7.3)
     component FxItem: Item {
+        id: fx
         property bool shown: true
         property int inDelay: 180
         property int inMs: 280
@@ -89,9 +90,9 @@ Item {
 
         Behavior on opacity {
             SequentialAnimation {
-                PauseAnimation { duration: ForkTheme.reduceMotion || !parent.shown ? 0 : parent.inDelay }
+                PauseAnimation { duration: ForkTheme.reduceMotion || !fx.shown ? 0 : fx.inDelay }
                 NumberAnimation {
-                    duration: ForkTheme.reduceMotion ? 0 : (parent.shown ? parent.inMs : parent.outMs)
+                    duration: ForkTheme.reduceMotion ? 0 : (fx.shown ? fx.inMs : fx.outMs)
                     easing.type: Easing.Bezier
                     easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1]
                 }
@@ -275,7 +276,7 @@ Item {
                     border.color: ForkTheme.cv.line
 
                     Rectangle {
-                        visible: searchField.visualFocus
+                        visible: !!searchField && searchField.visualFocus === true
                         anchors.fill: parent
                         anchors.margins: -2
                         radius: 10
@@ -449,7 +450,8 @@ Item {
                 onClicked: root.addPcRequested()
             }
 
-            // Help and Settings
+            // Help and Settings. The canvas draws their 17 px icons 14 px wide: the buttons' default
+            // 6 px side padding shrinks them to the 14 px that is left of the 26 px width.
             Rectangle {
                 width: tools.width + 8
                 height: 30
@@ -470,7 +472,7 @@ Item {
                         radius: 12
                         borderWidth: 0
                         iconName: "help"
-                        iconSize: 17
+                        iconSize: 14
                         iconColor: ForkTheme.cv.text2
                         Accessible.name: qsTr("Help")
                         ToolTip.visible: hovered
@@ -487,7 +489,7 @@ Item {
                         radius: 12
                         borderWidth: 0
                         iconName: "settings"
-                        iconSize: 17
+                        iconSize: 14
                         iconColor: ForkTheme.cv.text2
                         Accessible.name: qsTr("Settings")
                         ToolTip.visible: hovered

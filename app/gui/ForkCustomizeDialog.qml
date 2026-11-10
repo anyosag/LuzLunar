@@ -301,13 +301,13 @@ NavigableDialog {
 
                 Rectangle { // selected: the swatch's fill, the sheet color, then the disc
                     anchors.centerIn: parent; width: 40; height: 40; radius: 20
-                    color: modelData.fill; visible: sw.picked
+                    color: sw.modelData.fill; visible: sw.picked
                 }
                 Rectangle {
                     anchors.centerIn: parent; width: 36; height: 36; radius: 18
                     color: sheet.cSurface; visible: sw.picked
                 }
-                Rectangle { anchors.fill: parent; radius: 16; color: modelData.fill }
+                Rectangle { anchors.fill: parent; radius: 16; color: sw.modelData.fill }
                 Rectangle {
                     anchors.fill: parent; radius: 16; color: "transparent"
                     border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.12); visible: !sw.picked

@@ -32,6 +32,9 @@ Item {
     readonly property real ch: 540
     readonly property real side: 0.58
 
+    // Counts up when cards are made or removed, so bindings that read the rows refresh
+    property int itemsRevision: 0
+
     signal pick(int slot)
     signal step(int delta)
 
@@ -100,6 +103,8 @@ Item {
     Repeater {
         id: pcRepeater
         model: stage.pcModel
+        onItemAdded: stage.itemsRevision++
+        onItemRemoved: stage.itemsRevision++
         delegate: ForkPcStageSlot {
             required property var model
             required property int index

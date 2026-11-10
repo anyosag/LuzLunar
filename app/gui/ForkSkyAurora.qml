@@ -35,8 +35,8 @@ Item {
 
     readonly property int bw: Math.max(8, Math.round(skyWidth * quality))
     readonly property int bh: Math.max(8, Math.round(520 * quality))
-    readonly property int gw: Math.max(8, Math.round(skyWidth / 8))
-    readonly property int gh: 65
+    readonly property int gw: Math.max(32, Math.round(skyWidth / 8))
+    readonly property int gh: 64
 
     function paintSprite(cv, stops, h) {
         var g = cv.getContext("2d")
@@ -98,19 +98,28 @@ Item {
     // The curtains (additive), at quality x the canvas's pixels. Sits under `out`, which is opaque
     Canvas {
         id: curtains
-        width: aurora.skyWidth; height: 520
+        width: aurora.bw; height: aurora.bh
         canvasSize: Qt.size(aurora.bw, aurora.bh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.drawCurtains(curtains.getContext("2d"))
-        onPainted: glow.requestPaint()
+        onPainted: glowMid.requestPaint()
     }
 
-    // A small copy, blurred and saturated: the glow the curtains cast
+    // A small copy, blurred: the glow the curtains cast
+    Canvas {
+        id: glowMid
+        width: aurora.gw; height: aurora.gh
+        canvasSize: Qt.size(aurora.gw, aurora.gh)
+        renderTarget: Canvas.Image
+        renderStrategy: Canvas.Cooperative
+        onPaint: aurora.drawGlowMid(glowMid.getContext("2d"))
+        onPainted: glow.requestPaint()
+    }
     Canvas {
         id: glow
-        width: aurora.skyWidth; height: 520
-        canvasSize: Qt.size(aurora.gw, aurora.gh)
+        width: aurora.gw / 4; height: aurora.gh / 4
+        canvasSize: Qt.size(aurora.gw / 4, aurora.gh / 4)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.drawGlow(glow.getContext("2d"))
@@ -125,6 +134,13 @@ Item {
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.drawOut(out.getContext("2d"))
         onPainted: aurora.frameReady()
+    }
+
+    // for tests: save the three bitmaps
+    function dump(prefix) {
+        curtains.save(prefix + "-curtains.png")
+        glow.save(prefix + "-glow.png")
+        out.save(prefix + "-out.png")
     }
 
     function paintFrame() {
@@ -176,10 +192,10 @@ Item {
                     continue
                 var tall = c.h * (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(u * c.hf * PI + t * 0.25 + c.p))) * (0.85 + 0.15 * rays)
                 ctx.globalAlpha = Math.min(1, light)
-                ctx.drawImage(sprite, x, base - tall, step + 0.7, tall)
+                ctx.drawImage(sprite, x, base - tall, 3, tall)
                 if (c.fringe && light > 0.55) {
                     ctx.globalAlpha = Math.min(1, (light - 0.55) * 1.6)
-                    ctx.drawImage(spriteFringe, x, base - 2, step + 0.7, 10)
+                    ctx.drawImage(spriteFringe, x, base - 2, 3, 10)
                 }
             }
         }
@@ -187,71 +203,17 @@ Item {
         ctx.globalCompositeOperation = "source-over"
     }
 
-    // 1/8 size copy, then a Gaussian-ish blur (sigma 16 px = 2 px here) and saturate 1.2
-    function drawGlow(ctx) {
-        var gw = aurora.gw, gh = aurora.gh
+    // The glow: a 1/8 size copy, then a 1/32 size copy of that (area averaging), blown up again with
+    // linear filtering: together about the canvas's 16 px Gaussian, with no per-pixel work in JS
+    function drawGlowMid(ctx) {
         ctx.reset()
-        ctx.clearRect(0, 0, gw, gh)
-        ctx.drawImage(curtains, 0, 0, aurora.bw, aurora.bh, 0, 0, gw, gh)
-        var img = ctx.getImageData(0, 0, gw, gh)
-        var d = img.data
-        var n = gw * gh
-        var buf = new Float32Array(n * 4)
-        var i, k
-        for (i = 0; i < n; i++) {
-            var a = d[i * 4 + 3] / 255
-            buf[i * 4] = d[i * 4] / 255 * a
-            buf[i * 4 + 1] = d[i * 4 + 1] / 255 * a
-            buf[i * 4 + 2] = d[i * 4 + 2] / 255 * a
-            buf[i * 4 + 3] = a
-        }
-        // three box passes of radius 2 per axis ~ Gaussian with sigma ~ 2.5 px; scaled to sigma 2
-        var tmp = new Float32Array(n * 4)
-        var r = 1
-        for (var pass = 0; pass < 3; pass++) {
-            for (var y = 0; y < gh; y++) {
-                for (var ch = 0; ch < 4; ch++) {
-                    for (var x = 0; x < gw; x++) {
-                        var s = 0
-                        for (k = -r; k <= r; k++) {
-                            var xx = x + k
-                            if (xx < 0) xx = 0
-                            else if (xx >= gw) xx = gw - 1
-                            s += buf[(y * gw + xx) * 4 + ch]
-                        }
-                        tmp[(y * gw + x) * 4 + ch] = s / (2 * r + 1)
-                    }
-                }
-            }
-            for (var x2 = 0; x2 < gw; x2++) {
-                for (var ch2 = 0; ch2 < 4; ch2++) {
-                    for (var y2 = 0; y2 < gh; y2++) {
-                        var s2 = 0
-                        for (k = -r; k <= r; k++) {
-                            var yy = y2 + k
-                            if (yy < 0) yy = 0
-                            else if (yy >= gh) yy = gh - 1
-                            s2 += tmp[(yy * gw + x2) * 4 + ch2]
-                        }
-                        buf[(y2 * gw + x2) * 4 + ch2] = s2 / (2 * r + 1)
-                    }
-                }
-            }
-        }
-        // saturate(1.2) on un-premultiplied colour
-        for (i = 0; i < n; i++) {
-            var al = buf[i * 4 + 3]
-            if (al <= 0.0001) { d[i * 4 + 3] = 0; continue }
-            var R = buf[i * 4] / al, G = buf[i * 4 + 1] / al, B = buf[i * 4 + 2] / al
-            var rr = (0.213 + 0.787 * 1.2) * R + (0.715 - 0.715 * 1.2) * G + (0.072 - 0.072 * 1.2) * B
-            var gg = (0.213 - 0.213 * 1.2) * R + (0.715 + 0.285 * 1.2) * G + (0.072 - 0.072 * 1.2) * B
-            var bb = (0.213 - 0.213 * 1.2) * R + (0.715 - 0.715 * 1.2) * G + (0.072 + 0.928 * 1.2) * B
-            d[i * 4] = Math.max(0, Math.min(255, rr * 255))
-            d[i * 4 + 1] = Math.max(0, Math.min(255, gg * 255))
-            d[i * 4 + 2] = Math.max(0, Math.min(255, bb * 255))
-            d[i * 4 + 3] = Math.min(255, al * 255)
-        }
-        ctx.putImageData(img, 0, 0)
+        ctx.globalCompositeOperation = "copy"
+        ctx.drawImage(curtains, 0, 0, aurora.bw, aurora.bh, 0, 0, aurora.gw, aurora.gh)
+    }
+    function drawGlow(ctx) {
+        ctx.reset()
+        ctx.globalCompositeOperation = "copy"
+        ctx.drawImage(glowMid, 0, 0, aurora.gw, aurora.gh, 0, 0, aurora.gw / 4, aurora.gh / 4)
     }
 
     function drawOut(ctx) {
@@ -265,7 +227,7 @@ Item {
         ctx.fillRect(0, 0, bw, bh)
         ctx.globalCompositeOperation = "qt-screen"
         ctx.globalAlpha = 0.85
-        ctx.drawImage(glow, 0, 0, aurora.gw, aurora.gh, 0, 0, bw, bh)
+        ctx.drawImage(glow, 0, 0, aurora.gw / 4, aurora.gh / 4, 0, 0, bw, bh)
         ctx.globalAlpha = 0.92
         ctx.drawImage(curtains, 0, 0, bw, bh, 0, 0, bw, bh)
         ctx.globalAlpha = 1

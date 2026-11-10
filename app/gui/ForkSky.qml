@@ -36,6 +36,8 @@ Item {
     readonly property real auroraTime: 12000 + elapsed
     readonly property real fieldScale: Math.max(1, width / 1280, height / 900)
 
+    function dumpAurora(prefix) { aurora.dump(prefix) }
+
     Accessible.ignored: true
     activeFocusOnTab: false
     visible: shown
