@@ -11,7 +11,7 @@ Item {
     property string kind: "quiet"          // primary | quiet | icon
     property bool big: true
     property string text: ""
-    property string iconPath: ""
+    property string iconName: ""
     property bool iconFilled: false
     property color iconColor: ForkTheme.cv.text2
     property real iconStrokeWidth: big ? 1.8 : 1.9
@@ -66,10 +66,10 @@ Item {
         anchors.centerIn: parent
         spacing: btn.kind === "primary" ? (btn.big ? 8 : 7) : 7
 
-        ForkCardIcon {
-            visible: btn.iconPath !== ""
+        ForkPathIcon {
+            visible: btn.iconName !== ""
             anchors.verticalCenter: parent.verticalCenter
-            path: btn.iconPath
+            name: btn.iconName
             size: btn.iconSize
             color: btn.kind === "quiet" || btn.kind === "icon" ? btn.iconColor : btn.ink
             filled: btn.iconFilled

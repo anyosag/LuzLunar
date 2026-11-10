@@ -33,6 +33,13 @@ Item {
     readonly property bool dark: ForkTheme.dark
     readonly property string stateId: CardText.normalizeState(cardState)
     readonly property var hue: ForkTheme.hue(stateId === "notPaired" ? "gray" : hueKey)
+    readonly property string themeKey: ({ ready: "ready", streaming: "streaming", waking: "waking", asleep: "asleep",
+                                          offCanWake: "off", offNoWake: "offNoWake", notPaired: "pair",
+                                          unreachable: "lost", checking: "off" })[stateId]
+    readonly property var style: ForkTheme.stateStyle(themeKey)
+    readonly property string glyphName: stateId === "checking" ? "spinner" : style.glyph
+    // The States board tints a not-paired PC gold in both themes (THEME's light pair tint is the big card's)
+    readonly property color tint: stateId === "notPaired" ? Qt.rgba(245 / 255, 200 / 255, 120 / 255, dark ? 0.13 : 0.08) : style.tint
     readonly property var info: CardText.describeSmall({
         state: cardState, name: pcName, address: address, version: version, network: network,
         latencyMs: latencyMs, runningApp: runningApp, defaultApp: defaultApp, streamWidth: streamWidth,
@@ -45,7 +52,7 @@ Item {
         case "orange": return ForkTheme.st.orange
         case "text2": return ForkTheme.cv.text2
         }
-        return CardText.stateColor(key, dark)
+        return ForkTheme.cv.text2
     }
 
     width: 281
@@ -142,17 +149,17 @@ Item {
         width: 255
         height: 20 + Math.max(28, textCol.height)
         radius: 12
-        color: Qt.rgba(card.info.tint.r, card.info.tint.g, card.info.tint.b, card.info.tint.a)
+        color: card.tint
 
         Rectangle {
             x: 10; y: 10; width: 28; height: 28; radius: 14
-            color: card.info.disc
-            ForkCardIcon {
+            color: card.style.disc
+            ForkPathIcon {
                 anchors.centerIn: parent
-                path: CardText.ICONS[card.info.glyph]
+                name: card.glyphName
                 size: 15
-                color: card.info.discInk
-                filled: card.info.glyphFill
+                color: card.style.ink
+                filled: card.style.glyphFilled
                 strokeWidth: 2
             }
         }
@@ -182,7 +189,7 @@ Item {
         x: 13; y: status.y + status.height + 10
         big: false
         text: card.info.chip ? card.info.chip.label : ""
-        iconPath: card.info.chip ? CardText.ICONS[card.info.chip.icon] : ""
+        iconName: card.info.chip ? card.info.chip.icon : ""
         ink: card.info.chip ? card.stateInk(card.info.chip.colorKey) : "white"
         warm: card.info.chip ? !!card.info.chip.warm : false
     }
@@ -198,7 +205,7 @@ Item {
             width: 213
             hue: card.hue
             text: card.info.action.label
-            iconPath: CardText.ICONS[card.info.action.icon] || ""
+            iconName: card.info.action.icon
             iconFilled: !!card.info.action.fill
             quietLook: !!card.info.action.quietLook
             dimmed: !!card.info.action.disabled
@@ -208,7 +215,7 @@ Item {
         ForkCardButton {
             big: false
             kind: "icon"
-            iconPath: CardText.ICONS.more
+            iconName: "more"
             accessibleName: "More for " + card.pcName
             onClicked: card.moreClicked()
         }

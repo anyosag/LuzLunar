@@ -793,7 +793,7 @@ Item {
             latencyMs: m && m.latencyMs !== undefined ? m.latencyMs : -1
             address: m && m.address !== undefined ? m.address : ""
             ipNote: m ? pcPage.noteText(m.addressNote) : ""
-            reachableOutside: m ? m.remoteWorked === true : false
+            reachableOutside: m ? (m.hasRemoteAddress === true || m.remoteWorked === true) : false
             onLanNow: m ? m.network === "home" : true
             runningApp: m && m.runningApp !== undefined ? m.runningApp : ""
             defaultApp: m && m.mainApp ? m.mainApp : "Desktop"
@@ -857,10 +857,8 @@ Item {
         active: pcPage.showFirstRun
         sourceComponent: ForkFirstRun {
             discovering: !!StreamingPreferences.enableMdns
-            onAdded: pcPage.forkLastAdded = address
         }
     }
-    property string forkLastAdded: ""
 
     // ---- the ... menu: placed against the focused card, with a catcher that only closes it
     Item {
@@ -972,9 +970,8 @@ Item {
     {
         // The design confirms a PC that was found
         if (success) {
-            var last = showFirstRun || forkLastAdded !== "" ? forkLastAdded : addPcDialog.lastAddress
+            var last = showFirstRun && firstRun.item ? firstRun.item.lastAddress : addPcDialog.lastAddress
             forkToast(last !== "" ? qsTr("Found %1").arg(last) : qsTr("Found the PC"))
-            forkLastAdded = ""
         }
 
         if (!success) {

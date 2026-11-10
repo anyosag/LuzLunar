@@ -212,9 +212,9 @@ Item {
                             PathSvg { path: "M 0.002 60.5 A 60 60 0 1 1 119.998 60.5 A 60 60 0 0 0 0.002 60.5 Z" }
                         }
                     }
-                    ForkCardIcon {
+                    ForkPathIcon {
                         anchors.centerIn: parent
-                        path: "M12 4.5v15M4.5 12h15"
+                        name: "plus"
                         size: 48
                         color: card.dark ? "#111114" : "#FFFFFF"
                         strokeWidth: 2.2

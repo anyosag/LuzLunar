@@ -6,7 +6,7 @@ Item {
     id: chip
 
     property string text: ""
-    property string iconPath: ""
+    property string iconName: ""
     property color ink: ForkTheme.cv.text2
     property bool warm: false
     property bool big: true
@@ -36,9 +36,9 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: chip.big ? 6 : 5
 
-        ForkCardIcon {
+        ForkPathIcon {
             anchors.verticalCenter: parent.verticalCenter
-            path: chip.iconPath
+            name: chip.iconName
             size: chip.big ? 14 : 12
             color: chip.ink
             strokeWidth: chip.big ? 1.9 : 2

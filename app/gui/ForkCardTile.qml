@@ -218,9 +218,9 @@ Item {
                     radius: 11
                     color: tile.badge === "power" ? "#636366" : "#9B45D9"
                 }
-                ForkCardIcon {
+                ForkPathIcon {
                     anchors.centerIn: parent
-                    path: tile.badge === "power" ? "M12 3.5v8M7.05 6.55a7 7 0 1 0 9.9 0" : "M15 4.2a7.8 7.8 0 1 0 4.8 13.1A6.6 6.6 0 0 1 15 4.2z"
+                    name: tile.badge === "power" ? "power" : "moon"
                     size: tile.badge === "power" ? 12 : 12
                     color: "white"
                     filled: tile.badge !== "power"

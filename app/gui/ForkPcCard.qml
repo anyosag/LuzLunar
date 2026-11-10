@@ -75,6 +75,13 @@ Item {
     readonly property int tick: animating ? (sharedTick >= 0 ? sharedTick : ownClock.tick) : 0
     readonly property int ph: tick % 2
 
+    // THEME's style of the state (disc, ink, tint, label ink, glyph). `checking` isn't on the canvas:
+    // it takes Off's neutral style with a spinner glyph and no label
+    readonly property string themeKey: ({ ready: "ready", streaming: "streaming", waking: "waking", asleep: "asleep",
+                                          offCanWake: "off", offNoWake: "offNoWake", notPaired: "pair",
+                                          unreachable: "lost", checking: "off" })[stateId]
+    readonly property var style: ForkTheme.stateStyle(themeKey)
+    readonly property string glyphName: stateId === "checking" ? "spinner" : style.glyph
     readonly property var info: CardText.describe({
         state: cardState, name: pcName, version: version, network: network, latencyMs: latencyMs,
         address: address, runningApp: runningApp, defaultApp: defaultApp, streamWidth: streamWidth,
@@ -91,11 +98,12 @@ Item {
         case "gold": return ForkTheme.st.gold
         case "orange": return ForkTheme.st.orange
         case "red": return ForkTheme.st.red
+        case "amber": return ForkTheme.st.amber
+        case "gray": return ForkTheme.st.gray
         case "text2": return ForkTheme.cv.text2
         }
-        return CardText.stateColor(key, dark)
+        return ForkTheme.cv.text2
     }
-    function iconPath(name) { return CardText.ICONS[name] || "" }
 
     width: 560
     height: 540
@@ -294,9 +302,9 @@ Item {
                                 Accessible.role: Accessible.Button
                                 Accessible.name: "Copy the IP address of " + card.pcName
                                 Accessible.onPressAction: card.copyAddressClicked(card.address)
-                                ForkCardIcon {
+                                ForkPathIcon {
                                     anchors.centerIn: parent
-                                    path: card.iconPath("copy")
+                                    name: "copy"
                                     size: 12; color: "white"; strokeWidth: 2.2
                                 }
                                 HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -332,13 +340,13 @@ Item {
                 Rectangle {
                     width: 518; height: 63
                     radius: 14
-                    color: Qt.rgba(card.info.tint.r, card.info.tint.g, card.info.tint.b, card.info.tint.a)
+                    color: card.style.tint
 
                     Item {
                         id: disc
                         x: 14; y: 14.5
                         width: 34; height: 34
-                        Rectangle { anchors.fill: parent; radius: 17; color: card.info.disc }
+                        Rectangle { anchors.fill: parent; radius: 17; color: card.style.disc }
                         Rectangle {
                             visible: card.stateId === "streaming"
                             anchors.fill: parent
@@ -351,18 +359,18 @@ Item {
                             Behavior on scale { enabled: card.ph === 1; NumberAnimation { duration: 1100; easing.type: Easing.OutQuad } }
                             Behavior on opacity { enabled: card.ph === 1; NumberAnimation { duration: 1100; easing.type: Easing.OutQuad } }
                         }
-                        ForkCardIcon {
+                        ForkPathIcon {
                             id: glyph
                             anchors.centerIn: parent
-                            path: card.iconPath(card.info.glyph)
+                            name: card.glyphName
                             size: 18
-                            color: card.info.discInk
-                            filled: card.info.glyphFill
+                            color: card.style.ink
+                            filled: card.style.glyphFilled
                             strokeWidth: 1.9
                             rotation: card.stateId === "asleep" ? (card.ph ? -12 : 8) : 0
                             Behavior on rotation { enabled: card.stateId === "asleep"; NumberAnimation { duration: 1100; easing.type: Easing.InOutQuad } }
                             RotationAnimator on rotation {
-                                running: card.stateId === "waking" && card.animating
+                                running: (card.stateId === "waking" || card.stateId === "checking") && card.animating
                                 from: 0; to: 360; duration: 1000; loops: Animation.Infinite
                             }
                         }
@@ -394,8 +402,8 @@ Item {
                         anchors.right: parent.right
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
-                        text: card.info.label
-                        color: card.stateInk(card.info.labelKey)
+                        text: card.stateId === "checking" ? "" : card.style.label
+                        color: card.style.labelInk
                         px: 11; weight: 700
                         tracking: 0.66
                         upper: true
@@ -538,7 +546,7 @@ Item {
                         delegate: ForkCardChip {
                             required property var modelData
                             text: modelData.label
-                            iconPath: card.iconPath(modelData.icon)
+                            iconName: modelData.icon
                             ink: card.stateInk(modelData.colorKey)
                             warm: !!modelData.button
                             onClicked: if (modelData.id === "updateApollo") card.updateApolloClicked()
@@ -566,7 +574,7 @@ Item {
                             required property var modelData
                             kind: "quiet"
                             text: modelData.label
-                            iconPath: card.iconPath(modelData.icon)
+                            iconName: modelData.icon
                             iconColor: card.stateInk(modelData.colorKey)
                             onClicked: card.quietClicked(modelData.id)
                         }
@@ -577,7 +585,7 @@ Item {
                     spacing: 8
                     ForkCardButton {
                         kind: "icon"
-                        iconPath: card.iconPath("more")
+                        iconName: "more"
                         accessibleName: "More for " + card.pcName
                         onClicked: card.moreClicked()
                     }
@@ -585,7 +593,7 @@ Item {
                         kind: "primary"
                         hue: card.hue
                         text: card.info.primary.label
-                        iconPath: card.iconPath(card.info.primary.icon)
+                        iconName: card.info.primary.icon
                         iconFilled: !!card.info.primary.fill
                         quietLook: !!card.info.primary.quietLook
                         dimmed: !!card.info.primary.disabled
