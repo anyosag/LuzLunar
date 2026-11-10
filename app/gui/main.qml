@@ -161,6 +161,18 @@ ApplicationWindow {
         }
     }
 
+    // [fork] The one wake-and-launch of the app (AppView and PcView use window.forkWakeLaunch), so
+    // only one runs at a time
+    property alias forkWakeLaunch: wakeLaunch
+    ForkWakeLaunch {
+        id: wakeLaunch
+    }
+
+    // Focuses the header's search field itself (AppView's Up from its top row)
+    function forkFocusSearch() {
+        toolBar.focusSearch()
+    }
+
     // [fork] ---- The window's chrome (sky-chrome.md §2, §5, §6; decision D1) ----
 
     readonly property Item forkPage: stackView.currentItem
@@ -232,7 +244,12 @@ ApplicationWindow {
         }
         onPageFocusRequested: {
             if (window.forkPage) {
-                window.forkPage.forceActiveFocus(Qt.TabFocus)
+                if (typeof window.forkPage.forkFocusFromHeader === "function") {
+                    window.forkPage.forkFocusFromHeader()
+                }
+                else {
+                    window.forkPage.forceActiveFocus(Qt.TabFocus)
+                }
             }
         }
         onZoomRequested: WindowChrome.zoomWindow(window)
@@ -241,7 +258,9 @@ ApplicationWindow {
         Connections {
             target: stackView
             function onCurrentItemChanged() {
-                toolBar.searchText = ""
+                // The page's own query (coming back to a filtered AppView after a stream keeps it)
+                var query = window.pageValue("forkQuery", "")
+                toolBar.searchText = typeof query === "string" ? query : ""
             }
         }
 
