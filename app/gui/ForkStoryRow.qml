@@ -168,6 +168,10 @@ Column {
                                     required property var modelData
                                     required property int index
                                     readonly property bool isGroup: item.modelData.count > 0
+                                    function go() {
+                                        if (isGroup) story.pickGroup(item.modelData.indexes)
+                                        else story.pick(modelData.index)
+                                    }
                                     ForkCanvasText {
                                         visible: linkRow.index > 0
                                         text: item.modelData.sep
@@ -196,17 +200,14 @@ Column {
                                             color: ForkTheme.cv.lineStrong
                                         }
                                         Accessible.role: Accessible.Link
-                                        Accessible.name: linkRow.isGroup ? qsTr("Show %1").arg(linkRow.modelData.name)
-                                                                         : qsTr("Show %1").arg(linkRow.modelData.name)
-                                        Accessible.onPressAction: linkRow.isGroup ? story.pickGroup(item.modelData.indexes)
-                                                                                  : story.pick(linkRow.modelData.index)
+                                        Accessible.name: qsTr("Show %1").arg(linkRow.modelData.name)
+                                        Accessible.onPressAction: linkRow.go()
                                         MouseArea {
                                             id: linkMouse
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: linkRow.isGroup ? story.pickGroup(item.modelData.indexes)
-                                                                       : story.pick(linkRow.modelData.index)
+                                            onClicked: linkRow.go()
                                         }
                                         ToolTip {
                                             visible: linkMouse.containsMouse && text !== ""
