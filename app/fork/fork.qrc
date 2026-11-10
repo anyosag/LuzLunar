@@ -56,11 +56,15 @@
         <file alias="ForkPathIcon.qml">../gui/ForkPathIcon.qml</file>
         <!-- Window header, footer and sky -->
         <file alias="ForkSky.qml">../gui/ForkSky.qml</file>
+        <file alias="ForkSkyAuroraCanvas.qml">../gui/ForkSkyAuroraCanvas.qml</file>
+        <file alias="ForkSkyAuroraGpu.qml">../gui/ForkSkyAuroraGpu.qml</file>
         <file alias="ForkSkyAurora.qml">../gui/ForkSkyAurora.qml</file>
         <file alias="ForkSkyDawn.qml">../gui/ForkSkyDawn.qml</file>
         <file alias="ForkSkyNight.qml">../gui/ForkSkyNight.qml</file>
         <file alias="ForkSkyScrim.qml">../gui/ForkSkyScrim.qml</file>
         <file alias="ForkSkyStars.qml">../gui/ForkSkyStars.qml</file>
+        <file alias="shaders/aurora.frag.qsb">../gui/shaders/aurora.frag.qsb</file>
+        <file alias="shaders/screen.frag.qsb">../gui/shaders/screen.frag.qsb</file>
         <file alias="ForkWindowFooter.qml">../gui/ForkWindowFooter.qml</file>
         <file alias="ForkWindowGlass.qml">../gui/ForkWindowGlass.qml</file>
         <file alias="ForkWindowHeader.qml">../gui/ForkWindowHeader.qml</file>
