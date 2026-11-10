@@ -63,7 +63,11 @@ Item {
     }
     onTgtChanged: _apply()
     // The pointer is still over this card after the cards reorder: the hover lift follows its new slot
-    onSlotIndexChanged: if (stage && hover.hovered) stage.hoverIndex = slotIndex
+    onSlotIndexChanged: {
+        if (!stage) return
+        if (hover.hovered) stage.hoverIndex = slotIndex
+        else if (stage.hoverIndex === slotIndex) stage.hoverIndex = -1
+    }
     Component.onDestruction: if (stage && stage.dragActive && stage.dragFrom === slotIndex) stage.endPreview()
     Component.onCompleted: {
         _apply()
