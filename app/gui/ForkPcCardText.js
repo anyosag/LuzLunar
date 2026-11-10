@@ -30,6 +30,26 @@ function join(parts) {
     return out.join(" · ")
 }
 
+// "last seen at home" / "last seen away from home" (derived) / "" for the model's lastSeenVia
+// (home | outside | internet | ""); undefined counts as home, as on the canvas
+function lastSeenText(via) {
+    if (via === undefined || via === null || via === "home") return "last seen at home"
+    if (via === "outside" || via === "internet") return "last seen away from home"
+    return ""
+}
+
+// The note under All apps: the cached list says where it came from; a reachable PC says hidden
+// apps are in there too (hiddenAppCount < 0 or unset = unknown, counts as some). A PC that is
+// asleep, waking or off shows its list from the last visit.
+function allAppsNote(state, p) {
+    if (state !== "ready" && state !== "streaming") return "From its last visit"
+    if (p.appsCached || p.online === false) return "From its last visit"
+    if (p.hiddenAppCount === 0) return ""
+    return "Hidden ones too"
+}
+
+function capitalize(t) { return t.charAt(0).toUpperCase() + t.slice(1) }
+
 function latencyText(ms) { return (ms !== undefined && ms !== null && ms >= 0) ? ms + " ms" : "" }
 
 // p: { state, name, version, network, latencyMs, address, runningApp, defaultApp, streamWidth,
@@ -58,23 +78,25 @@ function describe(p) {
         out.ipNote = p.ipNote !== undefined ? p.ipNote : "Found automatically"
         break
     default:
-        out.subLine = join([p.version ? "Apollo " + p.version : "", "last seen at home"])
+        out.subLine = join([p.version ? "Apollo " + p.version : "", lastSeenText(p.lastSeenVia)])
         out.ipNote = p.ipNote !== undefined ? p.ipNote : "Its last address"
     }
 
     var wakeChip = p.wakeFromOff === "ready" ? { label: "Wake from off ready", icon: "check", colorKey: "green" } : null
+    // Update Apollo when there is one; "Apollo up to date" only when the model says so
     var updateChip = p.updateAvailable
         ? { label: "Update Apollo", icon: "update", colorKey: "orange", button: true, id: "updateApollo" }
-        : { label: "Apollo up to date", icon: "update", colorKey: "text2" }
+        : (p.apolloUpToDate ? { label: "Apollo up to date", icon: "update", colorKey: "text2" } : null)
+    var canSleep = p.canSleep !== false
 
     switch (state) {
     case "ready":
         out.title = "Ready to stream"; out.sub = "Pick an app, or press Return for Desktop"
         out.showApps = true; out.tilesTitle = "Apps"; out.tilesNote = "Return starts " + defApp
-        out.allNote = "Hidden ones too"
+        out.allNote = allAppsNote(state, p)
         if (wakeChip) out.chips.push(wakeChip)
-        out.chips.push(updateChip)
-        out.quiet = [{ id: "sleep", label: "Sleep", icon: "moon", colorKey: "purple" }]
+        if (updateChip) out.chips.push(updateChip)
+        out.quiet = canSleep ? [{ id: "sleep", label: "Sleep", icon: "moon", colorKey: "purple" }] : []
         out.primary = { id: "stream", label: "Stream " + defApp, icon: "play", fill: true }
         break
     case "streaming":
@@ -84,11 +106,11 @@ function describe(p) {
         if (p.streamHdr) info.push("HDR")
         out.title = app + " is running"; out.sub = info.join(" · ")
         out.showApps = true; out.tilesTitle = "Apps"; out.tilesNote = "Return resumes " + app
-        out.allNote = "Hidden ones too"
+        out.allNote = allAppsNote(state, p)
         if (wakeChip) out.chips.push(wakeChip)
-        out.chips.push(updateChip)
-        out.quiet = [{ id: "quit", label: "Quit " + app, icon: "stop", colorKey: "text2" },
-                     { id: "sleep", label: "Sleep", icon: "moon", colorKey: "purple" }]
+        if (updateChip) out.chips.push(updateChip)
+        out.quiet = [{ id: "quit", label: "Quit " + app, icon: "stop", colorKey: "text2" }]
+        if (canSleep) out.quiet.push({ id: "sleep", label: "Sleep", icon: "moon", colorKey: "purple" })
         out.primary = { id: "resume", label: "Resume " + app, icon: "play", fill: true }
         break
     case "waking":
@@ -102,7 +124,7 @@ function describe(p) {
         out.title = "Asleep"; out.sub = "Picking an app wakes it first"
         out.showApps = true; out.sleepy = true; out.tilesTitle = "Wake and stream"; out.allNote = "From its last visit"
         if (wakeChip) out.chips.push(wakeChip)
-        if (!p.updateAvailable) out.chips.push(updateChip)
+        if (updateChip && !p.updateAvailable) out.chips.push(updateChip)
         out.quiet = [{ id: "testNetwork", label: "Test Network", icon: "wifi", colorKey: "text2" }]
         out.primary = { id: "wake", label: "Wake PC", icon: "power", fill: false }
         break
@@ -132,7 +154,8 @@ function describe(p) {
         break
     case "unreachable":
         out.title = "Can’t reach it"; out.sub = "Not on this network, or Apollo isn’t running"
-        out.chips.push({ label: "Last seen at home", icon: "cable", colorKey: "text2" })
+        if (lastSeenText(p.lastSeenVia) !== "")
+            out.chips.push({ label: capitalize(lastSeenText(p.lastSeenVia)), icon: "cable", colorKey: "text2" })
         out.primary = { id: "testNetwork", label: "Test Network", icon: "wifi", fill: false, quietLook: true }
         break
     case "checking":
@@ -140,7 +163,18 @@ function describe(p) {
         out.primary = { id: "", label: "Checking\u2026", icon: "spinner", fill: false, disabled: true }
         break
     }
+    if (p.unsupported) unsupportedLook(out)
     return out
+}
+
+// A host this build can't stream from: the lost look with today's headline (ForkStatusScene), no
+// apps or chips; the primary stays enabled (id "unsupported") so the page can show its error dialog
+function unsupportedLook(out) {
+    out.moon = "lost"
+    out.title = "Needs a newer host"; out.sub = "Update the host to stream from it"
+    out.showApps = false; out.showSteps = false; out.sleepy = false
+    out.chips = []; out.quiet = []
+    out.primary = { id: "unsupported", label: "Learn why", icon: "info", fill: false, quietLook: true }
 }
 
 // The small card's (States board) words and looks. Same p as describe().
@@ -156,7 +190,7 @@ function describeSmall(p) {
     case "ready":
         o.headline = "Ready to stream"; o.sub = "Pick an app, or press Return for Desktop."
         o.chip = p.updateAvailable ? { label: "Update Apollo", icon: "update", colorKey: "orange", warm: true }
-                                   : { label: "Apollo up to date", icon: "update", colorKey: "text2" }
+                                   : (p.apolloUpToDate ? { label: "Apollo up to date", icon: "update", colorKey: "text2" } : null)
         o.action = { id: "stream", label: "Stream " + (p.defaultApp || "Desktop"), icon: "play", fill: true }
         break
     case "streaming":
@@ -194,7 +228,7 @@ function describeSmall(p) {
         break
     case "unreachable":
         o.headline = "Can’t reach it"; o.sub = "Not on this network, or Apollo isn’t running."
-        o.chip = { label: "Last seen at home", icon: "cable", colorKey: "text2" }
+        o.chip = lastSeenText(p.lastSeenVia) !== "" ? { label: capitalize(lastSeenText(p.lastSeenVia)), icon: "cable", colorKey: "text2" } : null
         o.action = { id: "testNetwork", label: "Test Network", icon: "wifi", fill: false, quietLook: true }
         break
     case "checking":
@@ -202,6 +236,12 @@ function describeSmall(p) {
         o.chip = null
         o.action = { id: "", label: "Checking\u2026", icon: "spinner", fill: false, disabled: true }
         break
+    }
+    if (p.unsupported) {
+        o.moon = "lost"
+        o.headline = "Needs a newer host"; o.sub = "Update the host to stream from it."
+        o.chip = null
+        o.action = { id: "unsupported", label: "Learn why", icon: "info", fill: false, quietLook: true }
     }
     return o
 }

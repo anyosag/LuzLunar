@@ -25,6 +25,16 @@ Item {
     property int streamHeight: 0
     property int streamFps: 0
     property bool updateAvailable: false
+    // Optional inputs from the model (defaults keep the canvas's looks)
+    property bool canSleep: true
+    property bool apolloUpToDate: false
+    property bool appsCached: false
+    property int hiddenAppCount: -1
+    property bool online: true
+    // "home" | "outside" | "internet" | ""
+    property string lastSeenVia: "home"
+    // The host is too old for this build: the lost look, "Needs a newer host"; the primary still emits
+    property bool unsupported: false
     property url logoSource: "qrc:/res/apollo.png"
 
     signal primaryClicked(string action)
@@ -35,15 +45,16 @@ Item {
     readonly property var hue: ForkTheme.hue(stateId === "notPaired" ? "gray" : hueKey)
     readonly property string themeKey: ({ ready: "ready", streaming: "streaming", waking: "waking", asleep: "asleep",
                                           offCanWake: "off", offNoWake: "offNoWake", notPaired: "pair",
-                                          unreachable: "lost", checking: "off" })[stateId]
+                                          unreachable: "lost", checking: "off" })[unsupported ? "unreachable" : stateId]
     readonly property var style: ForkTheme.stateStyle(themeKey)
-    readonly property string glyphName: stateId === "checking" ? "spinner" : style.glyph
+    readonly property string glyphName: stateId === "checking" && !unsupported ? "spinner" : style.glyph
     // The States board tints a not-paired PC gold in both themes (THEME's light pair tint is the big card's)
-    readonly property color tint: stateId === "notPaired" ? Qt.rgba(245 / 255, 200 / 255, 120 / 255, dark ? 0.13 : 0.08) : style.tint
+    readonly property color tint: stateId === "notPaired" && !unsupported ? Qt.rgba(245 / 255, 200 / 255, 120 / 255, dark ? 0.13 : 0.08) : style.tint
     readonly property var info: CardText.describeSmall({
         state: cardState, name: pcName, address: address, version: version, network: network,
         latencyMs: latencyMs, runningApp: runningApp, defaultApp: defaultApp, streamWidth: streamWidth,
-        streamHeight: streamHeight, streamFps: streamFps, updateAvailable: updateAvailable, dark: dark
+        streamHeight: streamHeight, streamFps: streamFps, updateAvailable: updateAvailable, canSleep: canSleep, apolloUpToDate: apolloUpToDate,
+        appsCached: appsCached, hiddenAppCount: hiddenAppCount, online: online, lastSeenVia: lastSeenVia, unsupported: unsupported, dark: dark
     })
 
     function stateInk(key) {

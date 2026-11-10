@@ -210,7 +210,7 @@ Item {
         var W = aurora.skyWidth
         ctx.reset()
         ctx.clearRect(0, 0, pw, ph)
-        var ks = pw / W, ls = ph / 520
+        ctx.scale(pw / W, ph / 520)
         var t = aurora.time / 1000
         ctx.globalCompositeOperation = "lighter"
         var step = 2
@@ -233,10 +233,10 @@ Item {
                     continue
                 var tall = c.h * (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(u * c.hf * PI + t * 0.25 + c.p))) * (0.85 + 0.15 * rays)
                 ctx.globalAlpha = Math.min(1, light) * gain
-                aurora.blit(ctx, sprite, 4, 256, x * ks, (base - tall) * ls, 3 * ks, tall * ls)
+                aurora.blit(ctx, sprite, 4, 256, x, base - tall, 3, tall)
                 if (c.fringe && light > 0.55) {
                     ctx.globalAlpha = Math.min(1, (light - 0.55) * 1.6) * gain
-                    aurora.blit(ctx, spriteFringe, 4, 32, x * ks, (base - 2) * ls, 3 * ks, 10 * ls)
+                    aurora.blit(ctx, spriteFringe, 4, 32, x, base - 2, 3, 10)
                 }
             }
         }

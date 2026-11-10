@@ -76,6 +76,36 @@ bool ForkPcPrefs::screenshotMode() const
     return qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS");
 }
 
+QString ForkPcPrefs::pcsView() const
+{
+    if (m_PcsView.isEmpty()) {
+        QString view = QStringLiteral("carousel");
+        if (!screenshotMode()) {
+            const QString stored = settings().value(QStringLiteral("fork/pcsView")).toString();
+            if (stored == QLatin1String("grid")) {
+                view = stored;
+            }
+        }
+        const_cast<ForkPcPrefs*>(this)->m_PcsView = view;
+    }
+    return m_PcsView;
+}
+
+void ForkPcPrefs::setPcsView(const QString& view)
+{
+    if (view != QLatin1String("carousel") && view != QLatin1String("grid")) {
+        return;
+    }
+    if (view == pcsView()) {
+        return;
+    }
+    m_PcsView = view;
+    if (!screenshotMode()) {
+        settings().setValue(QStringLiteral("fork/pcsView"), view);
+    }
+    emit pcsViewChanged();
+}
+
 bool ForkPcPrefs::demoMode() const
 {
     return qgetenv("LUZLUNAR_DEMO") == "1";

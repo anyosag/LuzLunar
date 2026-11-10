@@ -7,7 +7,6 @@ import ForkTheme // [fork]
 import ForkHostUpdates // [fork]
 import ForkHostPower // [fork]
 import ForkPcPrefs // [fork]
-import ForkPreferences // [fork] the remembered view
 
 import "ForkLibraryLaunch.js" as Launch // [fork] the launch screen's summary chips
 
@@ -52,8 +51,8 @@ Item {
         if (mode === "grid") demo = false
         menuOpen = false
         forkViewMode = mode
-        // Remembered per Mac when ForkPreferences has the key (DATA: pcsView, "carousel" | "grid")
-        if (ForkPreferences.pcsView !== undefined && !forkSample) ForkPreferences.pcsView = mode
+        // Remembered per Mac (ForkPcPrefs.pcsView, "carousel" | "grid"), once DATA has it
+        if (ForkPcPrefs.pcsView !== undefined && !forkSample) ForkPcPrefs.pcsView = mode
     }
 
     // ---- the harness's hooks (contract-pcview.md)
@@ -171,7 +170,7 @@ Item {
         } else {
             introTimer.start(); revealTimer.start(); settleTimer.start()
         }
-        if (!forkSample && ForkPreferences.pcsView === "grid") forkViewMode = "grid"
+        if (!forkSample && ForkPcPrefs.pcsView === "grid") forkViewMode = "grid"
         forceActiveFocus()
     }
 
@@ -865,6 +864,18 @@ Item {
             revealed: pcPage.revealed
             sharedTick: pcPage.tick
             motion: pcPage.motionOn
+
+            // Inputs the card gets later (D11): bound when it has them
+            Component.onCompleted: {
+                var bind = function (name, fn) { if (pc.hasOwnProperty(name)) pc[name] = Qt.binding(fn) }
+                bind("canSleep", function () { return m ? m.canSleep !== false : true })
+                bind("apolloUpToDate", function () { return m ? m.apolloUpToDate === true : false })
+                bind("appsCached", function () { return m ? m.appsCached === true : false })
+                bind("hiddenAppCount", function () { return m && m.hiddenAppCount !== undefined ? m.hiddenAppCount : 0 })
+                bind("online", function () { return m ? m.online === true : false })
+                bind("lastSeenVia", function () { return m && m.lastSeenVia !== undefined ? (m.lastSeenVia === "internet" ? "outside" : m.lastSeenVia) : "" })
+                bind("unsupported", function () { return m ? (m.online === true && m.paired === true && m.serverSupported === false) : false })
+            }
 
             onPrimaryClicked: function (action) { if (slot) pcPage.runAction(slot.slotIndex, action) }
             onQuietClicked: function (action) { if (slot) pcPage.runAction(slot.slotIndex, action) }

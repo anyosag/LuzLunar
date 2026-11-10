@@ -32,8 +32,15 @@ class ForkPcPrefs : public QObject
     // LUZLUNAR_SCREENSHOTS is set: pages draw deterministic frames from sample data
     Q_PROPERTY(bool screenshotMode READ screenshotMode CONSTANT)
 
+    // How Your PCs shows the cards: "carousel" (default) or "grid". Kept on this Mac; in memory only
+    // in a screenshot run.
+    Q_PROPERTY(QString pcsView READ pcsView WRITE setPcsView NOTIFY pcsViewChanged)
+
 public:
     static ForkPcPrefs* get();
+
+    QString pcsView() const;
+    void setPcsView(const QString& view);
 
     int revision() const { return m_Revision; }
     QStringList colorIds() const;
@@ -103,6 +110,8 @@ public:
     qint64 wakeSentSecs(const QString& uuid) const;        // 0 none
 
 signals:
+    void pcsViewChanged();
+
     // Something about this PC changed (ComputerModel and the dialogs listen)
     void changed(QString uuid);
 
@@ -116,5 +125,6 @@ private:
     void bump(const QString& uuid);
 
     int m_Revision = 0;
+    QString m_PcsView;      // loaded on first use
     QHash<QString, qint64> m_WakeSent;
 };

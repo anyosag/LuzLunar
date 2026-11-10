@@ -35,6 +35,16 @@ Item {
     // "ready" | "notSetUp" | "unknown"
     property string wakeFromOff: "unknown"
     property bool updateAvailable: false
+    // Optional inputs from the model (defaults keep the canvas's looks)
+    property bool canSleep: true
+    property bool apolloUpToDate: false
+    property bool appsCached: false
+    property int hiddenAppCount: -1
+    property bool online: true
+    // "home" | "outside" | "internet" | ""
+    property string lastSeenVia: "home"
+    // The host is too old for this build: the lost look, "Needs a newer host"; the primary still emits
+    property bool unsupported: false
     // The first three apps: [{ name, cover (url), running (bool) }]
     property var apps: []
     property url logoSource: "qrc:/res/apollo.png"
@@ -79,14 +89,15 @@ Item {
     // it takes Off's neutral style with a spinner glyph and no label
     readonly property string themeKey: ({ ready: "ready", streaming: "streaming", waking: "waking", asleep: "asleep",
                                           offCanWake: "off", offNoWake: "offNoWake", notPaired: "pair",
-                                          unreachable: "lost", checking: "off" })[stateId]
+                                          unreachable: "lost", checking: "off" })[unsupported ? "unreachable" : stateId]
     readonly property var style: ForkTheme.stateStyle(themeKey)
-    readonly property string glyphName: stateId === "checking" ? "spinner" : style.glyph
+    readonly property string glyphName: stateId === "checking" && !unsupported ? "spinner" : style.glyph
     readonly property var info: CardText.describe({
         state: cardState, name: pcName, version: version, network: network, latencyMs: latencyMs,
         address: address, runningApp: runningApp, defaultApp: defaultApp, streamWidth: streamWidth,
         streamHeight: streamHeight, streamFps: streamFps, streamHdr: streamHdr, wakeFromOff: wakeFromOff,
-        updateAvailable: updateAvailable, reachableOutside: reachableOutside, onLanNow: onLanNow,
+        updateAvailable: updateAvailable, canSleep: canSleep, apolloUpToDate: apolloUpToDate,
+        appsCached: appsCached, hiddenAppCount: hiddenAppCount, online: online, lastSeenVia: lastSeenVia, unsupported: unsupported, reachableOutside: reachableOutside, onLanNow: onLanNow,
         dark: dark, ipNote: ipNote !== "" ? ipNote : undefined
     })
 
@@ -402,7 +413,7 @@ Item {
                         anchors.right: parent.right
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
-                        text: card.stateId === "checking" ? "" : card.style.label
+                        text: card.stateId === "checking" ? "" : (card.unsupported ? "Unsupported" : card.style.label)
                         color: card.style.labelInk
                         px: 11; weight: 700
                         tracking: 0.66
