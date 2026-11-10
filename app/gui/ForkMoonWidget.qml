@@ -1,11 +1,13 @@
-// [fork] "Tonight's moon": the phase name, how much is lit and when it's full, and a 48 px disc with
-// the lit part drawn from today's date (carousel.md §2.5, the canvas's formula: the mean lunar month
-// counted from the new moon of 6 Jan 2000 18:14 UTC). `nowMs` can be pinned for screenshots.
+// [fork] "Tonight's moon": the phase name, how much is lit and when it's next full (or, once it
+// wanes, when it's new), and a 48 px disc with the lit part drawn (carousel.md §2.5). The moon is
+// where the Moon and the Sun actually are (ForkMoonPhase.js), not the canvas's mean lunar month,
+// which put it up to 17 hours off. `nowMs` can be pinned for screenshots.
 import QtQuick
 import QtQuick.Shapes
 import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 import QtQuick.Effects
 import ForkTheme
+import "ForkMoonPhase.js" as MoonPhase
 
 Item {
     id: moon
@@ -21,10 +23,8 @@ Item {
     Accessible.name: qsTr("Tonight's moon: %1, %2").arg(info.name).arg(info.line)
 
     function compute(ms) {
-        var synodic = 29.530588853
-        var age = ((((ms - Date.UTC(2000, 0, 6, 18, 14)) / 86400000) % synodic) + synodic) % synodic
-        var phase = age / synodic
-        var lit = (1 - Math.cos(2 * Math.PI * phase)) / 2
+        var m = MoonPhase.at(ms)
+        var phase = m.phase
         var name = phase < 0.034 ? qsTr("New moon") : phase < 0.216 ? qsTr("Waxing crescent") : phase < 0.284 ? qsTr("First quarter")
                  : phase < 0.466 ? qsTr("Waxing gibbous") : phase < 0.534 ? qsTr("Full moon") : phase < 0.716 ? qsTr("Waning gibbous")
                  : phase < 0.784 ? qsTr("Last quarter") : phase < 0.966 ? qsTr("Waning crescent") : qsTr("New moon")
@@ -33,11 +33,21 @@ Item {
         var d = phase < 0.5
             ? "M0 " + (-R) + "A" + R + " " + R + " 0 0 1 0 " + R + "A" + rx + " " + R + " 0 0 " + (phase < 0.25 ? 0 : 1) + " 0 " + (-R) + "Z"
             : "M0 " + (-R) + "A" + R + " " + R + " 0 0 0 0 " + R + "A" + rx + " " + R + " 0 0 " + (phase < 0.75 ? 0 : 1) + " 0 " + (-R) + "Z"
-        var toFull = Math.round(((phase < 0.5 ? 0.5 : 1.5) - phase) * synodic)
-        var pct = Math.round(lit * 100)
-        var line = toFull === 0 ? qsTr("%1% lit · full tonight").arg(pct)
-                 : (toFull === 1 ? qsTr("%1% lit · full in 1 day").arg(pct) : qsTr("%1% lit · full in %2 days").arg(pct).arg(toFull))
-        return { d: d, name: name, line: line, phase: phase, visible: lit > 0.004 }
+        // Waxing, the days to full; once it wanes, "full last night" for a day, then the days to new
+        // (the canvas counted to the next full moon all month, so the day after one it said "Full
+        // moon · 100% lit · full in 29 days")
+        var when
+        if (m.waxing) {
+            var toFull = Math.round(m.toFull)
+            when = toFull === 0 ? qsTr("full tonight") : toFull === 1 ? qsTr("full in 1 day") : qsTr("full in %1 days").arg(toFull)
+        } else {
+            var sinceFull = Math.round(m.sinceFull)
+            var toNew = Math.round(m.toNew)
+            when = sinceFull === 0 ? qsTr("full tonight") : sinceFull === 1 ? qsTr("full last night")
+                 : toNew === 0 ? qsTr("new tonight") : toNew === 1 ? qsTr("new in 1 day") : qsTr("new in %1 days").arg(toNew)
+        }
+        var line = qsTr("%1% lit · %2").arg(Math.round(m.lit * 100)).arg(when)
+        return { d: d, name: name, line: line, phase: phase, visible: m.lit > 0.004 }
     }
 
     Column {
