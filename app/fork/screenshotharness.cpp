@@ -125,6 +125,10 @@ QtObject {
     // The delays add up to about 80 s per run; CI stops a run after 180 s (fork-macos.yml).
     const Step k_Steps[] = {
         // The redesign's boards are 1280 x 900 (Settings and the dialogs below use 860)
+        // The size is set twice: in a hidden run the window is never shown, and its overlay (where dialogs
+        // are centered and dimmed) only gets its size from a resize, which setting the size it already has
+        // (main.qml opens at 1280 x 900) doesn't make: the Customize sheet came out at the corner
+        { nullptr, "window.width = 1200; window.height = 800", 300 },
         { nullptr, "window.width = 1280; window.height = 900", 500 },
         // The first run: no PCs (an empty sample list; the real list is never asked)
         { "1-computers", P "p.forkSampleModel = pcsModel([]); p.forkSkipEntrance()", 2500, "harnessSamples" },
