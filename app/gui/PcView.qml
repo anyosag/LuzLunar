@@ -98,7 +98,7 @@ Item {
 
     readonly property int pcCount: stage.pcCount
     readonly property int slotCount: pcCount + 1
-    readonly property bool showFirstRun: !forkSample && pcCount === 0 && firstRunSettled
+    readonly property bool showFirstRun: pcCount === 0 && firstRunSettled
     // The model is empty for a moment at startup, before the first poll: the first-run page waits
     // a beat so a PC that is already known doesn't flash it
     property bool firstRunSettled: forkSample

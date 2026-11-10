@@ -52,6 +52,8 @@ Item {
     Canvas {
         id: spriteGreen
         width: 4; height: 256
+        canvasSize: Qt.size(4, 256)
+        tileSize: canvasSize
         opacity: 0
         onPaint: aurora.paintSprite(spriteGreen, [
             [0, "rgba(210,255,230,0)"], [0.015, "rgba(215,255,232,0.95)"], [0.06, "rgba(110,255,170,0.9)"],
@@ -62,6 +64,8 @@ Item {
     Canvas {
         id: spriteTeal
         width: 4; height: 256
+        canvasSize: Qt.size(4, 256)
+        tileSize: canvasSize
         opacity: 0
         onPaint: aurora.paintSprite(spriteTeal, [
             [0, "rgba(200,255,245,0)"], [0.02, "rgba(190,255,240,0.8)"], [0.08, "rgba(80,240,200,0.7)"],
@@ -72,6 +76,8 @@ Item {
     Canvas {
         id: spriteFringe
         width: 4; height: 32
+        canvasSize: Qt.size(4, 32)
+        tileSize: canvasSize
         opacity: 0
         onPaint: {
             var g = getContext("2d")
@@ -100,6 +106,8 @@ Item {
         id: curtains
         width: aurora.bw; height: aurora.bh
         canvasSize: Qt.size(aurora.bw, aurora.bh)
+        tileSize: canvasSize
+        canvasWindow: Qt.rect(0, 0, aurora.bw, aurora.bh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.drawCurtains(curtains.getContext("2d"), aurora.bw, aurora.bh, 1)
@@ -113,6 +121,8 @@ Item {
         id: glowA
         width: aurora.gw; height: aurora.gh
         canvasSize: Qt.size(aurora.gw, aurora.gh)
+        tileSize: canvasSize
+        canvasWindow: Qt.rect(0, 0, aurora.gw, aurora.gh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.drawCurtains(glowA.getContext("2d"), aurora.gw, aurora.gh, 0.75)
@@ -125,6 +135,8 @@ Item {
         property Item next
         width: aurora.gw; height: aurora.gh
         canvasSize: Qt.size(aurora.gw, aurora.gh)
+        tileSize: canvasSize
+        canvasWindow: Qt.rect(0, 0, aurora.gw, aurora.gh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.average(getContext("2d"), src, dx, dy)
@@ -143,6 +155,8 @@ Item {
         id: out
         anchors.fill: parent
         canvasSize: Qt.size(aurora.bw, aurora.bh)
+        tileSize: canvasSize
+        canvasWindow: Qt.rect(0, 0, aurora.bw, aurora.bh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
         onPaint: aurora.drawOut(out.getContext("2d"))
@@ -221,9 +235,9 @@ Item {
         ctx.reset()
         ctx.globalCompositeOperation = "copy"
         ctx.globalAlpha = 0.5
-        ctx.drawImage(src, 0, 0)
+        ctx.drawImage(src, 0, 0, aurora.gw, aurora.gh)
         ctx.globalCompositeOperation = "lighter"
-        ctx.drawImage(src, dx, dy)
+        ctx.drawImage(src, dx, dy, aurora.gw, aurora.gh)
         ctx.globalAlpha = 1
         ctx.globalCompositeOperation = "source-over"
     }
@@ -240,9 +254,9 @@ Item {
         ctx.globalCompositeOperation = "qt-screen"
         ctx.globalAlpha = 0.85
         // the 15 px box shifts the glow by 7.5 stage px; put it back
-        ctx.drawImage(glow, 0, 0, aurora.gw, aurora.gh, -30 * bw / aurora.skyWidth, -30 * bh / 520, bw, bh)
+        ctx.drawImage(glow, -30 * bw / aurora.skyWidth, -30 * bh / 520, bw, bh)
         ctx.globalAlpha = 0.92
-        ctx.drawImage(curtains, 0, 0, bw, bh, 0, 0, bw, bh)
+        ctx.drawImage(curtains, 0, 0, bw, bh)
         ctx.globalAlpha = 1
         ctx.globalCompositeOperation = "source-over"
     }

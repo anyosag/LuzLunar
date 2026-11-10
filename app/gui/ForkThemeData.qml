@@ -164,7 +164,7 @@ QtObject {
             return { fill: "#D7264B", onFill: "#FFFFFF", tile: "#D7264B", tileInk: "#FFFFFF", sky: "#36111F" }
         case "gray":
             // A PC that isn't paired yet stays grey: it isn't one of yours until it's paired
-            return { fill: dark ? "#5A5E6E" : "#4B4F5C", onFill: "#FFFFFF", tile: "#4B4F5C", tileInk: "#FFFFFF", sky: "#202229" }
+            return { fill: dark ? "#5A5E6E" : "#4B4F5C", onFill: "#FFFFFF", tile: dark ? "#5A5E6E" : "#4B4F5C", tileInk: "#FFFFFF", sky: "#202229" }
         case "indigo":
         default:
             return { fill: "#5E5CE6", onFill: "#FFFFFF", tile: "#5E5CE6", tileInk: "#FFFFFF", sky: "#17163F" }
@@ -213,19 +213,21 @@ QtObject {
         property string glyph
         property bool glyphFilled: false
     }
-    // Tint: the state's color at 0.13 in dark and 0.08 in light, except Off
+    // Tint: the state's color at 0.13 in dark and 0.08 in light, except Off. Streaming, Asleep and
+    // Not paired use the big card's own values (Main.dc.html 675, 726, 767), which the canvas sets
+    // apart from this formula in light, and for Not paired in dark too.
     function stateTint(r, g, b) {
         return Qt.rgba(r / 255, g / 255, b / 255, dark ? 0.13 : 0.08)
     }
     readonly property QtObject states: QtObject {
         id: statesObj
         readonly property StateStyle ready: StateStyle { disc: "#248A3D"; ink: "#FFFFFF"; tint: theme.stateTint(48, 209, 88); labelInk: stObj.green; label: "Ready"; glyph: "tick" }
-        readonly property StateStyle streaming: StateStyle { disc: "#0A6CDB"; ink: "#FFFFFF"; tint: theme.stateTint(64, 156, 255); labelInk: stObj.blue; label: "Streaming"; glyph: "play"; glyphFilled: true }
+        readonly property StateStyle streaming: StateStyle { disc: "#0A6CDB"; ink: "#FFFFFF"; tint: theme.dark ? theme.stateTint(64, 156, 255) : Qt.rgba(0, 98 / 255, 204 / 255, 0.08); labelInk: stObj.blue; label: "Streaming"; glyph: "play"; glyphFilled: true }
         readonly property StateStyle waking: StateStyle { disc: "#B85800"; ink: "#FFFFFF"; tint: theme.stateTint(255, 179, 64); labelInk: stObj.amber; label: "Waking"; glyph: "spinner" }
-        readonly property StateStyle asleep: StateStyle { disc: "#9B45D9"; ink: "#FFFFFF"; tint: theme.stateTint(193, 125, 245); labelInk: stObj.purple; label: "Asleep"; glyph: "moon" }
+        readonly property StateStyle asleep: StateStyle { disc: "#9B45D9"; ink: "#FFFFFF"; tint: theme.dark ? theme.stateTint(193, 125, 245) : Qt.rgba(142 / 255, 59 / 255, 184 / 255, 0.08); labelInk: stObj.purple; label: "Asleep"; glyph: "moon" }
         readonly property StateStyle off: StateStyle { disc: "#636366"; ink: "#FFFFFF"; tint: theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.05); labelInk: stObj.gray; label: "Off"; glyph: "power" }
         readonly property StateStyle offNoWake: off
-        readonly property StateStyle pair: StateStyle { disc: "#F5C878"; ink: "#1A1405"; tint: theme.dark ? theme.stateTint(245, 200, 120) : theme.stateTint(168, 114, 15); labelInk: stObj.gold; label: "Not paired"; glyph: "lock" }
+        readonly property StateStyle pair: StateStyle { disc: "#F5C878"; ink: "#1A1405"; tint: theme.dark ? Qt.rgba(245 / 255, 200 / 255, 120 / 255, 0.12) : Qt.rgba(168 / 255, 114 / 255, 15 / 255, 0.09); labelInk: stObj.gold; label: "Not paired"; glyph: "lock" }
         readonly property StateStyle lost: StateStyle { disc: "#C62828"; ink: "#FFFFFF"; tint: theme.stateTint(255, 105, 97); labelInk: stObj.red; label: "Can’t reach"; glyph: "noWifi" }
     }
     // A card state's style by key: ready streaming waking asleep off offNoWake pair lost
@@ -344,6 +346,9 @@ QtObject {
         readonly property TypeStyle controlBold: TypeStyle { size: 13; weight: 600 }
         // A chip: 11.5, 500 (warm 600); an app chip: 11, 500
         readonly property TypeStyle chip: TypeStyle { size: 11.5; weight: 500 }
+        // Menu rows (carousel.md §6.2, library.md §10.2) and the big card's chips (card.md §3.7)
+        readonly property TypeStyle menuRow: TypeStyle { size: 13; weight: 400 }
+        readonly property TypeStyle cardChip: TypeStyle { size: 12; weight: 500 }
         readonly property TypeStyle chipSmall: TypeStyle { size: 11; weight: 500 }
         // The monogram on an app cover: library.md 800, -0.04em (size set by the cover)
         readonly property TypeStyle monogram: TypeStyle { size: 66; weight: 800; spacing: -2.64; lineHeight: 66 }
