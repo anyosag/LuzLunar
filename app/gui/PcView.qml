@@ -1200,8 +1200,8 @@ Item {
                     text: pairDialog.pin
                     textFormat: Text.PlainText
                     font.family: ForkTheme.monoFamily
-                    font.pixelSize: 44
-                    font.weight: Font.DemiBold
+                    px: 44
+                    weight: Font.DemiBold
                     tracking: 8.8
                     color: ForkTheme.accentInk
                     Accessible.name: qsTr("PIN %1").arg(pairDialog.pin.split("").join(" "))
