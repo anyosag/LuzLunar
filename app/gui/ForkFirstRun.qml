@@ -230,7 +230,7 @@ Item {
                             selectionColor: page.cv.gold
                             selectedTextColor: "#1A1405"
                             font.family: ForkTheme.uiFamily
-                            font.pointSize: 14 * 72 / (Screen.logicalPixelDensity * 25.4)
+                            font.pointSize: 14 * 72 / (Screen.logicalPixelDensity > 0 ? Screen.logicalPixelDensity * 25.4 : 72)
                             selectByMouse: true
                             Accessible.name: qsTr("IP address or hostname")
                             Keys.onReturnPressed: page.addAddress()

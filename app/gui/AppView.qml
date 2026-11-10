@@ -832,6 +832,60 @@ FocusScope {
             color: ForkTheme.dark ? Qt.rgba(0, 0, 0, 0.6) : Qt.rgba(24 / 255, 26 / 255, 46 / 255, 0.22)
         }
 
+        // The sky behind the panel, blurred (30) and saturated (1.3), under the tint: main.qml's sky
+        // when it shows (the page's ancestors' `sky`), else a flat night or day colour that gives the
+        // same ground
+        Item {
+            id: backdrop
+            anchors.fill: parent
+            readonly property Item sky: typeof window !== "undefined" && typeof sky !== "undefined" && sky && sky.shown ? sky : null
+            readonly property bool blurring: sky !== null && GraphicsInfo.api !== GraphicsInfo.Software
+            layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: backdropMask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1.0
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: ForkTheme.dark ? "#0C1630" : "#F6F4FA"
+            }
+
+            ShaderEffectSource {
+                id: skyCapture
+                visible: false
+                live: backdrop.blurring && appGrid.visible
+                sourceItem: backdrop.blurring ? backdrop.sky : null
+                sourceRect: {
+                    var p = backdrop.blurring ? sheet.mapToItem(backdrop.sky, 0, 0) : Qt.point(0, 0)
+                    return Qt.rect(p.x, p.y, sheet.width, sheet.height)
+                }
+                // The blur is wide, so a quarter of the resolution does
+                textureSize: Qt.size(sheet.width / 4, sheet.height / 4)
+            }
+
+            MultiEffect {
+                anchors.fill: parent
+                visible: backdrop.blurring
+                source: skyCapture
+                autoPaddingEnabled: false
+                blurEnabled: true
+                blurMax: 32
+                blur: 1.0
+                saturation: 0.3
+            }
+        }
+
+        Rectangle {
+            id: backdropMask
+            anchors.fill: parent
+            radius: 24
+            visible: false
+            layer.enabled: true
+        }
+
         Rectangle {
             anchors.fill: parent
             radius: 24

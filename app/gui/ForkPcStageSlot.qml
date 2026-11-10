@@ -121,7 +121,7 @@ Item {
 
     HoverHandler {
         id: hover
-        enabled: slot.visible
+        enabled: slot.visible && slot.stage && slot.stage.hoverEnabled
         onHoveredChanged: {
             if (!slot.stage) return
             if (hovered) slot.stage.hoverIndex = slot.slotIndex

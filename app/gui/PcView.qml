@@ -66,7 +66,10 @@ Item {
     function forkFocus(i) { go(i, undefined, false) }
     function forkOpenMenu(i) { if (i !== undefined) go(i, undefined, false); toggleMenu() }
     function forkCloseMenu() { menuOpen = false }
-    function forkStartDemo() { demo = true }
+    // Shows the Pause demo pill without LUZLUNAR_DEMO (the harness; ForkPcPrefs.demoMode is constant)
+    property bool forkDemoPill: false
+    function forkStartDemo() { forkDemoPill = true; demo = true }
+    function forkOpenCustomize(i) { runAction(i !== undefined ? i : idx, "customize") }
     function forkStopDemo() { demo = false }
     function forkSkipEntrance() {
         introTimer.stop(); revealTimer.stop(); settleTimer.stop()
@@ -292,6 +295,7 @@ Item {
             case "waking": line.after = qsTr(" is waking up…"); line.dot = ForkTheme.st.amber; break
             case "off": case "offNoWake": line.after = qsTr(" is shut down"); line.dot = ForkTheme.st.gray; break
             case "lost": line.before = qsTr("Can’t reach "); line.dot = ForkTheme.st.red; break
+            case "checking": line.before = qsTr("Looking for "); line.after = qsTr("…"); line.dot = ForkTheme.st.gray; break
             default: line.after = qsTr(" is ready"); break
             }
             out.push(line)
@@ -797,6 +801,8 @@ Item {
                     settled: pcPage.settled
                     revealed: pcPage.revealed
                     keyFocusRing: pcPage.keyFocus && pcPage.activeFocus
+                    // A pointer resting on a card would lift it (-6 px) in a screenshot
+                    hoverEnabled: !ForkPcPrefs.screenshotMode
                     pcCard: pcCardComp
                     addCard: addCardComp
                     onPick: function (i) { pcPage.pick(i) }
@@ -810,7 +816,7 @@ Item {
                     visible: pcPage.forkViewMode === "carousel"
                     chips: pcPage.navChips
                     current: pcPage.idx
-                    showDemo: ForkPcPrefs.demoMode
+                    showDemo: ForkPcPrefs.demoMode || pcPage.forkDemoPill
                     demoOn: pcPage.demo
                     onPicked: function (i) { pcPage.pick(i) }
                     onToggleDemo: pcPage.demo = !pcPage.demo

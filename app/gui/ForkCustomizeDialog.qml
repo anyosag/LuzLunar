@@ -242,7 +242,7 @@ NavigableDialog {
             selectedTextColor: "#FFFFFF"
             selectionColor: sheet.current.fill
             font.family: ForkTheme.uiFamily
-            font.pointSize: 14 * 72 / (Screen.logicalPixelDensity * 25.4)
+            font.pointSize: 14 * 72 / (Screen.logicalPixelDensity > 0 ? Screen.logicalPixelDensity * 25.4 : 72)
             selectByMouse: true
             maximumLength: 64
             Accessible.name: qsTr("Name")

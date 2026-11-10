@@ -25,6 +25,8 @@ Item {
     property bool animate: !ForkTheme.reduceMotion
     // Keyboard focus is on the page: a ring around the focused card (the app's gold, not the PC's)
     property bool keyFocusRing: false
+    // False ignores the pointer (no hover lift or brightening), for deterministic screenshots
+    property bool hoverEnabled: true
     // More than two rows of cards in the grid scroll with the wheel
     property real gridScroll: 0
     readonly property int gridRows: Math.ceil(n / gridCols)
