@@ -11,7 +11,6 @@ Item {
     id: stage
 
     property var pcModel: null
-    property int pcCount: 0
     property Component pcCard
     property Component addCard
 
@@ -25,6 +24,7 @@ Item {
     property bool revealed: true
     property bool animate: !ForkTheme.reduceMotion
 
+    readonly property int pcCount: pcRepeater.count
     readonly property int n: pcCount + 1
     readonly property bool loop: n > 2
     readonly property bool grid: view === "grid"
@@ -148,12 +148,12 @@ Item {
                 radius: 25
                 color: ForkTheme.dark ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(24 / 255, 26 / 255, 46 / 255, 0.05)
             }
-            ForkStoryGlyph {
+            ForkPathIcon {
                 anchors.centerIn: parent
                 size: 18
                 strokeWidth: 2.2
                 color: ForkTheme.cv.text
-                path: arrow.left ? "M14.5 5.5 8 12l6.5 6.5" : "M9.5 5.5 16 12l-6.5 6.5"
+                name: arrow.left ? "chevronLeft" : "chevronRight"
             }
             MouseArea {
                 anchors.fill: parent

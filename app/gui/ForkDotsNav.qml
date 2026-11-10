@@ -102,9 +102,9 @@ Item {
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
-                ForkStoryGlyph {
+                ForkPathIcon {
                     anchors.verticalCenter: parent.verticalCenter
-                    path: nav.demoOn ? "M9 6v12M15 6v12" : "M8 5.8v12.4L18.2 12z"
+                    name: nav.demoOn ? "pause" : "play"
                     size: 14
                     strokeWidth: 2.2
                     filled: !nav.demoOn

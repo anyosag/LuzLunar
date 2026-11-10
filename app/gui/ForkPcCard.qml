@@ -70,8 +70,8 @@ Item {
     readonly property bool dark: ForkTheme.dark
     readonly property string stateId: CardText.normalizeState(state)
     readonly property var hue: ForkTheme.hue(stateId === "notPaired" ? "gray" : hueKey)
-    readonly property color tileDisc: stateId === "notPaired" ? hue.fill : (hueKey === "teal" ? "#0E7C93" : hue.fill)
-    readonly property color tileInk: hueKey === "teal" ? "#FFFFFF" : hue.onFill
+    readonly property color tileDisc: hue.tile
+    readonly property color tileInk: hue.tileInk
     readonly property bool animating: motion && visible && !ForkTheme.reduceMotion && width > 0
     readonly property int tick: animating ? (sharedTick >= 0 ? sharedTick : ownClock.tick) : 0
     readonly property int ph: tick % 2

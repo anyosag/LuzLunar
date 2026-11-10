@@ -4,7 +4,7 @@
 // the others, Return runs the row, Escape closes. The page places it and covers the rest of the
 // window with a catcher while it is open.
 //
-// sections: [[{ id, label, icon (SVG path), fill (bool), key, badge, warm, hi, danger }]]
+// sections: [[{ id, label, icon (a ForkPathIcon name), fill (bool), key, badge, warm, hi, danger }]]
 import QtQuick
 import ForkTheme
 
@@ -129,10 +129,10 @@ FocusScope {
                             Accessible.name: modelData.label
                             Accessible.onPressAction: menu.activated(modelData.id)
 
-                            ForkStoryGlyph {
+                            ForkPathIcon {
                                 x: 10
                                 anchors.verticalCenter: parent.verticalCenter
-                                path: row.modelData.icon
+                                name: row.modelData.icon
                                 filled: row.modelData.fill === true
                                 size: 16
                                 color: row.hi ? "#FFFFFF" : (row.danger ? ForkTheme.st.red : ForkTheme.cv.muted)

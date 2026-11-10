@@ -9,6 +9,8 @@ Item {
     id: night
 
     property int tick: 0
+    // active: the animations exist (night, not still); running: they advance (window visible and active)
+    property bool active: false
     property bool running: false
     property real skyWidth: 1280
 
@@ -83,21 +85,21 @@ Item {
     }
     SequentialAnimation {
         id: satAnim
-        running: night.running
-        loops: Animation.Infinite
-        // the first cycle waits 3 s; later ones wait out the second left over from the last
+        running: night.active
+        paused: !night.running
         PauseAnimation { duration: 3000 }
-        ScriptAction { script: { sat.x = -20; sat.y = 150; sat.opacity = 0 } }
-        PauseAnimation { duration: 60 }
-        ParallelAnimation {
-            NumberAnimation { target: sat; property: "x"; to: night.skyWidth + 20; duration: 46000 }
-            NumberAnimation { target: sat; property: "y"; to: 96; duration: 46000 }
-            NumberAnimation { target: sat; property: "opacity"; to: 0.85; duration: 3000; easing.type: Easing.BezierSpline
-                easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1] }
+        SequentialAnimation {
+            loops: Animation.Infinite
+            ScriptAction { script: { sat.x = -20; sat.y = 150; sat.opacity = 0 } }
+            PauseAnimation { duration: 60 }
+            ParallelAnimation {
+                NumberAnimation { target: sat; property: "x"; to: night.skyWidth + 20; duration: 46000 }
+                NumberAnimation { target: sat; property: "y"; to: 96; duration: 46000 }
+                NumberAnimation { target: sat; property: "opacity"; to: 0.85; duration: 3000
+                    easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1] }
+            }
+            PauseAnimation { duration: 1000 }
         }
-        // 46000 - 3000 of the opacity run is spent, so the cycle's tail is 1 s; later cycles skip the 3 s head
-        PauseAnimation { duration: 1000 }
-        ScriptAction { script: { sat.opacity = 0; sat.x = -20; sat.y = 150 } }
     }
 
     // ---- shooting star: a 150 x 2 streak whose head flies along `ang`
@@ -152,8 +154,8 @@ Item {
 
     SequentialAnimation {
         id: shootAnim
-        running: night.running
-        loops: Animation.Infinite
+        running: night.active
+        paused: !night.running
         PauseAnimation { duration: 1800 }
         // each shot: start (jump), fly, fade, idle 3.5 - 9 s
         SequentialAnimation {
@@ -176,7 +178,7 @@ Item {
                     easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1] }
             }
             PauseAnimation { duration: 40 }
-            ScriptAction { script: { night.shOp = 0; shot.pause_ = 3500 + Math.random() * 5500 } }
+            ScriptAction { script: { night.shOp = 0; idle.duration = 3500 + Math.random() * 5500 } }
             PauseAnimation { id: idle; duration: 3500 }
         }
     }

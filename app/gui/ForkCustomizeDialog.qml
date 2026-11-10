@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Shapes
@@ -29,7 +31,7 @@ NavigableDialog {
     property bool wakeOnPick: true
     property bool keepFirst: false
 
-    readonly property var palette: [
+    readonly property var colors: [
         { key: "indigo", name: qsTr("Indigo"), fill: "#5E5CE6", on: "#FFFFFF", sky: "#17163F" },
         { key: "blue", name: qsTr("Blue"), fill: "#0A6CDB", on: "#FFFFFF", sky: "#0B1F3D" },
         { key: "purple", name: qsTr("Purple"), fill: "#9B45D9", on: "#FFFFFF", sky: "#24123A" },
@@ -42,12 +44,12 @@ NavigableDialog {
         { key: "graphite", name: qsTr("Graphite"), fill: "#4B4F5C", on: "#FFFFFF", sky: "#1A1C24" }
     ]
     readonly property var current: {
-        for (var i = 0; i < palette.length; i++) {
-            if (palette[i].key === colorKey) {
-                return palette[i]
+        for (var i = 0; i < colors.length; i++) {
+            if (colors[i].key === colorKey) {
+                return colors[i]
             }
         }
-        return palette[0]
+        return colors[0]
     }
 
     // The sheet's own tokens (they differ a little from the pages')
@@ -97,8 +99,8 @@ NavigableDialog {
         }
         var shown = renamed ? name : savedName
         var w = sheet.parent ? sheet.parent.Window.window : null
-        if (renamed && w && typeof w.forkToast === "function") {
-            w.forkToast(qsTr("Renamed to %1").arg(name))
+        if (renamed && w && typeof w["forkToast"] === "function") {
+            w["forkToast"](qsTr("Renamed to %1").arg(name))
         }
         saved(pcUuid, shown, colorKey, wakeOnPick, keepFirst)
         close()
@@ -280,7 +282,7 @@ NavigableDialog {
         }
         Repeater {
             id: swatches
-            model: sheet.palette
+            model: sheet.colors
             delegate: Item {
                 id: sw
                 required property int index
@@ -294,8 +296,8 @@ NavigableDialog {
                 Accessible.checked: picked
                 Accessible.onPressAction: sheet.colorKey = modelData.key
                 Keys.onSpacePressed: sheet.colorKey = modelData.key
-                Keys.onLeftPressed: if (index > 0) { swatches.itemAt(index - 1).forceActiveFocus(); sheet.colorKey = sheet.palette[index - 1].key }
-                Keys.onRightPressed: if (index < 9) { swatches.itemAt(index + 1).forceActiveFocus(); sheet.colorKey = sheet.palette[index + 1].key }
+                Keys.onLeftPressed: if (index > 0) { swatches.itemAt(index - 1).forceActiveFocus(); sheet.colorKey = sheet.colors[index - 1].key }
+                Keys.onRightPressed: if (index < 9) { swatches.itemAt(index + 1).forceActiveFocus(); sheet.colorKey = sheet.colors[index + 1].key }
 
                 Rectangle { // selected: the swatch's fill, the sheet color, then the disc
                     anchors.centerIn: parent; width: 40; height: 40; radius: 20
@@ -337,7 +339,7 @@ NavigableDialog {
             property string label
             property string help
             property bool on
-            property alias switchItem: sw
+            property alias switchItem: tsw
             signal flipped()
             Accessible.ignored: true
 
@@ -355,7 +357,7 @@ NavigableDialog {
                 }
             }
             Item {
-                id: sw
+                id: tsw
                 x: 498; y: (row.height - 22) / 2 + 0.5; width: 38; height: 22
                 activeFocusOnTab: true
                 Accessible.role: Accessible.CheckBox
@@ -383,11 +385,11 @@ NavigableDialog {
                 Rectangle {
                     anchors.centerIn: parent; width: 46; height: 30; radius: 15; color: "transparent"
                     border.width: 2; border.color: ForkTheme.selEdge
-                    visible: sw.activeFocus && !sw.byMouse
+                    visible: tsw.activeFocus && !tsw.byMouse
                 }
                 property bool byMouse: false
                 onActiveFocusChanged: if (!activeFocus) byMouse = false
-                TapHandler { onTapped: { row.flipped(); sw.forceActiveFocus(); sw.byMouse = true } }
+                TapHandler { onTapped: { row.flipped(); tsw.forceActiveFocus(); tsw.byMouse = true } }
             }
         }
 

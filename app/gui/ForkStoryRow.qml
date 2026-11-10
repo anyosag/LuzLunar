@@ -196,9 +196,9 @@ Column {
                                 x: 8
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 5
-                                ForkStoryGlyph {
+                                ForkPathIcon {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    path: "M8 5.8v12.4L18.2 12z"
+                                    name: "play"
                                     size: 11; strokeWidth: 1.6; filled: true
                                     color: "#FFFFFF"
                                 }

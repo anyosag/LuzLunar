@@ -104,6 +104,7 @@ Item {
             anchors.fill: parent
             visible: root.night
             tick: root.running ? root.tick : 0
+            active: root.night && !root.still && !ForkTheme.reduceMotion
             running: root.running
             skyWidth: root.width
         }
