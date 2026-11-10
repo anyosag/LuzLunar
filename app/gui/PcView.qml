@@ -79,6 +79,9 @@ Item {
     property bool noEntrance: false
     function forkTickDemo() { if (demo) go(idx + 1, 1, true) }
     function forkShowToast(text) { forkToast(text) }
+    // Screenshot hooks: the grid frozen mid-drag (slot `from` lifted over cell `to`), and its end
+    function forkDragPreview(from, to) { stage.previewDrag(from, to) }
+    function forkDragEnd() { stage.endPreview() }
     readonly property alias forkStage: stage
     readonly property bool forkMenuOpen: menuOpen
     readonly property bool forkDemoOn: demo
@@ -311,6 +314,38 @@ Item {
         }
         out.push({ name: qsTr("Add a PC"), dot: ForkTheme.cv.muted })
         return out
+    }
+
+    // ---- the owner's own order (dragging cards or chips, or ⌥⌘← / ⌥⌘→): move the PC in slot `from`
+    // to slot `to`. The saved order is ForkPcPrefs.setPcOrder; the sample PCs reorder their model.
+    function reorderPc(from, to) {
+        if (from === to || from < 0 || to < 0 || from >= pcCount || to >= pcCount) return
+        var moved = rowOf(from)
+        if (!moved) return
+        demo = false
+        menuOpen = false
+        focusUuid = moved.uuid
+        if (forkSample) {
+            if (typeof forkSampleModel.move === "function") forkSampleModel.move(from, to, 1)
+            return
+        }
+        var uuids = []
+        var names = {}
+        for (var i = 0; i < pcCount; i++) {
+            var m = rowOf(i)
+            if (!m) return
+            uuids.push(m.uuid)
+            names[m.uuid] = m.name
+        }
+        uuids.splice(to, 0, uuids.splice(from, 1)[0])
+        var dropped = ForkPcPrefs.setPcOrder(uuids)
+        if (dropped !== undefined && dropped !== "") forkToast(qsTr("%1 is no longer kept first").arg(names[dropped] !== undefined ? names[dropped] : ""))
+    }
+    function moveFocused(delta) {
+        if (isAddSlot(idx)) return
+        var to = idx + delta
+        if (to < 0 || to >= pcCount) return
+        reorderPc(idx, to)
     }
 
     // Keep the focus on the same PC when PCs come and go (carousel.md §11.9)
@@ -811,6 +846,9 @@ Item {
                     addCard: addCardComp
                     onPick: function (i) { pcPage.pick(i) }
                     onStep: function (d) { pcPage.step(d) }
+                    onReorder: function (from, to) { pcPage.reorderPc(from, to) }
+                    // So Escape reaches the page while a card is held
+                    onDragActiveChanged: if (dragActive && !ForkPcPrefs.screenshotMode) pcPage.forceActiveFocus()
                 }
 
                 ForkDotsNav {
@@ -824,6 +862,7 @@ Item {
                     demoOn: pcPage.demo
                     onPicked: function (i) { pcPage.pick(i) }
                     onToggleDemo: pcPage.demo = !pcPage.demo
+                    onReorder: function (from, to) { pcPage.reorderPc(from, to) }
                 }
 
                 ForkCanvasText {
@@ -976,6 +1015,14 @@ Item {
         var grid = forkViewMode === "grid"
         if (event.matches(StandardKey.New)) {
             forkAddPc()
+            event.accepted = true
+        } else if ((event.key === Qt.Key_Left || event.key === Qt.Key_Right)
+                   && event.modifiers === (Qt.AltModifier | Qt.ControlModifier)) {
+            // ⌥⌘← / ⌥⌘→ (⌘ is Control in Qt on a Mac): move this PC one place
+            moveFocused(event.key === Qt.Key_Left ? -1 : 1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_Escape && stage.dragActive) {
+            stage.cancelDrag()
             event.accepted = true
         } else if (event.key === Qt.Key_Left && event.modifiers === Qt.NoModifier) {
             step(-1); event.accepted = true

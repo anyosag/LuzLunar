@@ -514,7 +514,8 @@ QVector<NvComputer*> ComputerManager::getComputers()
     QHash<QString, NvComputer*> forkByUuid;
     const QList<NvComputer*> known = m_KnownHosts.values();
     for (NvComputer* host : known) {
-        forkPcs.emplace_back(host->uuid.toStdString(), host->name.toStdString());
+        // Lower-cased here, with Qt's Unicode rules, as the old sort did (the rules only fold ASCII)
+        forkPcs.emplace_back(host->uuid.toStdString(), host->name.toLower().toStdString());
         forkByUuid.insert(host->uuid, host);
     }
     std::vector<std::string> forkOrder;
