@@ -360,6 +360,7 @@ Item {
     readonly property bool canLaunch: !forkSample && computerModel !== null && typeof computerModel.createSessionForApp === "function"
     readonly property bool canQuit: !forkSample && computerModel !== null && typeof computerModel.quitRunningApp === "function"
     readonly property bool canWakeThenStream: !forkSample && computerModel !== null
+    // Fallback for a harness without main.qml's shared instance
     ForkWakeLaunch {
         id: wakeLaunch
         summaryFor: function (appName) { return Launch.streamSummary(pcPage.wakeUuid, appName) }
@@ -494,7 +495,10 @@ Item {
     function wakeThenLaunch(i, appId, label) {
         var m = rowOf(i)
         if (m) wakeUuid = m.uuid
-        if (canWakeThenStream && appId) wakeLaunch.start(computerModel, i, appId, label)
+        // One wake-launch app-wide: main.qml's (window.forkWakeLaunch) when it has one, else this page's own
+        var shared = (typeof window !== "undefined" && window && window.forkWakeLaunch) ? window.forkWakeLaunch : wakeLaunch
+        shared.summaryFor = function (appName) { return Launch.streamSummary(pcPage.wakeUuid, appName) }
+        if (canWakeThenStream && appId) shared.start(computerModel, i, appId, label)
         else forkWake(i)
     }
     function quitRunning(i) {
