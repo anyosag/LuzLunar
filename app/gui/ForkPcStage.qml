@@ -115,8 +115,9 @@ Item {
             pendingClear.restart()
             reorder(dragFrom, dragTo)
         } else {
-            dragFrom = -1
-            dragTo = -1
+            // Back on its own cell: keep its z until it has settled
+            dragTo = dragFrom
+            pendingClear.restart()
         }
     }
     // Escape: the card goes back to its own cell
@@ -154,13 +155,27 @@ Item {
         interval: 700
         onTriggered: stageRoot.clearDrag()
     }
+    // A model change mid-drag leaves the row indexes meaningless: end the drag (nothing is reordered)
     Connections {
         target: stageRoot.pcModel
         ignoreUnknownSignals: true
+        function onModelReset() { stageRoot.abortDrag() }
+        function onRowsInserted() { stageRoot.abortDrag() }
+        function onRowsRemoved() { stageRoot.abortDrag() }
         function onRowsMoved() {
-            stageRoot.itemsRevision++
+            if (stageRoot.dragActive) stageRoot.abortDrag()
+            // This handler runs before QQmlDelegateModel's own rowsMoved handling, so the Repeater's
+            // items still have their old order now. Bumping at once would make the page's refocus
+            // (by uuid, in onItemsRevisionChanged) read the old order and pick the old slot. So the
+            // bump waits one turn of the event loop, when itemAt() and the delegates' indexes are new;
+            // the refocus then finds the moved PC's uuid at its new slot.
+            Qt.callLater(function () { stageRoot.itemsRevision++ })
             if (!stageRoot.dragActive) stageRoot.clearDrag()
         }
+    }
+    function abortDrag() {
+        if (dragFrom < 0 && !dragActive) return
+        endPreview()
     }
     // Near the top or bottom of a scrolling grid the drag scrolls it
     Timer {

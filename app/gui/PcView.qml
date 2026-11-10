@@ -1007,23 +1007,28 @@ Item {
     Keys.onPressed: function (event) {
         if (showFirstRun || appsOpen) return
         keyFocus = true
+        // While a card is held only Escape (cancel) does anything
+        if (stage.dragActive) {
+            if (event.key === Qt.Key_Escape) stage.cancelDrag()
+            event.accepted = true
+            return
+        }
+        // A Mac adds Qt.KeypadModifier to every arrow key
+        var mods = event.modifiers & ~Qt.KeypadModifier
         var grid = forkViewMode === "grid"
         if (event.matches(StandardKey.New)) {
             forkAddPc()
             event.accepted = true
         } else if ((event.key === Qt.Key_Left || event.key === Qt.Key_Right)
-                   && event.modifiers === (Qt.AltModifier | Qt.ControlModifier)) {
+                   && mods === (Qt.AltModifier | Qt.ControlModifier)) {
             // ⌥⌘← / ⌥⌘→ (⌘ is Control in Qt on a Mac): move this PC one place
             moveFocused(event.key === Qt.Key_Left ? -1 : 1)
             event.accepted = true
-        } else if (event.key === Qt.Key_Escape && stage.dragActive) {
-            stage.cancelDrag()
-            event.accepted = true
-        } else if (event.key === Qt.Key_Left && event.modifiers === Qt.NoModifier) {
+        } else if (event.key === Qt.Key_Left && mods === Qt.NoModifier) {
             step(-1); event.accepted = true
-        } else if (event.key === Qt.Key_Right && event.modifiers === Qt.NoModifier) {
+        } else if (event.key === Qt.Key_Right && mods === Qt.NoModifier) {
             step(1); event.accepted = true
-        } else if (event.key === Qt.Key_Up && event.modifiers === Qt.NoModifier) {
+        } else if (event.key === Qt.Key_Up && mods === Qt.NoModifier) {
             // Up inside the grid moves a row; from the carousel or the grid's top row it goes on to the
             // window's header (before the page in the focus chain), as AppView does. Down or Escape
             // there give the page focus back.
