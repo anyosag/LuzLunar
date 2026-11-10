@@ -3,6 +3,7 @@
 #include "nvhttp.h"
 #include "nvpairingmanager.h"
 #include "fork/forknetworklink.h" // [fork]
+#include "fork/forkpcprefs.h" // [fork]
 
 #include <Limelight.h>
 #include <QtEndian>
@@ -505,9 +506,18 @@ QVector<NvComputer*> ComputerManager::getComputers()
 {
     QReadLocker lock(&m_Lock);
 
+    // [fork] The PC kept first in Your PCs (Customize's "Keep it first in the carousel") comes first,
+    // the rest by name as before. Done here so every index-based API sees the same order.
+    const QString forkFirst = ForkPcPrefs::firstPcUuid();
+
     // Return a sorted host list
     auto hosts = QVector<NvComputer*>::fromList(m_KnownHosts.values());
-    std::stable_sort(hosts.begin(), hosts.end(), [](const NvComputer* host1, const NvComputer* host2) {
+    std::stable_sort(hosts.begin(), hosts.end(), [&forkFirst](const NvComputer* host1, const NvComputer* host2) {
+        const bool first1 = !forkFirst.isEmpty() && host1->uuid == forkFirst;
+        const bool first2 = !forkFirst.isEmpty() && host2->uuid == forkFirst;
+        if (first1 != first2) {
+            return first1;
+        }
         return host1->name.toLower() < host2->name.toLower();
     });
     return hosts;
@@ -516,23 +526,16 @@ QVector<NvComputer*> ComputerManager::getComputers()
 class DeferredHostDeletionTask : public QRunnable
 {
 public:
-    DeferredHostDeletionTask(ComputerManager* cm, NvComputer* computer)
+    // [fork] The host and its polling entry are already out of the manager's maps (deleteHost()),
+    // so getComputers() never returns a PC that this task is about to delete
+    DeferredHostDeletionTask(ComputerManager* cm, NvComputer* computer, ComputerPollingEntry* pollingEntry)
         : m_Computer(computer),
-          m_ComputerManager(cm) {}
+          m_ComputerManager(cm),
+          m_PollingEntry(pollingEntry) {}
 
     void run()
     {
-        ComputerPollingEntry* pollingEntry;
-
-        // Only do the minimum amount of work while holding the writer lock.
-        // We must release it before calling saveHosts().
-        {
-            QWriteLocker lock(&m_ComputerManager->m_Lock);
-
-            pollingEntry = m_ComputerManager->m_PollEntries.take(m_Computer->uuid);
-
-            m_ComputerManager->m_KnownHosts.remove(m_Computer->uuid);
-        }
+        ComputerPollingEntry* pollingEntry = m_PollingEntry;
 
         // Persist the new host list with this computer deleted
         m_ComputerManager->saveHosts();
@@ -551,13 +554,29 @@ public:
 private:
     NvComputer* m_Computer;
     ComputerManager* m_ComputerManager;
+    ComputerPollingEntry* m_PollingEntry; // [fork]
 };
 
 void ComputerManager::deleteHost(NvComputer* computer)
 {
+    // [fork] Take the host out of the maps now, on the caller's thread, with only the minimum under
+    // the writer lock: a model that re-reads getComputers() right after (or while the task runs)
+    // must not get a PC that is about to be deleted
+    ComputerPollingEntry* pollingEntry;
+    {
+        QWriteLocker lock(&m_Lock);
+
+        pollingEntry = m_PollEntries.take(computer->uuid);
+        m_KnownHosts.remove(computer->uuid);
+    }
+
+    // [fork] Every model that still lists the PC re-reads the list now, while the pointer is valid
+    // (the task below deletes it)
+    emit computerStateChanged(computer);
+
     // Punt to a worker thread to avoid stalling the
     // UI while waiting for the polling thread to die
-    QThreadPool::globalInstance()->start(new DeferredHostDeletionTask(this, computer));
+    QThreadPool::globalInstance()->start(new DeferredHostDeletionTask(this, computer, pollingEntry));
 }
 
 void ComputerManager::renameHost(NvComputer* computer, QString name)

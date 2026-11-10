@@ -1,6 +1,9 @@
 #include "windowchrome.h"
 
-// The platform parts (attach, apply and the destructor) are in mac/windowchrome_mac.mm on macOS (a different name, so qmake doesn't give both files the same object file)
+#include <QGuiApplication>
+#include <QScreen>
+
+// The platform parts (attach, apply, zoomWindow and the destructor) are in mac/windowchrome_mac.mm on macOS (a different name, so qmake doesn't give both files the same object file)
 
 ForkWindowChrome* ForkWindowChrome::get()
 {
@@ -13,27 +16,13 @@ bool ForkWindowChrome::isActive() const
     return m_Active;
 }
 
-void ForkWindowChrome::setToolbarItems(const QVariantList& items)
+QSize ForkWindowChrome::availableSize(QWindow* window) const
 {
-    m_Items = items;
-    apply();
-}
-
-void ForkWindowChrome::setToolbarVisible(bool visible)
-{
-    m_ToolbarVisible = visible;
-    apply();
-}
-
-void ForkWindowChrome::setSubtitle(const QString& subtitle)
-{
-    m_Subtitle = subtitle;
-    apply();
-}
-
-void ForkWindowChrome::notifyTriggered(const QString& id)
-{
-    emit triggered(id);
+    QScreen* screen = window != nullptr ? window->screen() : nullptr;
+    if (screen == nullptr) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    return screen != nullptr ? screen->availableGeometry().size() : QSize(1280, 900);
 }
 
 #ifndef Q_OS_DARWIN
@@ -45,6 +34,19 @@ ForkWindowChrome::~ForkWindowChrome()
 void ForkWindowChrome::attach(QWindow* window)
 {
     m_Window = window;
+}
+
+void ForkWindowChrome::zoomWindow(QWindow* window)
+{
+    if (window == nullptr) {
+        return;
+    }
+    if (window->visibility() == QWindow::Maximized) {
+        window->showNormal();
+    }
+    else {
+        window->showMaximized();
+    }
 }
 
 void ForkWindowChrome::apply()

@@ -1,47 +1,57 @@
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 import ForkTheme 1.0
-import SfSymbols 1.0
 
-// [fork] A cover for an app the host has no art for (it sends a placeholder), drawn like Apollo's
-// own covers: a starry gradient with a glow, a big letter (a display for the Desktop) and the
-// app's name along the bottom. Its color is one of eight, picked from the name, so an app keeps
-// its color. Meant to be drawn 3:4, like box art.
+// [fork] A cover for an app the host has no art for (it sends a placeholder), drawn like the All
+// apps design's generated covers: a starry gradient with a glow, a big letter and the app's name
+// along the bottom. The color is one of eight: the app's own key when it has one, else picked from
+// the name (so an app keeps its color). Drawn 3:4 like box art; the header's thumbnail and the
+// dialog's art use the same cover with `kind` "thumb" and "dialog" (no stars, no name).
 Item {
     id: cover
 
     property string name: ""
+    // "orange", "pink", "red", "blue", "teal", "purple", "gold" or "graphite"; empty picks one from the name
+    property string colorKey: ""
     property real radius: ForkTheme.radiusTile
+    // "tile" (stars, letter, name), "thumb" (letter only, 36 px at 24 %) or "dialog" (letter 28 px at 30 %)
+    property string kind: "tile"
     // The name along the bottom; off where the cover is too small to read it
-    property bool showName: true
+    property bool showName: kind === "tile"
 
-    // Each color's top, bottom and glow (the design's covers)
-    readonly property var palettes: [
-        ["#B8541C", "#3E1606", "#F39A4E"],  // orange
-        ["#B23A72", "#3A0C26", "#F07AB0"],  // pink
-        ["#B03A36", "#3A0E0E", "#F2786E"],  // red
-        ["#2F5FC4", "#0F1C48", "#6FA2FF"],  // blue
-        ["#1E8A84", "#08303A", "#5ED6C8"],  // teal
-        ["#6B45C2", "#1E0E46", "#A88BFF"],  // purple
-        ["#A8792A", "#3A2608", "#F0C878"],  // gold
-        ["#5A5E6E", "#1C1E26", "#9AA0B4"]   // graphite
-    ]
-    readonly property var colors: palettes[colorIndex(name)]
-    readonly property bool desktop: name === "Desktop" && SfSymbols.available
+    readonly property var keys: ["orange", "pink", "red", "blue", "teal", "purple", "gold", "graphite"]
+    // top, bottom, glow
+    readonly property var palettes: ({
+        "orange": ["#B8541C", "#3E1606", "#F39A4E"],
+        "pink": ["#B23A72", "#3A0C26", "#F07AB0"],
+        "red": ["#B03A36", "#3A0E0E", "#F2786E"],
+        "blue": ["#2F5FC4", "#0F1C48", "#6FA2FF"],
+        "teal": ["#1E8A84", "#08303A", "#5ED6C8"],
+        "purple": ["#6B45C2", "#1E0E46", "#A88BFF"],
+        "gold": ["#A8792A", "#3A2608", "#F0C878"],
+        "graphite": ["#5A5E6E", "#1C1E26", "#9AA0B4"]
+    })
+    readonly property var colors: palettes[colorKey] || palettes[hashKey(name)] || palettes.graphite
+    readonly property bool fx: GraphicsInfo.api !== GraphicsInfo.Software
 
-    function colorIndex(text) {
+    // The key for an app with none: the same name always gets the same color
+    function hashKey(text) {
+        if (colorKey !== "") {
+            return "graphite" // an unknown key falls back to graphite
+        }
         var h = 0
         for (var i = 0; i < text.length; i++) {
             h = (h * 31 + text.charCodeAt(i)) % 65521
         }
-        return h % palettes.length
+        return keys[h % keys.length]
     }
 
-    // The first letter or digit of the name
+    // The first letter or digit of the name, or ?
     function initial(text) {
         var letters = text.replace(/[^A-Za-z0-9]/g, "")
-        return (letters.length > 0 ? letters.charAt(0) : text.charAt(0)).toUpperCase()
+        return (letters.length > 0 ? letters.charAt(0) : "?").toUpperCase()
     }
 
     Rectangle {
@@ -53,86 +63,133 @@ Item {
         }
     }
 
-    // The glow and the stars, on a 120 × 160 grid scaled to the cover. The glow fades out before
-    // the corners, so the grid's square corners never show past the cover's round ones.
+    // The glow, an ellipse (75 % × 55 % of the cover) at 50 % 40 %, alpha 0.40 fading to 0, on a
+    // 120 × 160 grid scaled to the cover. It fades out before the corners.
     Shape {
         width: 120
         height: 160
-        scale: cover.width / 120
-        transformOrigin: Item.TopLeft
-        preferredRendererType: Shape.CurveRenderer
+        transform: Scale { xScale: cover.width / 120; yScale: cover.height / 160 }
+        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
         ShapePath {
-            strokeWidth: -1
             strokeColor: "transparent"
             fillGradient: RadialGradient {
-                centerX: 60
-                centerY: 66
-                centerRadius: 88
-                focalX: 60
-                focalY: 66
-                GradientStop { position: 0; color: "#59" + cover.colors[2].substring(1) }
-                GradientStop { position: 1; color: "#00" + cover.colors[2].substring(1) }
+                centerX: 60; centerY: 64
+                focalX: 60; focalY: 64
+                centerRadius: 90
+                GradientStop { position: 0; color: Qt.rgba(Qt.color(cover.colors[2]).r, Qt.color(cover.colors[2]).g, Qt.color(cover.colors[2]).b, 0.4) }
+                GradientStop { position: 1; color: Qt.rgba(Qt.color(cover.colors[2]).r, Qt.color(cover.colors[2]).g, Qt.color(cover.colors[2]).b, 0) }
             }
-            startX: 0
-            startY: 0
-            PathLine { x: 120; y: 0 }
-            PathLine { x: 120; y: 160 }
-            PathLine { x: 0; y: 160 }
-            PathLine { x: 0; y: 0 }
-        }
-
-        ShapePath {
-            strokeWidth: -1
-            strokeColor: "transparent"
-            fillColor: "#B3FFFFFF"
-            PathSvg {
-                path: "M17 10L18.25 13.75L22 15L18.25 16.25L17 20L15.75 16.25L12 15L15.75 13.75Z " +
-                      "M82 10.5L83.9 16.1L89.5 18L83.9 19.9L82 25.5L80.1 19.9L74.5 18L80.1 16.1Z " +
-                      "M104 66L105 69L108 70L105 71L104 74L103 71L100 70L103 69Z " +
-                      "M14 92.5L14.9 95.1L17.5 96L14.9 96.9L14 99.5L13.1 96.9L10.5 96L13.1 95.1Z"
-            }
+            PathSvg { path: "M0 0H120V160H0Z" }
         }
     }
 
-    Text {
-        visible: !cover.desktop
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: Math.round(parent.height * 0.2)
+    // Four sparkles and three dots (the grid stretches to the cover)
+    Shape {
+        visible: cover.kind === "tile"
+        width: 120
+        height: 160
+        transform: Scale { xScale: cover.width / 120; yScale: cover.height / 160 }
+        preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
+
+        ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.7); strokeColor: "transparent"
+            PathSvg { path: "M17 10L18.25 13.75L22 15L18.25 16.25L17 20L15.75 16.25L12 15L15.75 13.75Z" } }
+        ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.75); strokeColor: "transparent"
+            PathSvg { path: "M98 4.5L99.9 10.1L105.5 12L99.9 13.9L98 19.5L96.1 13.9L90.5 12L96.1 10.1Z" } }
+        ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.6); strokeColor: "transparent"
+            PathSvg { path: "M104 66L105 69L108 70L105 71L104 74L103 71L100 70L103 69Z" } }
+        ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.55); strokeColor: "transparent"
+            PathSvg { path: "M14 92.5L14.9 95.1L17.5 96L14.9 96.9L14 99.5L13.1 96.9L10.5 96L13.1 95.1Z" } }
+        ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.6); strokeColor: "transparent"
+            PathSvg { path: "M42.9 28a0.9 0.9 0 1 0 -1.8 0a0.9 0.9 0 1 0 1.8 0Z" } }
+        ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.5); strokeColor: "transparent"
+            PathSvg { path: "M78.8 44a0.8 0.8 0 1 0 -1.6 0a0.8 0.8 0 1 0 1.6 0Z" } }
+        ShapePath { fillColor: Qt.rgba(1, 1, 1, 0.5); strokeColor: "transparent"
+            PathSvg { path: "M26.8 60a0.8 0.8 0 1 0 -1.6 0a0.8 0.8 0 1 0 1.6 0Z" } }
+    }
+
+    // The letter: 66 px at 24 % of a 173.333 wide tile (800 weight, -0.04em, a soft shadow made of
+    // a few dark copies below it, which is cheaper than a blur and close to the design's
+    // 0 6px 24px at 0.28)
+    readonly property real letterSize: Math.max(1, kind === "tile" ? 66 * width / 173.333 : (kind === "thumb" ? 36 : 28))
+    readonly property real letterY: height * (kind === "dialog" ? 0.30 : 0.24) - 0.09 * letterSize
+
+    Repeater {
+        model: cover.kind === "tile" ? [[10, 0.05], [7, 0.07], [4, 0.09]] : [[7, 0.06], [4, 0.09]]
+
+        delegate: ForkCanvasText {
+            required property var modelData
+            Accessible.ignored: true
+            anchors.left: parent.left
+            anchors.right: parent.right
+            y: cover.letterY + modelData[0] * cover.letterSize / 66
+            horizontalAlignment: Text.AlignHCenter
+            text: cover.initial(cover.name)
+            color: Qt.rgba(0, 0, 0, modelData[1])
+            px: cover.letterSize
+            weight: 800
+            tracking: -0.04 * cover.letterSize
+            lineHeightPx: cover.letterSize
+            height: cover.letterSize
+        }
+    }
+
+    ForkCanvasText {
+        id: letter
+        Accessible.ignored: true
+        anchors.left: parent.left
+        anchors.right: parent.right
+        y: cover.letterY
+        horizontalAlignment: Text.AlignHCenter
         text: cover.initial(cover.name)
-        textFormat: Text.PlainText
-        font.family: ForkTheme.uiFamily
-        font.pixelSize: Math.max(12, Math.round(cover.width * 0.4))
-        font.weight: Font.Black
         color: "#F5EBD3"
+        px: cover.letterSize
+        weight: 800
+        tracking: -0.04 * cover.letterSize
+        lineHeightPx: cover.letterSize
+        height: cover.letterSize
     }
 
-    ForkSymbol {
-        visible: cover.desktop
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: Math.round(parent.height * 0.24)
-        symbol: "display"
-        size: Math.max(12, Math.round(cover.width * 0.36))
-        color: "#F5EBD3"
+    // The name, centered along the bottom (a one point shadow copy under it)
+    Repeater {
+        model: cover.showName ? [[1.5, 0.18], [0.5, 0.30]] : []
+
+        delegate: ForkCanvasText {
+            required property var modelData
+            Accessible.ignored: true
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 12 * cover.width / 173.333
+            anchors.rightMargin: 12 * cover.width / 173.333
+            anchors.bottomMargin: 16 * cover.width / 173.333 - modelData[0]
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            text: cover.name
+            color: Qt.rgba(0, 0, 0, modelData[1])
+            px: Math.max(1, 14 * cover.width / 173.333)
+            weight: 650
+            lineHeightPx: Math.max(1, 17 * cover.width / 173.333)
+        }
     }
 
-    Text {
+    ForkCanvasText {
         visible: cover.showName
+        Accessible.ignored: true
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.leftMargin: Math.round(cover.width * 0.07)
-        anchors.rightMargin: anchors.leftMargin
-        anchors.bottomMargin: Math.round(cover.width * 0.09)
+        anchors.leftMargin: 12 * cover.width / 173.333
+        anchors.rightMargin: 12 * cover.width / 173.333
+        anchors.bottomMargin: 16 * cover.width / 173.333
         horizontalAlignment: Text.AlignHCenter
-        text: cover.name
-        textFormat: Text.PlainText
         wrapMode: Text.Wrap
-        maximumLineCount: 2
-        elide: Text.ElideRight
-        font.family: ForkTheme.uiFamily
-        font.pixelSize: Math.max(11, Math.round(cover.width * 0.082))
-        font.weight: Font.DemiBold
+        text: cover.name
         color: "#FFFFFF"
+        px: Math.max(1, 14 * cover.width / 173.333)
+        weight: 650
+        lineHeightPx: Math.max(1, 17 * cover.width / 173.333)
     }
+
+    Accessible.ignored: true
 }

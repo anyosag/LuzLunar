@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 import ForkPreferences 1.0
 import ForkTheme 1.0
@@ -166,7 +167,7 @@ Column {
 
                                 Shape {
                                     anchors.fill: parent
-                                    preferredRendererType: Shape.CurveRenderer
+                                    preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
 
                                     // Where the pointer is going
                                     ShapePath {

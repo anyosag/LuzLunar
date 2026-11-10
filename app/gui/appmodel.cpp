@@ -22,7 +22,9 @@ void AppModel::initialize(ComputerManager* computerManager, int computerIndex, b
         return;
     }
     m_Computer = m_ComputerManager->getComputers().at(computerIndex);
-    m_CurrentGameId = m_Computer->currentGameId;
+    // [fork] What ran on a PC that's away no longer does (currentGameId is stale once it's offline)
+    m_ForkWasOffline = m_Computer->state != NvComputer::CS_ONLINE;
+    m_CurrentGameId = m_ForkWasOffline ? 0 : m_Computer->currentGameId;
     m_ShowHiddenGames = showHiddenGames;
 
     // [fork] The multi-display app comes and goes with the Mac's displays
@@ -31,6 +33,11 @@ void AppModel::initialize(ComputerManager* computerManager, int computerIndex, b
     });
 
     updateAppList(m_Computer->appList);
+}
+
+void AppModel::forkKeepWhenOffline(bool keep)
+{
+    m_ForkKeepOffline = keep;
 }
 
 int AppModel::getRunningAppId()
@@ -97,6 +104,17 @@ QVariantMap AppModel::forkHostInfo()
                                           : m_Computer->isNvidiaServerSoftware ? QStringLiteral("GeForce Experience")
                                           : QStringLiteral("Sunshine"));
     info.insert(QStringLiteral("uuid"), m_Computer->uuid);
+    // [fork] An asleep PC's page: whether it answers now, and the address it had (activeAddress is
+    // empty after a restart)
+    info.insert(QStringLiteral("online"), m_Computer->state == NvComputer::CS_ONLINE);
+    QString last;
+    for (const NvAddress& a : { m_Computer->localAddress, m_Computer->manualAddress, m_Computer->remoteAddress, m_Computer->ipv6Address }) {
+        if (!a.isNull()) {
+            last = a.address();
+            break;
+        }
+    }
+    info.insert(QStringLiteral("lastAddress"), last);
     return info;
 }
 
@@ -155,8 +173,13 @@ QVariant AppModel::data(const QModelIndex &index, int role) const
     case NameRole:
         return app.name;
     case RunningRole:
-        return m_Computer->currentGameId == app.id;
+        // [fork] Nothing runs on a PC that's away
+        return m_Computer->state == NvComputer::CS_ONLINE && m_Computer->currentGameId == app.id;
     case BoxArtRole:
+        // [fork] A PC that's away has no art to fetch: the cached art, or the placeholder
+        if (m_Computer->state != NvComputer::CS_ONLINE) {
+            return const_cast<BoxArtManager&>(m_BoxArtManager).cachedBoxArt(m_Computer, app.id);
+        }
         // FIXME: const-correctness
         return const_cast<BoxArtManager&>(m_BoxArtManager).loadBoxArt(m_Computer, app);
     case HiddenRole:
@@ -346,10 +369,33 @@ void AppModel::handleComputerStateChanged(NvComputer* computer)
 
     // If the computer has gone offline or we've been unpaired,
     // signal the UI so we can go back to the PC view.
-    if (m_Computer->state == NvComputer::CS_OFFLINE ||
-            m_Computer->pairState == NvComputer::PS_NOT_PAIRED) {
+    // [fork] Unless the page stays for an asleep PC (forkKeepWhenOffline()): then only losing the pairing counts
+    if (m_Computer->pairState == NvComputer::PS_NOT_PAIRED ||
+            (m_Computer->state == NvComputer::CS_OFFLINE && !m_ForkKeepOffline)) {
         emit computerLost();
         return;
+    }
+
+    // [fork] Away and kept: the list stays as of the last visit, and what ran there no longer does
+    if (m_ForkKeepOffline && m_Computer->state != NvComputer::CS_ONLINE) {
+        if (m_CurrentGameId != 0) {
+            const int was = forkIndexOfApp(m_CurrentGameId);
+            m_CurrentGameId = 0;
+            if (was >= 0) {
+                emit dataChanged(createIndex(was, 0), createIndex(was, 0), QVector<int>() << RunningRole);
+            }
+        }
+        m_ForkWasOffline = true;
+        updateAppList(m_AllApps);
+        return;
+    }
+    if (m_ForkKeepOffline && m_ForkWasOffline) {
+        // Back: art that wasn't cached can be fetched now
+        m_ForkWasOffline = false;
+        if (!m_VisibleApps.isEmpty()) {
+            emit dataChanged(createIndex(0, 0), createIndex(m_VisibleApps.count() - 1, 0),
+                             QVector<int>() << BoxArtRole << RunningRole);
+        }
     }
 
     // First, process additions/removals from the app list. This

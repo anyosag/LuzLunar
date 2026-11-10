@@ -1,75 +1,77 @@
 import QtQuick
+import QtQuick.Effects
 
 import ForkTheme 1.0
 
-// [fork] Short confirmations at the bottom of the window ("Renamed to Office PC"). main.qml puts
-// one in the overlay and exposes it as window.forkToast(text). Each toast rises in, stays a few
-// seconds and goes; several stack with the newest at the bottom.
-Column {
+// [fork] The canvas's toast (carousel.md §7): one pill at a time, 36 high, with a short line of
+// text, that shows and hides at once. main.qml puts it in the overlay, 54 above the window's bottom
+// (18 above the footer), and exposes it as window.forkToast(text, ms). A new toast replaces the one
+// showing and restarts the timer; ms (default 2200) is how long it stays.
+Item {
     id: toasts
 
-    spacing: 8
+    property string text: ""
+    readonly property bool showing: text !== ""
 
-    function show(text) {
-        if (text === "") {
+    implicitWidth: pill.width
+    implicitHeight: pill.height
+    width: implicitWidth
+    height: implicitHeight
+    visible: showing
+
+    function show(message, ms) {
+        if (message === "" || message === undefined) {
             return
         }
-        toastModel.append({ "text": text })
-        if (toastModel.count > 3) {
-            toastModel.remove(0)
+        text = message
+        hideTimer.interval = ms !== undefined && ms > 0 ? ms : 2200
+        hideTimer.restart()
+    }
+
+    function hide() {
+        hideTimer.stop()
+        text = ""
+    }
+
+    Timer {
+        id: hideTimer
+        interval: 2200
+        onTriggered: toasts.text = ""
+    }
+
+    Accessible.role: Accessible.AlertMessage
+    Accessible.name: text
+
+    Rectangle {
+        id: pill
+        // At most the window's width less a gutter; the line never wraps (it elides)
+        width: Math.min(label.implicitWidth + 36, toasts.parent ? toasts.parent.width - 32 : 520)
+        height: 36
+        radius: 18
+        color: ForkTheme.dark ? "#F2F3F7" : "#1D1D1F"
+        visible: false
+
+        ForkCanvasText {
+            id: label
+            anchors.centerIn: parent
+            width: pill.width - 36
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            text: toasts.text
+            px: 13
+            weight: Font.DemiBold
+            color: ForkTheme.dark ? "#0D0F17" : "#FFFFFF"
         }
     }
 
-    ListModel {
-        id: toastModel
-    }
-
-    Repeater {
-        model: toastModel
-
-        delegate: Rectangle {
-            id: toast
-            required property int index
-            required property string text
-
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: Math.min(toastText.implicitWidth + 32, toasts.parent ? toasts.parent.width - 32 : 520)
-            height: toastText.implicitHeight + 20
-            radius: 12
-            color: ForkTheme.toastBg
-
-            Accessible.role: Accessible.AlertMessage
-            Accessible.name: text
-
-            Text {
-                id: toastText
-                anchors.centerIn: parent
-                width: parent.width - 32
-                text: toast.text
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                horizontalAlignment: Text.AlignHCenter
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 13
-                font.weight: Font.Medium
-                color: ForkTheme.toastText
-            }
-
-            // Rises 8 pt as it fades in
-            opacity: 0
-            transform: Translate { id: rise; y: ForkTheme.reduceMotion ? 0 : 8 }
-            Component.onCompleted: appear.start()
-            ParallelAnimation {
-                id: appear
-                NumberAnimation { target: toast; property: "opacity"; to: 1; duration: ForkTheme.reduceMotion ? 0 : 250; easing.type: Easing.OutCubic }
-                NumberAnimation { target: rise; property: "y"; to: 0; duration: ForkTheme.reduceMotion ? 0 : 250; easing.type: Easing.OutCubic }
-            }
-
-            Timer {
-                running: true
-                interval: 3600
-                onTriggered: toastModel.remove(toast.index)
-            }
-        }
+    // 0 10px 30px rgba(0,0,0,0.3) under the pill
+    MultiEffect {
+        anchors.fill: pill
+        source: pill
+        shadowEnabled: true
+        shadowColor: "#000000"
+        shadowOpacity: 0.3
+        shadowBlur: 1.0
+        shadowVerticalOffset: 10
     }
 }

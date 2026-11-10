@@ -10,6 +10,7 @@
 #include <QThreadPool>
 
 #include "apolloclient.h"
+#include "forkpcprefs.h"
 #include "backend/computermanager.h"
 #include "backend/nvcomputer.h"
 
@@ -404,15 +405,15 @@ void ForkHostPower::requestPower(const QString& uuid, const QString& appToQuit, 
         if (self.isNull()) {
             return;
         }
-        QMetaObject::invokeMethod(self.data(), [self, uuid, ok, text, status]() {
+        QMetaObject::invokeMethod(self.data(), [self, uuid, ok, text, status, off]() {
             if (!self.isNull()) {
-                self->onSlept(uuid, ok, text, status);
+                self->onSlept(uuid, ok, text, status, off);
             }
         }, Qt::QueuedConnection);
     });
 }
 
-void ForkHostPower::onSlept(const QString& uuid, bool ok, const QString& text, const Answer& status)
+void ForkHostPower::onSlept(const QString& uuid, bool ok, const QString& text, const Answer& status, bool off)
 {
     Host& host = m_Hosts[uuid];
     host.inFlight = qMax(0, host.inFlight - 1);
@@ -420,6 +421,8 @@ void ForkHostPower::onSlept(const QString& uuid, bool ok, const QString& text, c
     if (ok) {
         host.available = false;
         host.reason = QStringLiteral("sleeping");
+        // [fork] What this Mac asked, for the PC's card while it's away (Asleep, or Off)
+        ForkPcPrefs::get()->notePowerAction(uuid, off ? QStringLiteral("off") : QStringLiteral("sleep"));
     }
     m_Revision++;
     emit changed();

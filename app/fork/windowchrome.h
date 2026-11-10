@@ -2,18 +2,20 @@
 
 #include <QObject>
 #include <QPointer>
-#include <QVariantList>
+#include <QSize>
 #include <QWindow>
 
-// Native window chrome for the main window. On macOS 15 and later it gives the window a real
-// NSToolbar, whose buttons are Liquid Glass on macOS 26, in place of the QML toolbar. QML
-// describes the buttons (ForkNativeToolbar.qml) and gets a signal when one is clicked.
-// Inactive everywhere else, so the QML toolbar stays.
+// Native window chrome for the main window. The window draws its own 52 px header bar in QML
+// (ForkWindowHeader.qml) under a transparent title bar, in a full-size content view, so on macOS this
+// keeps the real traffic lights, puts them where the design has them (x 20, centred on y 25.5), hides
+// the native title and separator, and zooms the window on a double click of the header like the
+// title bar would. Also reports Reduce Motion. Off macOS it does nothing.
 class ForkWindowChrome : public QObject
 {
     Q_OBJECT
 
-    // True once the native toolbar is in place; the QML toolbar collapses while it is
+    // True once the native window is set up for the drawn header (macOS only). It no longer
+    // stands for a native toolbar showing the buttons, so nothing in QML hides under it
     Q_PROPERTY(bool active READ isActive NOTIFY activeChanged)
 
     // The system's Reduce Motion accessibility setting (always false off macOS)
@@ -26,28 +28,20 @@ public:
     bool isActive() const;
     bool reduceMotion();
 
-    // Takes over the window's title bar. Call once, after the window is created.
+    // Sets the window up for the drawn header. Call once, after the window is created.
     Q_INVOKABLE void attach(QWindow* window);
 
-    // Each item is a map with id, symbol (SF Symbol name), label, toolTip, visible, focused (its
-    // QML button has keyboard focus; highlighted natively), labeled (shows its label beside the
-    // symbol, like "Add PC") and, for back buttons, navigational.
-    // Items keep the order of the first call.
-    Q_INVOKABLE void setToolbarItems(const QVariantList& items);
+    // What a double click on the window's title bar does, per the user's setting (System Settings >
+    // Desktop & Dock): zoom, minimize or nothing. Off macOS it toggles maximized.
+    Q_INVOKABLE void zoomWindow(QWindow* window);
 
-    // Hides the toolbar while a stream starts or ends, like the QML toolbar
-    Q_INVOKABLE void setToolbarVisible(bool visible);
-
-    // Smaller second line under the window title
-    Q_INVOKABLE void setSubtitle(const QString& subtitle);
-
-    // Called by the platform code
-    void notifyTriggered(const QString& id);
+    // The free area (below the menu bar, beside the Dock) of the screen the window is on, in points;
+    // the primary screen's if it has none yet. QML's Screen.desktopAvailable* is the union of all screens.
+    Q_INVOKABLE QSize availableSize(QWindow* window) const;
 
 signals:
     void activeChanged();
     void reduceMotionChanged();
-    void triggered(const QString& id);
 
 private:
     ForkWindowChrome() = default;
@@ -55,10 +49,7 @@ private:
     void apply();
 
     QPointer<QWindow> m_Window;
-    QVariantList m_Items;
-    bool m_ToolbarVisible = true;
-    QString m_Subtitle;
     bool m_Active = false;
-    void* m_Platform = nullptr;   // ForkToolbarController on macOS
+    void* m_Platform = nullptr;   // ForkChromeController on macOS
     void* m_MotionObserver = nullptr;
 };

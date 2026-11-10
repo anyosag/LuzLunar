@@ -1,8 +1,11 @@
-import QtQuick 2.9
-import QtQuick.Controls 2.2
-import QtQuick.Layouts 1.3
-import QtQuick.Window 2.2
-import QtQuick.Templates as T // [fork] for Overlay, which QtQuick.Controls 2.2 above predates (2.3)
+// [fork] Versionless imports (they were pinned to Controls 2.2 and Layouts 1.3). The Fusion
+// ApplicationWindow already exposes its padding, which the window sets to 0 below so the content
+// starts under the transparent title bar; the T import below is still what reaches Overlay.overlay.
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick.Window
+import QtQuick.Templates as T // [fork] for Overlay.overlay
 // [fork] No explicit Material import: it would override the native macOS style set in main.cpp
 
 import ComputerManager 1.0
@@ -14,6 +17,8 @@ import ForkTheme 1.0 // [fork]
 import ForkUpdater 1.0 // [fork]
 import ForkHostUpdates 1.0 // [fork]
 import ForkHostPower 1.0 // [fork]
+import ForkPcPrefs 1.0 // [fork]
+import WindowChrome 1.0 // [fork]
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -24,12 +29,22 @@ ApplicationWindow {
     property bool clearOnBack: false
 
     id: window
+    // [fork] The canvas's window: 1280 x 900 (clamped to the screen's free area in Component.onCompleted),
+    // 1024 x 700 at least. The content draws under a transparent title bar: the real traffic lights
+    // stay and the header (ForkWindowHeader) is the bar. See contract-chrome.md.
     width: 1280
-    height: 600
+    height: 900
+    minimumWidth: 1024
+    minimumHeight: 700 // clamped to the screen in Component.onCompleted
+    title: qsTr("LuzLunar")
+    flags: Qt.platform.os === "osx" ? (Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint) : Qt.Window
+    topPadding: 0
+    leftPadding: 0
+    rightPadding: 0
+    bottomPadding: 0
 
-    // [fork] The design's opaque Night or Day ground (the native title bar and toolbar sit on
-    // ForkTheme.bar, set in windowchrome_mac.mm)
-    color: ForkTheme.bg // [fork] was palette.window
+    // [fork] The canvas's ground, seen on the pages without a sky (the sky covers it on the others)
+    color: ForkTheme.cv.bg // [fork] was palette.window
 
     // [fork] Stock controls (dialogs, menus, drop-downs, text fields, tooltips) in LuzLunar's colors
     palette.window: ForkTheme.surface
@@ -60,6 +75,17 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        // [fork] The native side of the drawn header: the traffic lights' place, the hidden title
+        // and separator, the ground colour (windowchrome_mac.mm). First, before anything shows.
+        WindowChrome.attach(window)
+
+        // [fork] Fit the default size to the free area (below the menu bar, beside the Dock) of this
+        // window's own screen
+        var free = WindowChrome.availableSize(window)
+        width = Math.min(1280, free.width)
+        height = Math.min(900, free.height)
+        minimumHeight = Math.min(700, free.height)
+
         // Show the window according to the user's preferences
         if (forkHiddenScreenshots) {
             // [fork] CI's screenshot run on a self-hosted runner leaves it hidden: the harness grabs
@@ -135,10 +161,264 @@ ApplicationWindow {
         }
     }
 
+    // [fork] The one wake-and-launch of the app (AppView and PcView use window.forkWakeLaunch), so
+    // only one runs at a time
+    property alias forkWakeLaunch: wakeLaunch
+    ForkWakeLaunch {
+        id: wakeLaunch
+    }
+
+    // Focuses the header's search field itself (AppView's Up from its top row)
+    function forkFocusSearch() {
+        toolBar.focusSearch()
+    }
+
+    // [fork] ---- The window's chrome (sky-chrome.md §2, §5, §6; decision D1) ----
+
+    readonly property Item forkPage: stackView.currentItem
+    // A page's chrome properties are optional: contract-chrome.md
+    function pageValue(name, fallback) {
+        var page = forkPage
+        return page && page[name] !== undefined ? page[name] : fallback
+    }
+    readonly property bool isSettingsPage: forkPage instanceof ForkSettingsView
+
+    // The one sky, behind the header, the page and the footer; the page picks its variant
+    ForkSky {
+        id: sky
+        anchors.fill: parent
+        z: 0
+        variant: toolBar.visible ? pageValue("forkSkyVariant", "none") : "none"
+        still: ForkPcPrefs.screenshotMode
+    }
+
+    ForkWindowHeader {
+        id: toolBar // [fork] stream pages hide it with toolBar.visible = false, as they did the toolbar
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        z: 3
+
+        skySource: sky.shown ? sky : null
+        opaque: pageValue("forkChromeOpaque", !sky.shown)
+        fakeLights: forkHiddenScreenshots || ForkPcPrefs.screenshotMode
+        lightsVisible: window.visibility !== Window.FullScreen
+
+        variant: window.isSettingsPage ? "back" : pageValue("forkHeaderVariant", stackView.depth > 1 ? "back" : "pcs")
+        viewMode: pageValue("forkViewMode", "carousel")
+        hasPcs: pageValue("forkHasPcs", true) && typeof pageValue("forkSetViewMode", null) === "function"
+        backTitle: {
+            if (window.isSettingsPage || (window.forkPage && window.forkPage.forkBackTitle === undefined)) {
+                var below = stackView.get(stackView.depth - 2)
+                return below instanceof PcView ? qsTr("Your PCs") : qsTr("Back")
+            }
+            return pageValue("forkBackTitle", qsTr("Your PCs"))
+        }
+        pageTitle: window.isSettingsPage ? qsTr("Settings") : (window.forkPage ? window.forkPage.objectName : "")
+        searchPlaceholder: pageValue("forkSearchPlaceholder", qsTr("Search apps"))
+        searchAccessibleName: pageValue("forkSearchAccessibleName",
+                                        window.forkPage && window.forkPage.objectName !== ""
+                                        ? qsTr("Search the apps on %1").arg(window.forkPage.objectName) : searchPlaceholder)
+        updateReady: ForkUpdater.updateReady && updateButton.browserUrl !== ""
+        updateTip: updateButton.tip
+        discordVisible: SystemProperties.hasBrowser && window.isSettingsPage
+        addPcTip: qsTr("Add PC manually") + (newPcShortcut.nativeText ? (" (" + newPcShortcut.nativeText + ")") : "")
+        helpTip: qsTr("Help") + (helpShortcut.nativeText ? (" (" + helpShortcut.nativeText + ")") : "")
+        settingsTip: qsTr("Settings") + (settingsShortcut.nativeText ? (" (" + settingsShortcut.nativeText + ")") : "")
+
+        onViewModeRequested: function(mode) {
+            if (window.forkPage && window.forkPage.forkSetViewMode) {
+                window.forkPage.forkSetViewMode(mode)
+            }
+        }
+        onAddPcRequested: window.addPc()
+        onHelpRequested: forkShortcutsDialog.open()
+        onSettingsRequested: settingsButton.clicked()
+        onUpdateRequested: updateButton.clicked()
+        onDiscordRequested: Qt.openUrlExternally("https://moonlight-stream.org/discord")
+        onBackRequested: goBack()
+        onSearchEdited: function(text) {
+            if (window.forkPage && window.forkPage.forkSetQuery) {
+                window.forkPage.forkSetQuery(text)
+            }
+        }
+        onPageFocusRequested: {
+            if (window.forkPage) {
+                if (typeof window.forkPage.forkFocusFromHeader === "function") {
+                    window.forkPage.forkFocusFromHeader()
+                }
+                else {
+                    window.forkPage.forceActiveFocus(Qt.TabFocus)
+                }
+            }
+        }
+        onZoomRequested: WindowChrome.zoomWindow(window)
+
+        // A new page starts with an empty search
+        Connections {
+            target: stackView
+            function onCurrentItemChanged() {
+                // The page's own query (coming back to a filtered AppView after a stream keeps it)
+                var query = window.pageValue("forkQuery", "")
+                toolBar.searchText = typeof query === "string" ? query : ""
+            }
+        }
+
+        // D9: the page's own Clear Search, and a page that sets its query itself, empty or follow the
+        // header's field (the field to the page goes through forkSetQuery)
+        Connections {
+            target: window.forkPage
+            ignoreUnknownSignals: true
+            function onForkSearchCleared() {
+                toolBar.searchText = ""
+            }
+            function onForkQueryChanged() {
+                var query = window.forkPage ? window.forkPage.forkQuery : undefined
+                if (typeof query === "string" && query !== toolBar.searchText) {
+                    toolBar.searchText = query
+                }
+            }
+        }
+    }
+
+    ForkWindowFooter {
+        id: pageFooter
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        z: 3
+        visible: toolBar.visible
+        skySource: sky.shown ? sky : null
+        opaque: toolBar.opaque
+    }
+
+    // Header actions that other code calls or that have shortcuts. Add PC, Help and Settings are
+    // the header's buttons; their shortcuts work on every page.
+    QtObject {
+        id: settingsButton
+        signal clicked()
+        // [fork] The redesign's Settings (was SettingsView)
+        onClicked: navigateTo("qrc:/gui/ForkSettingsView.qml", ForkSettingsView)
+    }
+
+    // D4: a page can take Add PC itself (PcView on the first run); otherwise it's the dialog
+    function addPc() {
+        if (forkPage && typeof forkPage.forkAddPc === "function") {
+            forkPage.forkAddPc()
+        }
+        else {
+            addPcDialog.open()
+        }
+    }
+
+    Shortcut {
+        id: newPcShortcut
+        sequence: StandardKey.New
+        onActivated: window.addPc()
+    }
+
+    Shortcut {
+        id: helpShortcut
+        sequence: StandardKey.HelpContents
+        onActivated: forkShortcutsDialog.open()
+    }
+
+    Shortcut {
+        id: settingsShortcut
+        sequence: StandardKey.Preferences
+        onActivated: settingsButton.clicked()
+    }
+
+    // ⌘F on All apps goes to the header's search
+    Shortcut {
+        sequence: StandardKey.Find
+        enabled: toolBar.visible && toolBar.variant === "apps"
+        onActivated: toolBar.focusSearch()
+    }
+
+    // The "update ready" state of the header's Update pill, and the app wiring that used to live in
+    // the Update button's Component.onCompleted (LuzLunar's own over-the-air updates, ForkUpdater,
+    // and the toasts of Apollo PCs' updates and power actions)
+    QtObject {
+        id: updateButton
+        property string browserUrl: ""
+        property string tip: ""
+
+        // LuzLunar's own update, in Settings › Updates (was upstream's download page)
+        function clicked() {
+            navigateTo("qrc:/gui/ForkSettingsView.qml", ForkSettingsView)
+            if (window.forkPage instanceof ForkSettingsView) {
+                window.forkPage.showSection("updates")
+            }
+        }
+
+        function updateAvailable(version, url) {
+            tip = qsTr("LuzLunar %1 is ready to install").arg(version) // [fork]
+            browserUrl = url
+        }
+
+        Component.onCompleted: {
+            ForkUpdater.changed.connect(function() {
+                if (ForkUpdater.updateReady && ForkUpdater.supported) {
+                    updateAvailable(ForkUpdater.latestVersion, "luzlunar:update")
+                }
+                else {
+                    updateButton.browserUrl = ""
+                }
+            })
+            ForkUpdater.start()
+            if (ForkUpdater.lastResult !== "") {
+                window.forkToast(ForkUpdater.lastResult)
+            }
+            ForkHostUpdates.setComputerManager(ComputerManager)
+            ForkHostUpdates.finished.connect(function(uuid, text) {
+                window.forkToast(text)
+            })
+            ForkHostPower.setComputerManager(ComputerManager)
+            ForkHostPower.finished.connect(function(uuid, ok, text) {
+                window.forkToast(text)
+            })
+            // [fork] Set Up Wake from Off's outcome, and whether a PC Wake PC was sent to woke or was turned on
+            ForkHostPower.wakeFinished.connect(function(uuid, ok, text) {
+                window.forkToast(text)
+            })
+            ForkHostPower.poweredOn.connect(function(uuid, text) {
+                window.forkToast(text)
+            })
+        }
+    }
+
     StackView {
         id: stackView
-        anchors.fill: parent
+        // [fork] The pages sit between the header and the footer (the sky fills the window behind all three)
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: toolBar.visible ? toolBar.bottom : parent.top
+        anchors.bottom: pageFooter.visible ? pageFooter.top : parent.bottom
         focus: true
+
+        // [fork] Hold transitions: pages don't slide. Your PCs steps back and All apps grows from its
+        // tile on their own (sky-chrome.md §7.3), so the page leaving only stays for as long as that
+        // takes (its forkHoldMs: PcView 480, AppView 440), when the page coming in animates too.
+        // Pages without forkHoldMs (Settings) change at once.
+        function holdFor(item) {
+            var entering = stackView.currentItem
+            if (!item || !entering || item.forkHoldMs === undefined || entering.forkHoldMs === undefined) {
+                return 0
+            }
+            return item.forkHoldMs
+        }
+        pushEnter: Transition { }
+        popEnter: Transition { }
+        // (ViewTransition.item has to be read through the transition's own id here)
+        pushExit: Transition {
+            id: pushExitTx
+            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(pushExitTx.ViewTransition.item) }
+        }
+        popExit: Transition {
+            id: popExitTx
+            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(popExitTx.ViewTransition.item) }
+        }
 
         Component.onCompleted: {
             // [fork] CI's hidden screenshot run only renders when the harness grabs the window, and
@@ -266,19 +546,17 @@ ApplicationWindow {
         SdlGamepadKeyNavigation.notifyWindowFocus(visible && active)
     }
 
-    // [fork] The second line under the toolbar's title: LuzLunar's version in Settings, and the
-    // host software and state of the PC whose apps are showing ("Apollo · online")
-    readonly property string forkToolbarSubtitle: stackView.currentItem instanceof ForkSettingsView ? qsTr("Version %1").arg(SystemProperties.versionString)
-                                                : (stackView.currentItem && stackView.currentItem.forkHostStatus !== undefined ? stackView.currentItem.forkHostStatus : "")
-
     // [fork] The redesign's toasts: a short confirmation at the bottom of the window, above dialogs
     // ("Renamed to Office PC"). Any page can call window.forkToast(text).
-    function forkToast(text) {
-        forkToasts.show(text)
+    function forkToast(text, ms) {
+        forkToasts.show(text, ms)
+    }
+    function forkToastHide() {
+        forkToasts.hide()
     }
 
     // In the window's overlay, where dialogs and menus go, above them all. The Overlay type has to
-    // come from the T import: with this file's QtQuick.Controls 2.2 it's undefined, and the toasts
+    // come from the T import: with a plain import of this file's QtQuick.Controls it may be undefined, and the toasts
     // stayed in the window's content, under any open dialog and its dim.
     ForkToast {
         id: forkToasts
@@ -286,7 +564,7 @@ ApplicationWindow {
         z: 1000
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 24
+        anchors.bottomMargin: 18 + (pageFooter.visible ? pageFooter.height : 0) // [fork] the canvas's 54 above the bottom, clear of the footer
     }
 
     function navigateTo(url, objectType)
@@ -302,346 +580,6 @@ ApplicationWindow {
         else {
             // Create a new item
             stackView.push(url)
-        }
-    }
-
-    // [fork] On macOS 15+ the buttons below show in a native toolbar (Liquid Glass on macOS 26).
-    // The QML toolbar is then clipped to nothing but stays in the focus chain, so keyboard and
-    // gamepad navigation still reach its buttons; the native item of the focused one is highlighted.
-    // Clicks on native items go to the QML buttons.
-    ForkNativeToolbar {
-        id: nativeToolbar
-        targetWindow: window
-        shown: toolBar.visible
-        title: stackView.currentItem ? stackView.currentItem.objectName : ""
-        subtitle: window.forkToolbarSubtitle // [fork]
-        items: [
-            { "id": "back", "button": backButton, "symbol": "chevron.left", "label": qsTr("Back"),
-              "navigational": true, "visible": stackView.depth > 1, "focused": backButton.activeFocus },
-            { "id": "update", "button": updateButton, "symbol": "arrow.down.circle", "label": qsTr("Update"),
-              "toolTip": updateButton.ToolTip.text, "visible": updateButton.browserUrl !== "", "focused": updateButton.activeFocus },
-            { "id": "discord", "button": discordButton, "symbol": "bubble.left.and.bubble.right", "label": qsTr("Discord"),
-              "toolTip": discordButton.ToolTip.text, "visible": SystemProperties.hasBrowser && stackView.currentItem instanceof ForkSettingsView,
-              "focused": discordButton.activeFocus },
-            { "id": "addPc", "button": addPcButton, "symbol": "plus", "label": qsTr("Add PC"), "labeled": true,
-              "toolTip": addPcButton.ToolTip.text, "visible": stackView.currentItem instanceof PcView, "focused": addPcButton.activeFocus },
-            { "id": "help", "button": helpButton, "symbol": "questionmark.circle", "label": qsTr("Help"),
-              "toolTip": helpButton.ToolTip.text, "visible": helpButton.visible, "focused": helpButton.activeFocus },
-            { "id": "settings", "button": settingsButton, "symbol": "gearshape", "label": qsTr("Settings"),
-              "toolTip": settingsButton.ToolTip.text, "visible": !(stackView.currentItem instanceof ForkSettingsView),
-              "focused": settingsButton.activeFocus }
-        ]
-    }
-
-    header: ToolBar {
-        id: toolBar
-        height: nativeToolbar.active ? 0 : 60 // [fork] the design's toolbar height, or none with the native toolbar
-        clip: nativeToolbar.active // [fork] draws nothing and takes no clicks, but its buttons keep keyboard focus
-        anchors.topMargin: 5
-        anchors.bottomMargin: 5
-
-        // [fork] Where the native toolbar isn't shown (macOS before 15, offscreen screenshots), this one
-        // takes the theme's toolbar ground, like the native one's tinted glass
-        background: Rectangle {
-            color: ForkTheme.bar
-
-            Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 1
-                color: ForkTheme.lineSoft
-            }
-        }
-
-        Label {
-            id: titleLabel
-            visible: false // [fork] the title sits at the left with its subtitle, as in the design (was toolBar.width > 700)
-            anchors.fill: parent
-            text: stackView.currentItem.objectName
-            textFormat: Text.PlainText // [fork] an app grid's title is its host's name, never markup
-            font.pointSize: 15 // [fork] macOS title size (was 20)
-            font.bold: true
-            elide: Label.ElideRight
-            horizontalAlignment: Qt.AlignHCenter
-            verticalAlignment: Qt.AlignVCenter
-        }
-
-        RowLayout {
-            spacing: 10
-
-            // [fork] Back (Escape, or B on a gamepad) leaves the toolbar for the page below,
-            // which matters while the toolbar is clipped and its focus only shows natively
-            Keys.onEscapePressed: {
-                stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-            }
-            Keys.onBackPressed: {
-                stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-            }
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            anchors.fill: parent
-
-            NavigableToolButton {
-                id: backButton // [fork] for the native toolbar
-
-                // Only make the button visible if the user has navigated somewhere.
-                visible: stackView.depth > 1
-
-                iconSource: "qrc:/res/arrow_left.svg"
-                symbolName: "chevron.left" // [fork]
-
-                onClicked: goBack()
-
-                Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-                }
-            }
-
-            // [fork] The design's title: LuzLunar's mark and name on Your PCs, otherwise the page's
-            // title over its subtitle, at the left. It fills the row's free space, so the buttons
-            // after it sit at the right. (Was a centered label shown when the window got narrow.)
-            Item {
-                id: titleRowLabel
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                Row {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width
-                    spacing: 10
-
-                    ForkMoonMark {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: stackView.currentItem instanceof PcView
-                        size: 24
-                    }
-
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 34
-                        spacing: 2
-
-                        ForkText {
-                            width: parent.width
-                            kind: "label"
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                            text: stackView.currentItem ? stackView.currentItem.objectName : ""
-                        }
-
-                        ForkText {
-                            width: parent.width
-                            visible: text !== ""
-                            kind: "help"
-                            wrapMode: Text.NoWrap
-                            elide: Text.ElideRight
-                            text: window.forkToolbarSubtitle
-                        }
-                    }
-                }
-            }
-
-            Label {
-                id: versionLabel
-                visible: false // [fork] the version is the title's subtitle (was stackView.currentItem instanceof ForkSettingsView)
-                text: qsTr("Version %1").arg(SystemProperties.versionString)
-                font.pointSize: 12
-                horizontalAlignment: Qt.AlignRight
-                verticalAlignment: Qt.AlignVCenter
-            }
-
-            NavigableToolButton {
-                id: discordButton
-                visible: SystemProperties.hasBrowser &&
-                         stackView.currentItem instanceof ForkSettingsView
-
-                iconSource: "qrc:/res/discord.svg"
-
-                ToolTip.delay: 1000
-                ToolTip.timeout: 3000
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Join our community on Discord")
-
-                // TODO need to make sure browser is brought to foreground.
-                onClicked: Qt.openUrlExternally("https://moonlight-stream.org/discord");
-
-                Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-                }
-            }
-
-            NavigableToolButton {
-                id: addPcButton
-                visible: stackView.currentItem instanceof PcView
-
-                iconSource:  "qrc:/res/ic_add_to_queue_white_48px.svg"
-                symbolName: "plus" // [fork]
-
-                // [fork] Labelled, as in the design (the native toolbar's item is labelled too)
-                text: qsTr("Add PC")
-                display: AbstractButton.TextBesideIcon
-                Layout.preferredWidth: implicitWidth
-
-                ToolTip.delay: 1000
-                ToolTip.timeout: 3000
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Add PC manually") + (newPcShortcut.nativeText ? (" ("+newPcShortcut.nativeText+")") : "")
-
-                Shortcut {
-                    id: newPcShortcut
-                    sequence: StandardKey.New
-                    onActivated: addPcButton.clicked()
-                }
-
-                onClicked: {
-                    addPcDialog.open()
-                }
-
-                Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-                }
-            }
-
-            NavigableToolButton {
-                property string browserUrl: ""
-
-                id: updateButton
-
-                iconSource: "qrc:/res/update.svg"
-                symbolName: "arrow.down.circle" // [fork]
-
-                ToolTip.delay: 1000
-                ToolTip.timeout: 3000
-                ToolTip.visible: hovered || (visible && !nativeToolbar.active) // [fork] the native item has the tooltip
-
-                // Invisible until we get a callback notifying us that
-                // an update is available
-                visible: false
-
-                // [fork] LuzLunar's own update, in Settings › Updates (was upstream's download page)
-                onClicked: {
-                    navigateTo("qrc:/gui/ForkSettingsView.qml", ForkSettingsView)
-                    if (stackView.currentItem instanceof ForkSettingsView) {
-                        stackView.currentItem.showSection("updates")
-                    }
-                }
-
-                function updateAvailable(version, url)
-                {
-                    ToolTip.text = qsTr("LuzLunar %1 is ready to install").arg(version) // [fork]
-                    updateButton.browserUrl = url
-                    updateButton.visible = true
-                }
-
-                // [fork] LuzLunar's own over-the-air updates (ForkUpdater) instead of upstream
-                // Moonlight's releases (AutoUpdateChecker), and Apollo PCs' (ForkHostUpdates)
-                Component.onCompleted: {
-                    ForkUpdater.changed.connect(function() {
-                        if (ForkUpdater.updateReady && ForkUpdater.supported) {
-                            updateAvailable(ForkUpdater.latestVersion, "luzlunar:update")
-                        }
-                        else {
-                            updateButton.visible = false
-                            updateButton.browserUrl = ""
-                        }
-                    })
-                    ForkUpdater.start()
-                    if (ForkUpdater.lastResult !== "") {
-                        window.forkToast(ForkUpdater.lastResult)
-                    }
-                    ForkHostUpdates.setComputerManager(ComputerManager)
-                    ForkHostUpdates.finished.connect(function(uuid, text) {
-                        window.forkToast(text)
-                    })
-                    ForkHostPower.setComputerManager(ComputerManager)
-                    ForkHostPower.finished.connect(function(uuid, ok, text) {
-                        window.forkToast(text)
-                    })
-                    // [fork] Set Up Wake from Off's outcome, and whether a PC Wake PC was sent to woke or was turned on
-                    ForkHostPower.wakeFinished.connect(function(uuid, ok, text) {
-                        window.forkToast(text)
-                    })
-                    ForkHostPower.poweredOn.connect(function(uuid, text) {
-                        window.forkToast(text)
-                    })
-                }
-
-                Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-                }
-            }
-
-            NavigableToolButton {
-                id: helpButton
-                visible: true // [fork] the shortcuts dialog needs no browser (was SystemProperties.hasBrowser)
-
-                iconSource: "qrc:/res/question_mark.svg"
-                symbolName: "questionmark.circle" // [fork]
-
-                ToolTip.delay: 1000
-                ToolTip.timeout: 3000
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Help") + (helpShortcut.nativeText ? (" ("+helpShortcut.nativeText+")") : "")
-
-                Shortcut {
-                    id: helpShortcut
-                    sequence: StandardKey.HelpContents
-                    onActivated: helpButton.clicked()
-                }
-
-                // [fork] The redesign's shortcuts dialog, which links to the setup guide (was the guide itself)
-                onClicked: forkShortcutsDialog.open()
-
-                Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-                }
-            }
-
-            NavigableToolButton {
-                // TODO: Implement gamepad mapping then unhide this button
-                visible: false
-
-                ToolTip.delay: 1000
-                ToolTip.timeout: 3000
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Gamepad Mapper")
-
-                iconSource: "qrc:/res/ic_videogame_asset_white_48px.svg"
-                symbolName: "gamecontroller" // [fork]
-
-                onClicked: navigateTo("qrc:/gui/GamepadMapper.qml", GamepadMapper)
-
-                Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-                }
-            }
-
-            NavigableToolButton {
-                id: settingsButton
-
-                // [fork] The native toolbar has no Settings item on the Settings page, so focus shouldn't land here
-                visible: !nativeToolbar.active || !(stackView.currentItem instanceof ForkSettingsView)
-
-                iconSource:  "qrc:/res/settings.svg"
-                symbolName: "gearshape" // [fork]
-
-                onClicked: navigateTo("qrc:/gui/ForkSettingsView.qml", ForkSettingsView) // [fork] the redesign's Settings (was SettingsView)
-
-                Keys.onDownPressed: {
-                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
-                }
-
-                Shortcut {
-                    id: settingsShortcut
-                    sequence: StandardKey.Preferences
-                    onActivated: settingsButton.clicked()
-                }
-
-                ToolTip.delay: 1000
-                ToolTip.timeout: 3000
-                ToolTip.visible: hovered
-                ToolTip.text: qsTr("Settings") + (settingsShortcut.nativeText ? (" ("+settingsShortcut.nativeText+")") : "")
-            }
         }
     }
 

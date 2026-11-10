@@ -11,6 +11,7 @@
 #include "forkgrouplaunch.h"
 #include "forkhostupdates.h"
 #include "forkimacsetup.h"
+#include "forkpcprefs.h"
 #include "forkpreferences.h"
 #include "forkupdater.h"
 #include "sfsymbols.h"
@@ -30,6 +31,14 @@ namespace
         qmlRegisterSingletonType<ForkPreferences>("ForkPreferences", 1, 0, "ForkPreferences",
                                                   [](QQmlEngine*, QJSEngine*) -> QObject* {
             ForkPreferences* prefs = ForkPreferences::get();
+            QQmlEngine::setObjectOwnership(prefs, QQmlEngine::CppOwnership);
+            return prefs;
+        });
+        // Each PC's color, the PC kept first and "wake when I pick an app", on this Mac only; the
+        // greeting's first name and the demo and screenshot flags (spec/contract-data.md)
+        qmlRegisterSingletonType<ForkPcPrefs>("ForkPcPrefs", 1, 0, "ForkPcPrefs",
+                                              [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkPcPrefs* prefs = ForkPcPrefs::get();
             QQmlEngine::setObjectOwnership(prefs, QQmlEngine::CppOwnership);
             return prefs;
         });

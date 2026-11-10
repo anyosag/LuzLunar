@@ -96,6 +96,18 @@ QUrl BoxArtManager::loadBoxArt(NvComputer* computer, NvApp& app)
     return QUrl("qrc:/res/no_app_image.png");
 }
 
+QUrl BoxArtManager::cachedBoxArt(NvComputer* computer, int appId) // [fork]
+{
+    QString cachePath = getFilePathForBoxArt(computer, appId);
+    if (!cachePath.isEmpty()) {
+        QFile cacheFile(cachePath);
+        if (cacheFile.exists() && cacheFile.size() > 0) {
+            return QUrl::fromLocalFile(cacheFile.fileName());
+        }
+    }
+    return QUrl("qrc:/res/no_app_image.png");
+}
+
 void BoxArtManager::deleteBoxArt(NvComputer* computer)
 {
     QDir dir(Path::getBoxArtCacheDir());

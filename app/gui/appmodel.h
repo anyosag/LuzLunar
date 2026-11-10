@@ -52,12 +52,19 @@ public:
 
     // [fork] The PC for the apps page's header: "address" (the one LuzLunar uses now), "local" or
     // "remote" (whether that's its address on this network or the one from outside), "software"
-    // ("Apollo", "Sunshine" or "GeForce Experience") and "uuid"
+    // ("Apollo", "Sunshine" or "GeForce Experience"), "uuid", "online" and "lastAddress" (the PC's
+    // LAN, typed, outside or IPv6 address, for a PC that's away)
     Q_INVOKABLE QVariantMap forkHostInfo();
 
     // [fork] The app that runs, for the apps page's header, whether or not the grid shows its tile:
     // "id", "name", and "boxart" when it's one of this model's rows; empty with nothing running
     Q_INVOKABLE QVariantMap forkRunningApp();
+
+    // [fork] The apps page stays while its PC sleeps (All apps of an asleep PC): the apps of the
+    // PC's last visit, nothing running, art only from the cache; only losing the pairing sends the
+    // page back (computerLost). Off by default, which keeps upstream's behaviour: an offline PC
+    // emits computerLost. AppView turns it on for an asleep PC's page, right after initialize().
+    Q_INVOKABLE void forkKeepWhenOffline(bool keep);
 
     QVariant data(const QModelIndex &index, int role) const override;
 
@@ -87,4 +94,6 @@ private:
     int m_CurrentGameId = 0; // [fork] set for an empty model too (initialize())
     bool m_ShowHiddenGames = false; // [fork]
     QString m_ForkNameFilter; // [fork] forkSetNameFilter()
+    bool m_ForkKeepOffline = false; // [fork] forkKeepWhenOffline()
+    bool m_ForkWasOffline = false; // [fork] the PC was away at the last update: its art may be missing
 };

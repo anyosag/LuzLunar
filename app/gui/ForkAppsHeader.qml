@@ -1,632 +1,660 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
-import QtQuick.Templates as T
+import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
 
 import ForkTheme 1.0
 
-// [fork] The top of a PC's apps page (AppView's header), as in the design's All apps: a band in
-// the PC's color with the PC (Apollo's logo, its name, its host software and network, and its
-// address, which can be copied) and what it's doing (the app that runs, with Resume and Quit, or
-// that it's ready); then the page's title, how many apps there are, a search field and a switch
-// that shows the hidden apps. As wide as the grid's block (AppView sets the width), so its edges
-// line up with the tiles.
-Column {
-    id: header
+// [fork] The PC's band at the top of the All apps panel, as in the design (Library and
+// LibraryAsleep): the PC's sky with a few twinkling stars, the Apollo logo, the PC's name, a line
+// about it, its address with a copy button and a note, the moon (live and breathing, or asleep
+// and rising with drifting Zs) and, on the right, a box that says what the PC is doing: NOW
+// RUNNING with the app's thumbnail and Resume and Quit, READY, or ASLEEP with Wake PC.
+// Fixed height 124; AppView puts it flush at the top of the panel (which rounds its corners).
+Item {
+    id: band
 
-    // The PC: its name, whether its host is Apollo (for the logo), the line under its name (host
-    // software and network, like "Apollo 0.4.8 · Home network") and its address
     property string pcName: ""
-    property bool apollo: false
+    property bool apollo: true
     property string hostLine: ""
     property string address: ""
-
-    // The app that runs, and its stream in one line, like "3024×1890 · 120 fps · HEVC 10-bit · Office profile"
+    property string ipNote: ""
+    property bool asleep: false
+    property bool wakeReady: true
+    // The app that runs, if any (an awake PC only)
     property bool hasRunning: false
     property string runningName: ""
-    property url runningBoxart
+    property string runningBoxart: ""
+    property string runningColorKey: ""
     property string runningSummary: ""
-
-    // Apps that aren't hidden and apps that are, whether hidden ones show, and how many match the
-    // search (-1 with no search)
-    property bool showingHidden: false
-    property int appCount: 0
-    property int hiddenCount: 0
-    property int matchCount: -1
-    property alias searchText: search.text
+    // The PC's color: its sky (this band), its fill (Resume, Wake PC) and the ink on it
+    property color pcSky: "#17163F"
+    property color pcFill: "#5E5CE6"
+    property color pcOnFill: "#FFFFFF"
+    // The beat (1100 ms): twinkles, breathing glows, the moon's bob
+    property int tick: 0
+    property bool entered: true
+    property bool settled: true
 
     signal resume()
     signal quit()
-    signal toggleHidden()
+    signal wake()
     signal copyAddress()
-    // The search field took the keyboard; Up (to the toolbar), and Down or Return (to the apps), leave it
-    signal searchFocused()
-    signal searchUp()
-    signal searchDown()
 
-    // How the band fits its width: the moon only where there's room; what the PC is doing under
-    // the PC rather than beside it where they'd meet; Resume and Quit as bare symbols, and no
-    // cover, when even that is tight
-    readonly property bool roomy: width >= 900
-    readonly property bool stacked: width < 820
-    readonly property bool tiny: width < 520
-    readonly property real bandTop: 124
+    readonly property int ph: tick % 2
+    readonly property bool live: !asleep
+    readonly property bool fx: GraphicsInfo.api !== GraphicsInfo.Software
+    readonly property color runBlue: ForkTheme.dark ? "#409CFF" : "#0A6CDB"
+    readonly property var eased: [0.25, 0.1, 0.25, 1, 1, 1]
+    readonly property var easedInOut: [0.42, 0, 0.58, 1, 1, 1]
+    readonly property var easedOut: [0, 0, 0.58, 1, 1, 1]
 
-    // The page rhythm: 28 above, 24 between the band and the title, 20 to the grid
-    spacing: 24
-    topPadding: 28
-    bottomPadding: 20
-
-    // ⌘F
-    function focusSearch() {
-        search.forceActiveFocus(Qt.ShortcutFocusReason)
-        search.selectAll()
-    }
+    height: 124
+    clip: true
 
     Rectangle {
-        id: band
-        width: header.width
-        height: header.stacked ? header.bandTop + capsule.height + 16 : header.bandTop
-        radius: ForkTheme.radiusCard
-        color: ForkTheme.pcSky
-        clip: true
+        anchors.fill: parent
+        color: band.pcSky
+    }
 
-        // A few stars that twinkle (still with Reduce Motion)
-        Repeater {
-            model: [[0.2, 18, 2, 0], [0.26, 100, 2, 1], [0.36, 14, 3, 2], [0.39, 94, 2, 0], [0.48, 30, 2, 1], [0.985, 8, 2, 2]]
+    // Stars at fixed places, twinkling in opposite phases
+    Repeater {
+        model: [[232, 18, 2], [306, 102, 2], [418, 14, 3], [452, 96, 2], [566, 30, 2], [1188, 8, 2]]
 
-            delegate: Rectangle {
-                required property var modelData
+        delegate: Rectangle {
+            required property var modelData
+            required property int index
+            x: modelData[0]
+            y: modelData[1]
+            width: modelData[2]
+            height: width
+            radius: width / 2
+            color: "#FFFFFF"
+            opacity: (band.tick + index) % 2 ? 0.75 : 0.3
+            visible: x < band.width - 2
 
-                x: Math.round(band.width * modelData[0])
-                y: modelData[1]
-                width: modelData[2]
-                height: width
-                radius: width / 2
-                color: "#FFFFFF"
-                opacity: 0.6
-
-                SequentialAnimation on opacity {
-                    running: !ForkTheme.reduceMotion && band.visible
-                    loops: Animation.Infinite
-                    PauseAnimation { duration: modelData[3] * 700 }
-                    NumberAnimation { to: 0.2; duration: 1100; easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 0.8; duration: 1100; easing.type: Easing.InOutSine }
-                }
+            Behavior on opacity {
+                enabled: !ForkTheme.reduceMotion
+                NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: band.eased }
             }
         }
+    }
 
-        // The moon, between the PC and what it's doing, where there's room; its glow breathes
-        // while an app runs (no glow where effects can't draw)
-        Shape {
-            id: moon
+    // The moon, lit on the left, with a soft halo that breathes (the box stays dark inside)
+    Item {
+        id: liveMoon
+        visible: band.live && x + 54 < statusBox.x - 8
+        x: 496
+        y: 26
+        width: 54
+        height: 54
 
-            property real glow: 0.45
-
-            visible: header.roomy && !header.stacked && capsule.x - (identity.x + identity.width) > 130
-            x: Math.round((identity.x + identity.width + capsule.x) / 2 - width / 2)
-            y: 24
-            width: 54
-            height: 54
-            preferredRendererType: Shape.CurveRenderer
-            Accessible.ignored: true
-
-            layer.enabled: visible && GraphicsInfo.api !== GraphicsInfo.Software
-            layer.effect: MultiEffect {
-                shadowEnabled: true
-                shadowColor: "#F5C878"
-                shadowBlur: 1.0
-                shadowOpacity: moon.glow
-                shadowHorizontalOffset: 0
-                shadowVerticalOffset: 0
-            }
-
-            SequentialAnimation on glow {
-                running: header.hasRunning && moon.visible && !ForkTheme.reduceMotion
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.8; duration: 1100; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 0.35; duration: 1100; easing.type: Easing.InOutSine }
-            }
-
-            // A crescent: the moon's circle less the same circle moved 14 right and 7 up
-            ShapePath {
-                strokeWidth: -1
-                strokeColor: "transparent"
-                fillColor: "#F5C878"
-                PathSvg { path: "M22.44 0.39A27 27 0 1 0 45.56 46.61A27 27 0 0 1 22.44 0.39Z" }
-            }
+        property real p: band.ph
+        Behavior on p {
+            enabled: !ForkTheme.reduceMotion
+            NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: band.easedInOut }
         }
 
-        // The PC: Apollo's logo, or a PC on a tile for other host software
-        Image {
-            id: logo
-            visible: header.apollo
-            x: 22
-            y: Math.round((header.bandTop - height) / 2)
-            width: 68
-            height: 68
-            source: "qrc:/res/apollo.png"
-            sourceSize.width: 136
-            sourceSize.height: 136
-            mipmap: true
-            Accessible.ignored: true
+        RectangularShadow {
+            anchors.fill: parent
+            radius: 27
+            blur: 30 + 20 * liveMoon.p
+            color: Qt.rgba(245 / 255, 200 / 255, 120 / 255, 0.2 + 0.18 * liveMoon.p)
         }
 
         Rectangle {
-            id: otherLogo
-            visible: !header.apollo
-            x: 26
-            y: Math.round((header.bandTop - height) / 2)
-            width: 60
-            height: 60
-            radius: 16
-            color: Qt.rgba(1, 1, 1, 0.12)
+            anchors.fill: parent
+            radius: 27
+            color: band.pcSky
+        }
 
-            ForkSymbol {
-                anchors.centerIn: parent
-                symbol: "pc"
-                fallback: "qrc:/res/desktop_windows-48px.svg"
-                size: 30
-                color: "#FFFFFF"
+        Shape {
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
+            ShapePath {
+                fillColor: "#F5C878"
+                strokeColor: "transparent"
+                PathSvg { path: "M22.44 0.39A27 27 0 1 0 45.56 46.61A27 27 0 0 1 22.44 0.39Z" }
+            }
+        }
+    }
+
+    // Asleep: a crescent rising over the band's bottom edge, bobbing, and Zs drifting up from it
+    Item {
+        visible: band.asleep && x + 76 < statusBox.x
+        x: 486
+        y: band.ph ? 74 : 70
+        width: 76
+        height: 54
+        clip: true
+
+        Behavior on y {
+            enabled: !ForkTheme.reduceMotion
+            NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: band.easedInOut }
+        }
+
+        Shape {
+            x: 10
+            y: 24
+            preferredRendererType: ForkPcPrefs.screenshotMode ? Shape.GeometryRenderer : Shape.CurveRenderer
+            ShapePath {
+                fillColor: "#CFC8F3"
+                strokeColor: "transparent"
+                PathSvg { path: "M22.59 0.36A27 27 0 1 0 44.41 47.64A27 27 0 0 1 22.59 0.36Z" }
+            }
+        }
+    }
+
+    Repeater {
+        model: band.asleep ? 3 : 0
+
+        delegate: ForkCanvasText {
+            id: z
+            required property int index
+            readonly property int zp: (band.tick + index) % 3
+            x: 548 + zp * 8
+            y: 72 - zp * 12
+            visible: x < statusBox.x
+            text: "z"
+            Accessible.ignored: true
+            color: Qt.rgba(1, 1, 1, 0.8)
+            px: 11
+            weight: 800
+            scale: 1 + 0.2 * zp
+            opacity: zp === 1 ? 0.75 : 0
+
+            Behavior on x { enabled: z.zp !== 0 && !ForkTheme.reduceMotion; NumberAnimation { duration: 1100 } }
+            Behavior on y { enabled: z.zp !== 0 && !ForkTheme.reduceMotion; NumberAnimation { duration: 1100 } }
+            Behavior on scale { enabled: z.zp !== 0 && !ForkTheme.reduceMotion; NumberAnimation { duration: 1100 } }
+            Behavior on opacity {
+                enabled: z.zp !== 0 && !ForkTheme.reduceMotion
+                NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: band.eased }
+            }
+        }
+    }
+
+    // The logo (Apollo's icon, 68 square, 4 into the gap on each side) or a plain tile
+    ForkLibraryEnter {
+        x: 22
+        y: 28
+        width: 68
+        height: 68
+        entered: band.entered
+        settled: band.settled
+        delay: 90
+
+        Image {
+            id: logo
+            anchors.fill: parent
+            visible: band.apollo
+            source: "qrc:/res/apollo.png"
+            sourceSize: Qt.size(136, 136)
+            smooth: true
+            mipmap: true
+            fillMode: Image.PreserveAspectFit
+            Accessible.ignored: true
+            layer.enabled: band.fx && band.apollo
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: Qt.rgba(0, 0, 0, 0.35)
+                shadowVerticalOffset: 6
+                shadowBlur: 0.5
+                blurMax: 12
             }
         }
 
-        Column {
-            id: identity
-            x: (header.apollo ? logo.x + logo.width : otherLogo.x + otherLogo.width) + 14
-            y: Math.round((header.bandTop - height) / 2)
-            // Beside the capsule, never wider than the room it leaves
-            width: header.stacked ? band.width - x - 24 : Math.max(0, Math.min(320, capsule.x - x - 24))
-            spacing: 4
+        Rectangle {
+            anchors.fill: parent
+            visible: !band.apollo
+            radius: 16
+            color: band.pcFill
 
-            ForkText {
-                width: parent.width
-                kind: "titleSm"
-                color: "#FFFFFF"
-                elide: Text.ElideRight
-                text: header.pcName
-                Accessible.role: Accessible.Heading
+            ForkCanvasText {
+                anchors.centerIn: parent
+                text: band.pcName.charAt(0).toUpperCase()
+                color: band.pcOnFill
+                px: 34
+                weight: 700
             }
+        }
+    }
 
-            ForkText {
-                width: parent.width
-                visible: header.hostLine !== ""
-                kind: "body"
-                font.pixelSize: 13
-                color: Qt.rgba(1, 1, 1, 0.78)
-                wrapMode: Text.NoWrap
-                elide: Text.ElideRight
-                text: header.hostLine
-            }
+    // The name, a line about the PC, its address and a note
+    ForkLibraryEnter {
+        id: names
+        x: 104
+        y: (band.height - height) / 2
+        width: Math.max(80, Math.min(360, statusBox.x - 18 - 104))
+        height: 81
+        entered: band.entered
+        settled: band.settled
+        delay: 140
 
-            // The address, in a pill with a copy button; a long one (IPv6) is shortened in the middle
+        ForkCanvasText {
+            y: 0
+            width: parent.width
+            height: 34
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+            text: band.pcName
+            color: "#FFFFFF"
+            px: 28
+            weight: 750
+            tracking: -0.56
+        }
+
+        ForkCanvasText {
+            y: 38
+            width: parent.width
+            height: 17
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+            text: band.hostLine
+            color: Qt.rgba(1, 1, 1, 0.78)
+            px: 13
+        }
+
+        Row {
+            y: 59
+            width: parent.width
+            height: 22
+            spacing: 8
+
             Rectangle {
-                visible: header.address !== ""
-                width: Math.min(parent.width, pillRow.implicitWidth + 11)
+                id: ipChip
+                visible: band.address !== ""
+                width: chipRow.implicitWidth + 8 + 3
                 height: 22
                 radius: 11
                 color: Qt.rgba(1, 1, 1, 0.13)
-                clip: true
 
                 Row {
-                    id: pillRow
+                    id: chipRow
                     x: 8
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
 
-                    Text {
-                        id: ipLabel
+                    ForkCanvasText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "IP"
-                        textFormat: Text.PlainText
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 10
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.6
-                        color: "#FFFFFF"
                         opacity: 0.7
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, Math.max(24, identity.width - 19 - ipLabel.implicitWidth - copyButton.width - 2 * pillRow.spacing))
-                        text: header.address
-                        textFormat: Text.PlainText
-                        elide: Text.ElideMiddle
-                        font.family: ForkTheme.monoFamily
-                        font.pixelSize: 12
                         color: "#FFFFFF"
+                        px: 10
+                        weight: 700
+                        tracking: 0.6
                     }
 
-                    T.AbstractButton {
-                        id: copyButton
+                    ForkCanvasText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: band.address
+                        color: "#FFFFFF"
+                        font.family: ForkTheme.monoFamily
+                        px: 12
+                    }
+
+                    Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 18
                         height: 18
-                        hoverEnabled: true
-                        focusPolicy: Qt.NoFocus
+                        opacity: 0.8
                         Accessible.role: Accessible.Button
-                        Accessible.name: qsTr("Copy the address of %1").arg(header.pcName)
+                        Accessible.name: qsTr("Copy the IP address of %1").arg(band.pcName)
+                        Accessible.onPressAction: band.copyAddress()
 
-                        background: Rectangle {
-                            radius: 9
-                            color: copyButton.hovered ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
+                        ForkPathIcon {
+                            anchors.centerIn: parent
+                            name: "copy"
+                            size: 12
+                            color: "#FFFFFF"
                         }
 
-                        contentItem: Item {
-                            ForkSymbol {
-                                anchors.centerIn: parent
-                                symbol: "doc.on.doc"
-                                size: 11
-                                color: "#FFFFFF"
-                            }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: band.copyAddress()
                         }
-
-                        onClicked: header.copyAddress()
                     }
                 }
             }
-        }
 
-        // What the PC is doing: the app that runs, with Resume and Quit, or that it's ready. Beside
-        // the PC, or under it where they'd meet.
+            ForkCanvasText {
+                width: Math.max(0, parent.width - (ipChip.visible ? ipChip.width + 8 : 0))
+                height: 22
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+                text: band.ipNote
+                color: Qt.rgba(1, 1, 1, 0.62)
+                px: 11.5
+            }
+        }
+    }
+
+    // What the PC is doing: running an app, ready, or asleep
+    ForkLibraryEnter {
+        id: statusBox
+        x: band.width - 18 - width
+        y: 16
+        width: 1 + 10 + statusRow.implicitWidth + 12 + 1
+        height: 92
+        entered: band.entered
+        settled: band.settled
+        delay: 200
+
         Rectangle {
-            id: capsule
-            x: header.stacked ? 16 : band.width - width - 16
-            y: header.stacked ? header.bandTop : Math.round((header.bandTop - height) / 2)
-            width: header.stacked ? band.width - 32 : capsuleRow.implicitWidth + 26
-            height: 92
+            anchors.fill: parent
             radius: 18
             color: Qt.rgba(1, 1, 1, 0.08)
+            border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.14)
+        }
 
-            Accessible.role: Accessible.Grouping
-            Accessible.name: header.hasRunning ? qsTr("Now running: %1").arg(header.runningName) : qsTr("Nothing running")
+        Row {
+            id: statusRow
+            x: 11
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 14
 
-            Row {
-                id: capsuleRow
-                x: 12
+            // NOW RUNNING
+            Item {
+                visible: band.live && band.hasRunning
+                width: 104
+                height: 72
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 14
 
-                // The running app's cover, in the running ring
+                RectangularShadow {
+                    anchors.fill: parent
+                    radius: 11
+                    spread: 2
+                    property real p: band.ph
+                    Behavior on p {
+                        enabled: !ForkTheme.reduceMotion
+                        NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: band.easedInOut }
+                    }
+                    blur: 10 + 12 * p
+                    color: Qt.rgba(64 / 255, 156 / 255, 1, 0.25 + 0.25 * p)
+                }
+
                 Item {
                     id: thumb
-                    visible: header.hasRunning && !header.tiny
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 54
-                    height: 72
-
-                    // The host's placeholder art has one of these sizes (as AppView checks)
-                    readonly property bool hasArt: {
-                        if (thumbImage.status !== Image.Ready) {
-                            return false
-                        }
-                        var w = thumbImage.sourceSize.width
-                        var h = thumbImage.sourceSize.height
-                        return !((w === 130 && h === 180) || (w === 628 && h === 888) || (w === 200 && h === 266))
-                    }
-
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: -2
-                        radius: 12
-                        color: "transparent"
-                        border.width: 2
-                        border.color: ForkTheme.running
-                    }
-
-                    ForkAppCover {
-                        anchors.fill: parent
-                        visible: !thumb.hasArt
-                        name: header.runningName
-                        radius: 10
-                        showName: false
-                    }
-
-                    Image {
-                        id: thumbImage
-                        anchors.fill: parent
-                        source: header.runningBoxart
-                        fillMode: Image.PreserveAspectCrop
-                        // Drawn through the rounded mask below, or plainly where effects can't draw
-                        visible: thumb.hasArt && GraphicsInfo.api === GraphicsInfo.Software
-                        asynchronous: true
-                    }
-
-                    Rectangle {
-                        id: thumbMask
-                        anchors.fill: parent
-                        radius: 10
-                        visible: false
-                        layer.enabled: true
-                    }
-
-                    MultiEffect {
-                        visible: thumb.hasArt && GraphicsInfo.api !== GraphicsInfo.Software
-                        anchors.fill: parent
-                        source: thumbImage
+                    anchors.fill: parent
+                    layer.enabled: band.fx
+                    layer.effect: MultiEffect {
                         maskEnabled: true
                         maskSource: thumbMask
                         maskThresholdMin: 0.5
                         maskSpreadAtMin: 1.0
                     }
+
+                    Rectangle { anchors.fill: parent; color: band.pcSky }
+
+                    ForkAppCover {
+                        anchors.fill: parent
+                        visible: !thumbArt.ready
+                        kind: "thumb"
+                        name: band.runningName
+                        colorKey: band.runningColorKey
+                        radius: 0
+                    }
+
+                    // The art (3:4), cropped to its upper middle
+                    Image {
+                        id: thumbArt
+                        readonly property bool ready: status === Image.Ready && !(sourceSize.width === 200 && sourceSize.height === 266)
+                        width: parent.width
+                        height: width * 4 / 3
+                        y: -0.4 * (height - parent.height)
+                        fillMode: Image.Stretch
+                        asynchronous: true
+                        source: band.runningBoxart
+                        visible: ready
+                    }
                 }
 
-                // Ready: a check
                 Rectangle {
-                    id: readyDisc
-                    visible: !header.hasRunning
-                    anchors.verticalCenter: parent.verticalCenter
+                    id: thumbMask
+                    anchors.fill: parent
+                    radius: 11
+                    visible: false
+                    layer.enabled: true
+                }
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: -2
+                    radius: 13
+                    color: "transparent"
+                    border.width: 2
+                    border.color: band.runBlue
+                }
+            }
+
+            Column {
+                visible: band.live && band.hasRunning
+                width: 236
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3
+
+                Row {
+                    height: 14
+                    spacing: 7
+
+                    Item {
+                        width: 7
+                        height: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        property real p: band.ph
+                        Behavior on p {
+                            enabled: !ForkTheme.reduceMotion
+                            NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: band.easedOut }
+                        }
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 7 + 10 * parent.p
+                            height: width
+                            radius: width / 2
+                            color: Qt.rgba(121 / 255, 214 / 255, 181 / 255, 0.55 * (1 - parent.p))
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 4
+                            color: "#79D6B5"
+                        }
+                    }
+
+                    ForkCanvasText {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Now running").toUpperCase()
+                        color: "#79D6B5"
+                        px: 10.5
+                        weight: 700
+                        tracking: 1.26
+                    }
+                }
+
+                ForkCanvasText {
+                    width: parent.width
+                    height: 23
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    text: band.runningName
+                    color: "#FFFFFF"
+                    px: 18
+                    weight: 650
+                }
+
+                ForkCanvasText {
+                    width: parent.width
+                    height: 15
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    text: band.runningSummary
+                    color: Qt.rgba(1, 1, 1, 0.72)
+                    font.family: ForkTheme.monoFamily
+                    px: 11.5
+                }
+            }
+
+            ForkLibraryButton {
+                visible: band.live && band.hasRunning
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Resume")
+                accessibleName: qsTr("Resume %1").arg(band.runningName)
+                iconName: "play"
+                iconSize: 15
+                iconStrokeWidth: 1.6
+                iconFilled: 1
+                fill: band.pcFill
+                ink: band.pcOnFill
+                padLeft: 13
+                padRight: 16
+                onClicked: band.resume()
+            }
+
+            ForkLibraryButton {
+                visible: band.live && band.hasRunning
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Quit")
+                accessibleName: qsTr("Quit %1").arg(band.runningName)
+                iconName: "stop"
+                iconSize: 14
+                iconFilled: 1
+                iconStroked: 0
+                fill: Qt.rgba(1, 1, 1, 0.1)
+                ink: "#FFFFFF"
+                borderColor: Qt.rgba(1, 1, 1, 0.18)
+                borderWidth: 1
+                fontWeight: 550
+                padLeft: 12
+                padRight: 15
+                onClicked: band.quit()
+            }
+
+            // READY
+            Item {
+                visible: band.live && !band.hasRunning
+                width: 44 + 6
+                height: 44
+                anchors.verticalCenter: parent.verticalCenter
+
+                Rectangle {
+                    x: 6
                     width: 44
                     height: 44
                     radius: 22
                     color: "#30D158"
 
-                    ForkSymbol {
+                    ForkPathIcon {
                         anchors.centerIn: parent
-                        symbol: "checkmark"
-                        fallback: "qrc:/res/baseline-check_circle_outline-24px.svg"
-                        size: 18
+                        name: "check"
+                        size: 22
+                        strokeWidth: 2
                         color: "#05230F"
                     }
                 }
+            }
 
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    // Beside the PC a fixed width; under it, whatever the buttons leave
-                    width: {
-                        if (!header.stacked) {
-                            return header.roomy ? 240 : 190
-                        }
-                        var others = 0
-                        var parts = [thumb, readyDisc, resumeButton, quitButton]
-                        for (var i = 0; i < parts.length; i++) {
-                            if (parts[i].visible) {
-                                others += parts[i].width + capsuleRow.spacing
-                            }
-                        }
-                        return Math.max(60, capsule.width - 24 - others)
-                    }
-                    spacing: 3
+            Column {
+                visible: band.live && !band.hasRunning
+                width: 314
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 3
 
-                    Row {
-                        spacing: 7
+                ForkCanvasText {
+                    height: 14
+                    text: qsTr("Ready").toUpperCase()
+                    color: "#7EE2A0"
+                    px: 10.5
+                    weight: 700
+                    tracking: 1.26
+                }
+                ForkCanvasText {
+                    height: 23
+                    verticalAlignment: Text.AlignVCenter
+                    text: qsTr("Nothing running")
+                    color: "#FFFFFF"
+                    px: 18
+                    weight: 650
+                }
+                ForkCanvasText {
+                    height: 16
+                    verticalAlignment: Text.AlignVCenter
+                    text: qsTr("Pick an app below to start it")
+                    color: Qt.rgba(1, 1, 1, 0.72)
+                    px: 12.5
+                }
+            }
 
-                        // The dot sends out a ring while an app runs
-                        Item {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: header.hasRunning
-                            width: 7
-                            height: 7
+            // ASLEEP
+            Item {
+                visible: band.asleep
+                width: 44 + 6
+                height: 44
+                anchors.verticalCenter: parent.verticalCenter
 
-                            Rectangle {
-                                id: dotRing
-                                anchors.centerIn: parent
-                                visible: !ForkTheme.reduceMotion
-                                width: 7
-                                height: width
-                                radius: width / 2
-                                color: "#79D6B5"
+                Rectangle {
+                    x: 6
+                    width: 44
+                    height: 44
+                    radius: 22
+                    color: "#9B45D9"
 
-                                ParallelAnimation {
-                                    running: dotRing.visible && header.hasRunning && band.visible
-                                    loops: Animation.Infinite
-                                    NumberAnimation { target: dotRing; property: "width"; from: 7; to: 19; duration: 1800; easing.type: Easing.OutCubic }
-                                    NumberAnimation { target: dotRing; property: "opacity"; from: 0.55; to: 0; duration: 1800; easing.type: Easing.OutCubic }
-                                }
-                            }
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 3.5
-                                color: "#79D6B5"
-                            }
-                        }
-
-                        Text {
-                            text: header.hasRunning ? qsTr("Now running") : qsTr("Ready")
-                            textFormat: Text.PlainText
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 11
-                            font.weight: Font.Bold
-                            font.letterSpacing: 1.2
-                            font.capitalization: Font.AllUppercase
-                            color: header.hasRunning ? "#79D6B5" : "#7EE2A0"
-                        }
-                    }
-
-                    Text {
-                        width: parent.width
-                        text: header.hasRunning ? header.runningName : qsTr("Nothing running")
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 18
-                        font.weight: Font.DemiBold
+                    ForkPathIcon {
+                        anchors.centerIn: parent
+                        name: "moon"
+                        size: 20
+                        filled: true
+                        stroked: false
                         color: "#FFFFFF"
                     }
-
-                    Text {
-                        width: parent.width
-                        visible: text !== ""
-                        text: header.hasRunning ? header.runningSummary : qsTr("Pick an app below to start it")
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        font.family: header.hasRunning ? ForkTheme.monoFamily : ForkTheme.uiFamily
-                        font.pixelSize: header.hasRunning ? 12 : 13
-                        color: Qt.rgba(1, 1, 1, 0.72)
-                    }
-                }
-
-                ForkButton {
-                    id: resumeButton
-                    visible: header.hasRunning
-                    anchors.verticalCenter: parent.verticalCenter
-                    kind: "pc"
-                    symbol: "play.fill"
-                    symbolSize: 13
-                    focusPolicy: Qt.NoFocus
-                    text: header.tiny ? "" : qsTr("Resume")
-                    Accessible.description: qsTr("Resume %1").arg(header.runningName)
-                    onClicked: header.resume()
-                }
-
-                ForkButton {
-                    id: quitButton
-                    visible: header.hasRunning
-                    anchors.verticalCenter: parent.verticalCenter
-                    kind: "glass"
-                    symbol: "stop.fill"
-                    symbolSize: 11
-                    focusPolicy: Qt.NoFocus
-                    text: header.tiny ? "" : qsTr("Quit")
-                    Accessible.description: qsTr("Quit %1").arg(header.runningName)
-                    onClicked: header.quit()
                 }
             }
-        }
-    }
 
-    // "All apps", how many, the search and the switch that shows the hidden apps
-    Item {
-        width: header.width
-        height: 44
-
-        ForkText {
-            id: heading
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            kind: "titleSm"
-            pixelSize: 26
-            text: qsTr("All apps")
-            Accessible.role: Accessible.Heading
-        }
-
-        ForkText {
-            anchors.left: heading.right
-            anchors.leftMargin: 12
-            anchors.right: controls.left
-            anchors.rightMargin: 12
-            anchors.baseline: heading.baseline
-            kind: "body"
-            font.pixelSize: 14
-            color: ForkTheme.muted
-            wrapMode: Text.NoWrap
-            elide: Text.ElideRight
-            text: {
-                if (header.matchCount >= 0) {
-                    return header.matchCount === 0 ? qsTr("No apps match")
-                         : header.matchCount === 1 ? qsTr("1 app matches") : qsTr("%1 apps match").arg(header.matchCount)
-                }
-                var apps = header.appCount === 1 ? qsTr("1 app") : qsTr("%1 apps").arg(header.appCount)
-                return header.hiddenCount > 0 ? apps + " · " + qsTr("%1 hidden").arg(header.hiddenCount) : apps
-            }
-        }
-
-        Row {
-            id: controls
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 14
-
-            ForkTextField {
-                id: search
+            Column {
+                visible: band.asleep
+                width: 250
                 anchors.verticalCenter: parent.verticalCenter
-                width: header.tiny ? 140 : (header.stacked ? 190 : 240)
-                implicitHeight: 36
-                leftPadding: 34
-                rightPadding: text !== "" ? 34 : 12
-                font.pixelSize: 13
-                // The placeholder is the field's only visible label, so it's in the muted color
-                // (4.5:1 or more in both appearances) rather than the fainter one fields use
-                placeholderTextColor: ForkTheme.muted
-                placeholderText: qsTr("Search apps")
-                Accessible.name: qsTr("Search the apps on %1").arg(header.pcName)
+                spacing: 3
 
-                onActiveFocusChanged: {
-                    if (activeFocus) {
-                        header.searchFocused()
-                    }
+                ForkCanvasText {
+                    height: 14
+                    text: qsTr("Asleep").toUpperCase()
+                    color: "#CFC8F3"
+                    px: 10.5
+                    weight: 700
+                    tracking: 1.26
                 }
-
-                ForkSymbol {
-                    x: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    symbol: "magnifyingglass"
-                    size: 14
-                    color: ForkTheme.muted
+                ForkCanvasText {
+                    width: parent.width
+                    height: 22
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    text: qsTr("Picking an app wakes it first")
+                    color: "#FFFFFF"
+                    px: 17
+                    weight: 650
                 }
-
-                // Clears the search; so does Escape
-                T.AbstractButton {
-                    id: clearButton
-                    visible: search.text !== ""
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 20
-                    height: 20
-                    hoverEnabled: true
-                    focusPolicy: Qt.NoFocus
-                    Accessible.role: Accessible.Button
-                    Accessible.name: qsTr("Clear the search")
-
-                    background: Rectangle {
-                        radius: 10
-                        color: clearButton.hovered ? ForkTheme.lineStrong : ForkTheme.raised
-                    }
-
-                    contentItem: Item {
-                        ForkSymbol {
-                            anchors.centerIn: parent
-                            symbol: "xmark"
-                            size: 9
-                            color: ForkTheme.text2
-                        }
-                    }
-
-                    onClicked: search.text = ""
+                ForkCanvasText {
+                    width: parent.width
+                    height: 16
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    text: band.wakeReady ? qsTr("Wake from off is ready") : qsTr("Wakes from sleep, not from off")
+                    color: Qt.rgba(1, 1, 1, 0.72)
+                    px: 12.5
                 }
-
-                Keys.onEscapePressed: (event) => {
-                    if (search.text !== "") {
-                        search.text = ""
-                        event.accepted = true
-                    }
-                    else {
-                        event.accepted = false
-                    }
-                }
-                // The arrow keys and a gamepad's pad (and its A, as Return) lead out of the field
-                Keys.onUpPressed: header.searchUp()
-                Keys.onDownPressed: header.searchDown()
-                Keys.onReturnPressed: header.searchDown()
-                Keys.onEnterPressed: header.searchDown()
             }
 
-            Row {
-                visible: header.hiddenCount > 0
+            ForkLibraryButton {
+                visible: band.asleep
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
-
-                ForkText {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !header.tiny
-                    kind: "body"
-                    font.pixelSize: 13
-                    color: ForkTheme.text2
-                    wrapMode: Text.NoWrap
-                    text: qsTr("Show hidden apps")
-                }
-
-                ForkSwitch {
-                    anchors.verticalCenter: parent.verticalCenter
-                    checked: header.showingHidden
-                    focusPolicy: Qt.NoFocus
-                    Accessible.name: qsTr("Show hidden apps")
-                    onClicked: header.toggleHidden()
-                }
+                text: qsTr("Wake PC")
+                iconName: "power"
+                iconSize: 16
+                iconStrokeWidth: 2
+                iconFilled: 0
+                fill: band.pcFill
+                ink: band.pcOnFill
+                onClicked: band.wake()
             }
         }
     }

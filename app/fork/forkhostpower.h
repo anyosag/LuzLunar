@@ -130,7 +130,7 @@ private:
     Names names(const QString& uuid) const;
 
     void onStatus(const QString& uuid, const Answer& answer);
-    void onSlept(const QString& uuid, bool ok, const QString& text, const Answer& status);
+    void onSlept(const QString& uuid, bool ok, const QString& text, const Answer& status, bool off);
     void onWakeStatus(const QString& uuid, const Answer& answer);
 
     static WakeSetupRules::Status parseWake(const QVariantMap& json);

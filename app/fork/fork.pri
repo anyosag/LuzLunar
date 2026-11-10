@@ -55,6 +55,8 @@ SOURCES += \
     $$PWD/forkmultidisplay.cpp \
     $$PWD/forkmultitouch.cpp \
     $$PWD/forknetworklink.cpp \
+    $$PWD/forkpcprefs.cpp \
+    $$PWD/forkpcprobe.cpp \
     $$PWD/forkpolicy.cpp \
     $$PWD/forkpreferences.cpp \
     $$PWD/forkqml.cpp \
@@ -124,6 +126,8 @@ HEADERS += \
     $$PWD/forkmultidisplay.h \
     $$PWD/forkmultitouch.h \
     $$PWD/forknetworklink.h \
+    $$PWD/forkpcprefs.h \
+    $$PWD/forkpcprobe.h \
     $$PWD/forkpolicy.h \
     $$PWD/forkpreferences.h \
     $$PWD/forkstreamextensions.h \
@@ -158,6 +162,7 @@ HEADERS += \
     $$PWD/streamsettings.h \
     $$PWD/streamsettingsrules.h \
     $$PWD/notchstatus.h \
+    $$PWD/pccardrules.h \
     $$PWD/powernotice.h \
     $$PWD/screenshotharness.h \
     $$PWD/sfsymbols.h \
