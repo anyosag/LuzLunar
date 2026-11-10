@@ -3,7 +3,6 @@
 #include <QObject>
 #include <QPointer>
 #include <QSize>
-#include <QVariantList>
 #include <QWindow>
 
 // Native window chrome for the main window. The window draws its own 52 px header bar in QML
@@ -40,16 +39,9 @@ public:
     // the primary screen's if it has none yet. QML's Screen.desktopAvailable* is the union of all screens.
     Q_INVOKABLE QSize availableSize(QWindow* window) const;
 
-    // The native toolbar is gone (the header is QML). These stay only for ForkNativeToolbar.qml,
-    // which nothing loads any more, and do nothing.
-    Q_INVOKABLE void setToolbarItems(const QVariantList& items);
-    Q_INVOKABLE void setToolbarVisible(bool visible);
-    Q_INVOKABLE void setSubtitle(const QString& subtitle);
-
 signals:
     void activeChanged();
     void reduceMotionChanged();
-    void triggered(const QString& id);
 
 private:
     ForkWindowChrome() = default;

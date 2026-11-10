@@ -25,18 +25,6 @@ QSize ForkWindowChrome::availableSize(QWindow* window) const
     return screen != nullptr ? screen->availableGeometry().size() : QSize(1280, 900);
 }
 
-void ForkWindowChrome::setToolbarItems(const QVariantList&)
-{
-}
-
-void ForkWindowChrome::setToolbarVisible(bool)
-{
-}
-
-void ForkWindowChrome::setSubtitle(const QString&)
-{
-}
-
 #ifndef Q_OS_DARWIN
 
 ForkWindowChrome::~ForkWindowChrome()

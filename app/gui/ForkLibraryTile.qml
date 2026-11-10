@@ -135,11 +135,15 @@ Item {
                 id: filterItem
                 anchors.fill: parent
                 layer.enabled: tile.asleep && tile.fx
+                // CSS saturate(0.8) brightness(0.88): MultiEffect's brightness adds, so the 0.88 is a
+                // contrast of -0.12 with a -0.06 offset (calibrated against LibraryAsleep@2x)
                 layer.effect: MultiEffect {
                     saturation: tile.hov ? 0 : -0.2
-                    brightness: tile.hov ? 0 : -0.1
+                    brightness: tile.hov ? 0 : -0.06
+                    contrast: tile.hov ? 0 : -0.12
                     Behavior on saturation { NumberAnimation { duration: 240 } }
                     Behavior on brightness { NumberAnimation { duration: 240 } }
+                    Behavior on contrast { NumberAnimation { duration: 240 } }
                 }
 
                 Item {
