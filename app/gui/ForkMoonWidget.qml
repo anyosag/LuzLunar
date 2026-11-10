@@ -36,7 +36,7 @@ Item {
         var pct = Math.round(lit * 100)
         var line = toFull === 0 ? qsTr("%1% lit · full tonight").arg(pct)
                  : (toFull === 1 ? qsTr("%1% lit · full in 1 day").arg(pct) : qsTr("%1% lit · full in %2 days").arg(pct).arg(toFull))
-        return { d: d, name: name, line: line, phase: phase }
+        return { d: d, name: name, line: line, phase: phase, visible: lit > 0.004 }
     }
 
     Column {
@@ -101,6 +101,7 @@ Item {
             }
             Shape {
                 x: 24; y: 24
+                visible: moon.info.visible
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
                     fillColor: "#F5C878"

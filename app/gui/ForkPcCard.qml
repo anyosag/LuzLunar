@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Effects
-import QtQuick.Shapes
 import ForkTheme 1.0
 
 import "ForkPcCardText.js" as CardText
@@ -16,9 +15,9 @@ Item {
     property string pcName: ""
     // A key of ForkTheme.hue(); a PC that isn't paired is always "gray" (forced below)
     property string hueKey: "indigo"
-    // ready streaming waking asleep offCanWake offNoWake notPaired unreachable (the model's short
+    // ready streaming waking asleep offCanWake offNoWake notPaired unreachable checking (the model's short
     // names off, pair and lost work too)
-    property string state: "ready"
+    property string cardState: "ready"
     property string version: ""
     property string network: "Home network"
     property int latencyMs: -1
@@ -68,7 +67,7 @@ Item {
     signal picked()
 
     readonly property bool dark: ForkTheme.dark
-    readonly property string stateId: CardText.normalizeState(state)
+    readonly property string stateId: CardText.normalizeState(cardState)
     readonly property var hue: ForkTheme.hue(stateId === "notPaired" ? "gray" : hueKey)
     readonly property color tileDisc: hue.tile
     readonly property color tileInk: hue.tileInk
@@ -77,7 +76,7 @@ Item {
     readonly property int ph: tick % 2
 
     readonly property var info: CardText.describe({
-        state: state, name: pcName, version: version, network: network, latencyMs: latencyMs,
+        state: cardState, name: pcName, version: version, network: network, latencyMs: latencyMs,
         address: address, runningApp: runningApp, defaultApp: defaultApp, streamWidth: streamWidth,
         streamHeight: streamHeight, streamFps: streamFps, streamHdr: streamHdr, wakeFromOff: wakeFromOff,
         updateAvailable: updateAvailable, reachableOutside: reachableOutside, onLanNow: onLanNow,

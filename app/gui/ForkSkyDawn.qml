@@ -27,18 +27,28 @@ Item {
     // blur sigma 28 px, in a layer at 1/4 size: sigma 7 there
     readonly property real layerScale: 0.25
 
+    MultiEffect {
+        anchors.fill: parent
+        source: art
+        blurEnabled: true
+        blurMax: 64
+        blur: dawn.sigmaToBlur(28 * dawn.layerScale)
+        autoPaddingEnabled: false
+    }
+
     Item {
         id: art
-        anchors.fill: parent
+        width: Math.max(1, Math.round(dawn.width * dawn.layerScale))
+        height: Math.max(1, Math.round(dawn.height * dawn.layerScale))
         layer.enabled: true
         layer.smooth: true
-        layer.textureSize: Qt.size(Math.max(1, Math.round(dawn.width * dawn.layerScale)), Math.max(1, Math.round(dawn.height * dawn.layerScale)))
-        layer.effect: MultiEffect {
-            blurEnabled: true
-            blurMax: 32
-            blur: dawn.sigmaToBlur(28 * dawn.layerScale)
-            autoPaddingEnabled: false
-        }
+        visible: false
+
+        // the whole window's art, drawn at 1/4 size into the layer
+        Item {
+        width: dawn.width; height: dawn.height
+        scale: dawn.layerScale
+        transformOrigin: Item.TopLeft
 
         Repeater {
             model: [
@@ -99,10 +109,14 @@ Item {
                 }
             }
         }
+        }
     }
 
-    // MultiEffect's blur is mip-based, not a plain sigma: a calibrated map from sigma (texture px)
+    // MultiEffect's blur is mip-based, not a plain sigma. Measured with blurMax 64 (sigma in texture px):
+    // blur 0.25 -> 3.8, 0.5 -> 10.3, 1.0 -> 20.3; this inverts it piecewise-linearly
     function sigmaToBlur(sigma) {
-        return Math.min(1, sigma / 14)
+        if (sigma <= 3.8) return 0.25 * sigma / 3.8
+        if (sigma <= 10.3) return 0.25 + 0.25 * (sigma - 3.8) / 6.5
+        return Math.min(1, 0.5 + 0.5 * (sigma - 10.3) / 10)
     }
 }

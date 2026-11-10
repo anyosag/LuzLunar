@@ -234,6 +234,22 @@ ApplicationWindow {
                 toolBar.searchText = ""
             }
         }
+
+        // D9: the page's own Clear Search, and a page that sets its query itself, empty or follow the
+        // header's field (the field to the page goes through forkSetQuery)
+        Connections {
+            target: window.forkPage
+            ignoreUnknownSignals: true
+            function onForkSearchCleared() {
+                toolBar.searchText = ""
+            }
+            function onForkQueryChanged() {
+                var query = window.forkPage ? window.forkPage.forkQuery : undefined
+                if (typeof query === "string" && query !== toolBar.searchText) {
+                    toolBar.searchText = query
+                }
+            }
+        }
     }
 
     ForkWindowFooter {

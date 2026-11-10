@@ -105,6 +105,7 @@ Item {
         ForkSkyNight {
             anchors.fill: parent
             visible: root.night
+            showDipper: false
             tick: root.running ? root.tick : 0
             active: root.night && !root.still && !ForkTheme.reduceMotion
             running: root.running
@@ -158,5 +159,15 @@ Item {
         source: skyContent
         dark: root.dark
         refresh: root.running
+    }
+
+    // the Big Dipper stays crisp through the scrim on the canvas
+    ForkSkyNight {
+        anchors.fill: parent
+        visible: root.night
+        showMovers: false
+        tick: root.running ? root.tick : 0
+        running: root.running
+        skyWidth: root.width
     }
 }

@@ -13,21 +13,35 @@ Item {
     property bool active: false
     property bool running: false
     property real skyWidth: 1280
+    // two instances: one below the scrim with the moving things, one above it with the Big Dipper
+    // (the canvas's dipper stays crisp through the scrim, so it is drawn on top of it)
+    property bool showDipper: true
+    property bool showMovers: true
+    property real headerHeight: 52
 
     // ---- Big Dipper, 170 x 74 at (width - 296, 198)
     Item {
         id: dipper
+        visible: night.showDipper
         x: night.skyWidth - 296; y: 198
         width: 170; height: 74
 
-        Shape {
-            ShapePath {
-                strokeColor: Qt.rgba(190 / 255, 205 / 255, 1, 0.22)
-                strokeWidth: 1
-                fillColor: "transparent"
-                capStyle: ShapePath.FlatCap
-                joinStyle: ShapePath.MiterJoin
-                PathSvg { path: "M0 0L34 8L62 14L90 22L138 12L142 46L98 48L90 22" }
+        // The lines, one segment at a time: the scrim above y 185 still weighs on them
+        Repeater {
+            model: [[0, 0, 34, 8], [34, 8, 62, 14], [62, 14, 90, 22], [90, 22, 138, 12], [138, 12, 142, 46], [142, 46, 98, 48], [98, 48, 90, 22]]
+            delegate: Shape {
+                id: seg
+                required property var modelData
+                readonly property real midY: dipper.y + (modelData[1] + modelData[3]) / 2
+                opacity: 1 - 0.95 * Math.max(0, Math.min(1, (242 - midY) / 57))
+                ShapePath {
+                    strokeColor: Qt.rgba(190 / 255, 205 / 255, 1, 0.22)
+                    strokeWidth: 1
+                    fillColor: "transparent"
+                    capStyle: ShapePath.FlatCap
+                    PathMove { x: seg.modelData[0]; y: seg.modelData[1] }
+                    PathLine { x: seg.modelData[2]; y: seg.modelData[3] }
+                }
             }
         }
         Repeater {
@@ -38,14 +52,16 @@ Item {
                 required property int index
                 readonly property real r: index === 4 || index === 5 ? 2.1 : 1.7
                 x: modelData[0]; y: modelData[1]
-                opacity: (night.tick + index) % 3 === 0 ? 0.55 : 0.95
+                // the scrim still weighs on the first stars (it fades out between y 185 and 242)
+                readonly property real scrimW: Math.max(0, Math.min(1, (242 - (dipper.y + modelData[1])) / 57))
+                opacity: ((night.tick + index) % 3 === 0 ? 0.55 : 0.95) * (1 - 0.95 * scrimW)
                 Behavior on opacity {
                     enabled: night.running
                     NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.42, 0, 0.58, 1, 1, 1] }
                 }
                 // drop-shadow(0 0 3px rgba(255,255,255,0.8))
                 Repeater {
-                    model: [[3.2, 0.10], [2.4, 0.14], [1.6, 0.2]]
+                    model: [[2.4, 0.04], [1.6, 0.07], [0.9, 0.12]]
                     Rectangle {
                         required property var modelData
                         width: (dp.r + modelData[0]) * 2; height: width; radius: width / 2
@@ -57,19 +73,15 @@ Item {
                     readonly property real r: dp.r }
             }
         }
-        Text {
-            x: 0; width: 170
+        ForkCanvasText {
+            x: -0.7; width: 170
             y: 70 - baselineOffset
             horizontalAlignment: Text.AlignHCenter
             text: "BIG DIPPER"
             color: Qt.rgba(200 / 255, 210 / 255, 1, 0.42)
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 10
-            font.weight: Font.DemiBold
-            font.letterSpacing: 1.4
-            transformOrigin: Item.Center
-            scale: 0.95
-            leftPadding: 0
+            px: 9.5
+            weight: 600
+            tracking: 1.33
             Accessible.ignored: true
         }
     }
@@ -77,6 +89,7 @@ Item {
     // ---- satellite: crosses in 46 s, the cycle is 47.06 s, the first one after 3 s
     Rectangle {
         id: sat
+        visible: night.showMovers
         width: 2; height: 2; radius: 1
         color: "white"
         x: -20; y: 150; opacity: 0
@@ -85,7 +98,7 @@ Item {
     }
     SequentialAnimation {
         id: satAnim
-        running: night.active
+        running: night.active && night.showMovers
         paused: night.active && !night.running
         PauseAnimation { duration: 3000 }
         SequentialAnimation {
@@ -113,6 +126,7 @@ Item {
 
     Item {
         id: shoot
+        visible: night.showMovers
         x: night.shX - 150; y: night.shY
         width: 150; height: 2
         opacity: night.shOp
@@ -154,7 +168,7 @@ Item {
 
     SequentialAnimation {
         id: shootAnim
-        running: night.active
+        running: night.active && night.showMovers
         paused: night.active && !night.running
         PauseAnimation { duration: 1800 }
         // each shot: start (jump), fly, fade, idle 3.5 - 9 s

@@ -57,7 +57,6 @@ Item {
     z: tgt.z
     scale: curScale
     transformOrigin: Item.Center
-    opacity: curOpacity
     visible: curOpacity > 0.003
     transform: Rotation {
         origin.x: 280
@@ -65,15 +64,6 @@ Item {
         axis: Qt.vector3d(0, 1, 0)
         angle: slot.curAngle
         distanceToPlane: 1600
-    }
-
-    // One group, so overlapping parts don't show through while dimmed; saturate(0.55) on the sides
-    layer.enabled: curOpacity < 1 || curSat < 1 || curScale !== 1 || curAngle !== 0
-    layer.smooth: true
-    layer.mipmap: true
-    layer.sourceRect: Qt.rect(-140, -100, 840, 800)
-    layer.effect: MultiEffect {
-        saturation: slot.curSat - 1
     }
 
     readonly property var _ease: [0.25, 0.1, 0.25, 1, 1, 1]
@@ -87,14 +77,33 @@ Item {
     Behavior on curOpacity { enabled: slot._anim; NumberAnimation { duration: slot.jumpNow ? 300 : 320; easing.type: Easing.Bezier; easing.bezierCurve: slot._ease } }
     Behavior on curSat { enabled: slot._anim && !slot.jumpNow; NumberAnimation { duration: 320; easing.type: Easing.Bezier; easing.bezierCurve: slot._ease } }
 
-    Loader {
-        id: loader
-        width: 560
-        height: 540
-        sourceComponent: slot.sourceComponent
-        onLoaded: {
-            if (item.hasOwnProperty("m")) item.m = Qt.binding(function () { return slot.rowModel })
-            if (item.hasOwnProperty("slot")) item.slot = slot
+    // One group (a layer with room for the card's shadow and ring around it), so overlapping parts
+    // don't show through while dimmed, and saturate(0.55) on the side cards
+    Item {
+        id: group
+        x: -140
+        y: -100
+        width: 840
+        height: 800
+        opacity: slot.curOpacity
+        layer.enabled: slot.curOpacity < 1 || slot.curSat < 1 || slot.curScale !== 1 || slot.curAngle !== 0
+        layer.smooth: true
+        layer.mipmap: true
+        layer.effect: MultiEffect {
+            saturation: slot.curSat - 1
+        }
+
+        Loader {
+            id: loader
+            x: 140
+            y: 100
+            width: 560
+            height: 540
+            sourceComponent: slot.sourceComponent
+            onLoaded: {
+                if (item.hasOwnProperty("m")) item.m = Qt.binding(function () { return slot.rowModel })
+                if (item.hasOwnProperty("slot")) item.slot = slot
+            }
         }
     }
 

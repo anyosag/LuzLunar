@@ -42,7 +42,7 @@ Item {
     signal menuTriggered(int index)
     signal menuClosed()
 
-    readonly property bool hov: hover.hovered || highlighted
+    readonly property bool hov: hover.hovered || highlighted || menuOpen
     readonly property bool lifted: hov && !menuOpen && settled && !ForkTheme.reduceMotion
     readonly property real coverH: width * 4 / 3
     readonly property bool fx: GraphicsInfo.api !== GraphicsInfo.Software

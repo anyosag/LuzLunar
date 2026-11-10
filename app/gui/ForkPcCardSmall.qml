@@ -14,7 +14,7 @@ Item {
     property string pcName: ""
     property string hueKey: "indigo"
     // The 9 states of ForkPcCard
-    property string state: "ready"
+    property string cardState: "ready"
     property string address: ""
     property string version: ""
     property string network: "Home network"
@@ -31,10 +31,10 @@ Item {
     signal moreClicked()
 
     readonly property bool dark: ForkTheme.dark
-    readonly property string stateId: CardText.normalizeState(state)
+    readonly property string stateId: CardText.normalizeState(cardState)
     readonly property var hue: ForkTheme.hue(stateId === "notPaired" ? "gray" : hueKey)
     readonly property var info: CardText.describeSmall({
-        state: state, name: pcName, address: address, version: version, network: network,
+        state: cardState, name: pcName, address: address, version: version, network: network,
         latencyMs: latencyMs, runningApp: runningApp, defaultApp: defaultApp, streamWidth: streamWidth,
         streamHeight: streamHeight, streamFps: streamFps, updateAvailable: updateAvailable, dark: dark
     })

@@ -28,9 +28,6 @@ Popup {
     padding: 0
     width: 300
     closePolicy: Popup.CloseOnEscape
-    Accessible.role: Accessible.AlertMessage
-    Accessible.name: title
-    Accessible.description: body
 
     Overlay.modal: Rectangle {
         color: ForkTheme.dark ? Qt.rgba(5 / 255, 7 / 255, 15 / 255, 0.45) : Qt.rgba(30 / 255, 32 / 255, 48 / 255, 0.18)
@@ -57,6 +54,9 @@ Popup {
     }
 
     contentItem: Column {
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: dialog.title
+        Accessible.description: dialog.body
         topPadding: 22
         bottomPadding: 16
         leftPadding: 16

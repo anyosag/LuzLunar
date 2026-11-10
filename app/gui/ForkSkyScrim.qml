@@ -50,13 +50,16 @@ Item {
         layer.effect: MultiEffect {
             maskEnabled: true
             maskSource: maskItem
+            maskThresholdMin: 0.0
+            maskSpreadAtMin: 0.0
         }
         MultiEffect {
             anchors.fill: parent
             source: copy
             blurEnabled: true
-            blurMax: 32
-            blur: 1.0
+            // sigma 18: blurMax 64 at 0.93 measures about 18 px
+            blurMax: 64
+            blur: 0.93
             saturation: 0.1
             autoPaddingEnabled: false
         }

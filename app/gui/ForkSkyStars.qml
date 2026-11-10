@@ -114,7 +114,7 @@ Item {
                     anchors.centerIn: parent
                     sourceComponent: Item {
                         Repeater {
-                            model: [[10, 0.10], [7.5, 0.14], [5.2, 0.2]]
+                            model: [[8, 0.04], [6, 0.08], [4.2, 0.14]]
                             Rectangle {
                                 required property var modelData
                                 width: modelData[0]; height: modelData[0]; radius: width / 2

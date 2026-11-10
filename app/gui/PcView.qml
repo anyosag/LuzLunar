@@ -784,7 +784,7 @@ Item {
             readonly property string st: pcPage.stateOf(m)
             pcName: m ? m.name : ""
             hueKey: pcPage.hueOf(m)
-            state: st
+            cardState: st
             version: m && m.apolloVersion !== undefined ? m.apolloVersion : ""
             network: m ? pcPage.networkText(m) : ""
             latencyMs: m && m.latencyMs !== undefined ? m.latencyMs : -1
