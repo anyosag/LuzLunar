@@ -86,6 +86,7 @@
         <file alias="ForkPcCard.qml">../gui/ForkPcCard.qml</file>
         <file alias="ForkPcCardSmall.qml">../gui/ForkPcCardSmall.qml</file>
         <file alias="ForkPcCardText.js">../gui/ForkPcCardText.js</file>
+        <file alias="ForkStoryLines.js">../gui/ForkStoryLines.js</file>
         <file alias="ForkPcMenu.qml">../gui/ForkPcMenu.qml</file>
         <file alias="ForkPcStage.qml">../gui/ForkPcStage.qml</file>
         <file alias="ForkPcStageSlot.qml">../gui/ForkPcStageSlot.qml</file>

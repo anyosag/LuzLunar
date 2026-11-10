@@ -7,12 +7,12 @@
 #include <QVariantMap>
 
 // [fork] What LuzLunar keeps about each PC on this Mac only, for the redesigned Your PCs: its color,
-// the PC kept first, whether picking an app wakes it, and what its card says while it's away (when
+// the PC kept first, the order they were dragged into, whether picking an app wakes it, and what its card says while it's away (when
 // and where it was last seen, whether it answered at its outside address, what this Mac last asked
 // of it, whether it can wake from off, its Apollo version), the apps last streamed from it and the
-// last stream's format. Under "fork/firstPc" and "fork/pcs/<uuid>/" in Moonlight's settings, never
+// last stream's format. Under "fork/firstPc", "fork/pcOrder" and "fork/pcs/<uuid>/" in Moonlight's settings, never
 // in the "hosts" array (upstream Moonlight rewrites that whole array). Main thread, except
-// firstPcUuid().
+// firstPcUuid() and pcOrder().
 class ForkPcPrefs : public QObject
 {
     Q_OBJECT
@@ -66,6 +66,15 @@ public:
     // The uuid of the PC kept first, "" for none. Any thread: ComputerManager::getComputers() sorts
     // with it.
     static QString firstPcUuid();
+
+    // The uuids in the order the person dragged the PCs into, "fork/pcOrder". Any thread:
+    // ComputerManager::getComputers() sorts with it.
+    static QStringList pcOrder();
+
+    // Stores the order (invalid uuids and repeats dropped). A PC other than the one kept first now
+    // comes first, so keep-first is cleared: returns that PC's uuid, "" when nothing was cleared.
+    // Emits orderChanged() once, only when something changed.
+    Q_INVOKABLE QString setPcOrder(const QStringList& uuids);
 
     // Removes everything kept about the PC (it was removed from LuzLunar)
     Q_INVOKABLE void forget(const QString& uuid);
@@ -122,7 +131,8 @@ public:
 signals:
     void pcsViewChanged();
 
-    // The PC kept first changed, so the order of the PCs may have: models re-read the list
+    // The PC kept first or the saved order changed, so the order of the PCs may have: models re-read
+    // the list
     void orderChanged();
 
     // Wake PC got no answer in time (once per Wake PC)

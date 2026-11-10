@@ -84,9 +84,11 @@ FocusScope {
     }
     readonly property bool forkIsAsleep: forkSample ? !!forkSampleHost.asleep : !forkPcOnline
     onForkIsAsleepChanged: {
-        // The PC woke (or went away): read its address and what runs on it again
-        forkReadHost()
-        forkReadRunning()
+        // The PC woke (or went away): read its address and what runs on it again. Later, not now:
+        // this can fire while forkHostLine is being evaluated (it reads forkIsAsleep), and setting
+        // forkHostInfo from inside that evaluation is a binding loop
+        Qt.callLater(forkReadHost)
+        Qt.callLater(forkReadRunning)
     }
     Connections {
         target: appGrid.forkComputerModel

@@ -730,15 +730,54 @@ void ComputerModel::forkRefreshAll()
     }
 }
 
-// The PC kept first changed the order: reset when the list differs
+// The PC kept first or the saved order changed the order: move the row when exactly one PC moved
+// (the Repeater moves its delegate, so a card slides instead of being rebuilt), else reset
 void ComputerModel::forkRecheckOrder()
 {
     QVector<NvComputer*> newList = m_ComputerManager->getComputers();
-    if (m_Computers != newList) {
-        beginResetModel();
-        m_Computers = newList;
-        endResetModel();
+    if (m_Computers == newList) {
+        return;
     }
+
+    if (m_Computers.size() == newList.size()) {
+        // Where the rows differ: for one PC moved, the first and last differing rows are its old and
+        // new places, in one order or the other
+        int first = 0;
+        while (m_Computers[first] == newList[first]) {
+            first++;
+        }
+        int last = m_Computers.size() - 1;
+        while (m_Computers[last] == newList[last]) {
+            last--;
+        }
+
+        QVector<NvComputer*> moved = m_Computers;
+        int from = -1;
+        int to = -1;
+        if (m_Computers[first] == newList[last]) {
+            from = first;      // it moved down, or to the end of the changed span
+            to = last;
+        } else if (m_Computers[last] == newList[first]) {
+            from = last;       // it moved up
+            to = first;
+        }
+        if (from >= 0) {
+            moved.move(from, to);
+            if (moved == newList) {
+                // beginMoveRows' destination is the row the block goes before in the old list, so a
+                // move down needs one more
+                if (beginMoveRows(QModelIndex(), from, from, QModelIndex(), to > from ? to + 1 : to)) {
+                    m_Computers = newList;
+                    endMoveRows();
+                    return;
+                }
+            }
+        }
+    }
+
+    beginResetModel();
+    m_Computers = newList;
+    endResetModel();
 }
 
 void ComputerModel::forkHandleOrderChanged()

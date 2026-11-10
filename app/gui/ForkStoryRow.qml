@@ -1,7 +1,8 @@
 // [fork] The left of Your PCs' heading: the time-of-day greeting with its crescent, the 42 px title
-// whose letters rise in one by one, and one sentence per PC saying what it's doing, each name a
-// link to its card and a running PC's sentence carrying a Resume pill (carousel.md §2.1-2.4).
+// whose letters rise in one by one, and one sentence per state (a few PCs by name, many as "N PCs"), each
+// a link to its card(s) and a running PC's sentence carrying a Resume pill (carousel.md §2.1-2.4).
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Effects
 import ForkTheme
 
@@ -10,12 +11,15 @@ Column {
 
     // "Good night, Gonzalo" before upper-casing
     property string greeting: ""
-    // [{ name, before, after, dot (color), action (label or ""), }]
+    // ForkStoryLines.build(): [{ names: [{ name, index }], count, label, tip, before, sep, after,
+    // dot (color), action (label or ""), indexes }]
     property var lines: []
     property bool intro: false
     property bool instant: false
     signal pick(int index)
     signal act(int index)
+    // An "N PCs" link: every slot of its sentence
+    signal pickGroup(var indexes)
 
     spacing: 6
 
@@ -110,7 +114,9 @@ Column {
         }
     }
 
-    // Sentences
+    // Sentences: one per state (ForkStoryLines.js). Flow has one spacing for both axes, so the 20 px
+    // between sentences is 8 px of spacing plus 12 px of padding at the end of each item, and the
+    // wrapped lines are 8 px apart.
     ForkStoryRise {
         id: sentences
         active: story.intro
@@ -122,8 +128,8 @@ Column {
         Flow {
             id: flow
             y: 2
-            width: parent.width
-            spacing: 16
+            width: parent.width + 12
+            spacing: 8
             Repeater {
                 model: story.lines
                 delegate: Item {
@@ -131,12 +137,15 @@ Column {
                     required property var modelData
                     required property int index
                     readonly property bool hasAction: modelData.action !== ""
-                    width: itemRow.width
+                    // A sentence's names, or the one "N PCs" link
+                    readonly property var links: modelData.count > 0
+                        ? [{ name: modelData.label, index: -1 }] : modelData.names
+                    width: itemRow.width + 12
                     height: story.anyAction ? 24 : 22
                     Row {
                         id: itemRow
                         spacing: 7
-                        height: parent.height
+                        height: item.height
                         Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 7; height: 7; radius: 3.5
@@ -152,30 +161,60 @@ Column {
                                 lineHeightPx: 22
                                 color: ForkTheme.cv.text2
                             }
-                            Item {
-                                width: nameText.width
-                                height: 22
-                                ForkCanvasText {
-                                    id: nameText
-                                    text: item.modelData.name
-                                    px: 14
-                                    weight: 650
-                                    lineHeightPx: 22
-                                    color: ForkTheme.cv.text
-                                }
-                                Rectangle {
-                                    x: 0
-                                    y: nameText.baselineOffset + 4
-                                    width: nameText.width; height: 1
-                                    color: ForkTheme.cv.lineStrong
-                                }
-                                Accessible.role: Accessible.Link
-                                Accessible.name: qsTr("Show %1").arg(item.modelData.name)
-                                Accessible.onPressAction: story.pick(item.index)
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: story.pick(item.index)
+                            Repeater {
+                                model: item.links
+                                delegate: Row {
+                                    id: linkRow
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool isGroup: item.modelData.count > 0
+                                    ForkCanvasText {
+                                        visible: linkRow.index > 0
+                                        text: item.modelData.sep
+                                        px: 14
+                                        lineHeightPx: 22
+                                        color: ForkTheme.cv.text2
+                                    }
+                                    Item {
+                                        id: link
+                                        width: Math.min(nameText.implicitWidth, 200)
+                                        height: 22
+                                        ForkCanvasText {
+                                            id: nameText
+                                            width: link.width
+                                            text: linkRow.modelData.name
+                                            elide: Text.ElideRight
+                                            px: 14
+                                            weight: 650
+                                            lineHeightPx: 22
+                                            color: ForkTheme.cv.text
+                                        }
+                                        Rectangle {
+                                            x: 0
+                                            y: nameText.baselineOffset + 4
+                                            width: link.width; height: 1
+                                            color: ForkTheme.cv.lineStrong
+                                        }
+                                        Accessible.role: Accessible.Link
+                                        Accessible.name: linkRow.isGroup ? qsTr("Show %1").arg(linkRow.modelData.name)
+                                                                         : qsTr("Show %1").arg(linkRow.modelData.name)
+                                        Accessible.onPressAction: linkRow.isGroup ? story.pickGroup(item.modelData.indexes)
+                                                                                  : story.pick(linkRow.modelData.index)
+                                        MouseArea {
+                                            id: linkMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: linkRow.isGroup ? story.pickGroup(item.modelData.indexes)
+                                                                       : story.pick(linkRow.modelData.index)
+                                        }
+                                        ToolTip {
+                                            visible: linkMouse.containsMouse && text !== ""
+                                            delay: 500
+                                            text: linkRow.isGroup ? item.modelData.tip
+                                                : (nameText.truncated ? linkRow.modelData.name : "")
+                                        }
+                                    }
                                 }
                             }
                             ForkCanvasText {
@@ -195,7 +234,7 @@ Column {
                             color: ForkTheme.cv.menuHi
                             Accessible.role: Accessible.Button
                             Accessible.name: item.modelData.action
-                            Accessible.onPressAction: story.act(item.index)
+                            Accessible.onPressAction: story.act(item.modelData.indexes[0])
                             Row {
                                 id: pillRow
                                 x: 8
@@ -218,7 +257,7 @@ Column {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: story.act(item.index)
+                                onClicked: story.act(item.modelData.indexes[0])
                             }
                         }
                     }

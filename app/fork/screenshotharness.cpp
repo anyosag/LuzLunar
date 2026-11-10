@@ -86,6 +86,20 @@ QtObject {
     }
     // Shows another state on the card in row i, in place
     function setRow(model, i, key) { model.set(i, row(key)) }
+    // Many PCs, as an owner may have them (made-up names): one ready, one that can't be reached, and
+    // four saved PCs that share a long name and can't be reached either
+    function manyModel() {
+        var m = pcsModel(['ready', 'basement'])
+        var colors = ['green', 'orange', 'purple', 'gold']
+        for (var i = 0; i < colors.length; i++) {
+            var r = row('basement')
+            r.name = 'Upstairs-Gaming-Laptop-Pro'
+            r.uuid = 'sample-upstairs-' + (i + 1)
+            r.colorKey = colors[i]
+            m.append(r)
+        }
+        return m
+    }
 
     // [name, Apollo cover or "", cover color, profile, extra chips, hidden]
     readonly property var libraryApps: [
@@ -168,6 +182,13 @@ QtObject {
         { "1b9-pcs-demo-2", "var p = stackView.currentItem; p.forkTickDemo(); p.forkStopDemo(); p.forkStartDemo()", 1300 },
         { "1b9-pcs-demo-3", "var p = stackView.currentItem; p.forkTickDemo(); p.forkStopDemo(); p.forkStartDemo()", 1300 },
         { nullptr, "stackView.currentItem.forkStopDemo(); stackView.currentItem.forkFocus(0)", 1300 },
+        // Six PCs: the story says it in two sentences ("GonzaloPC is ready", "Can't reach 5 PCs"),
+        // and long names are cut short, in the carousel's chips and the grid
+        { "1b10-pcs-many", P "p.forkSampleModel = manyModel(); p.forkSkipEntrance(); p.forkFocus(0)", 1500, "harnessSamples" },
+        { "1b11-pcs-many-grid", "stackView.currentItem.forkSetViewMode('grid')", 1500 },
+        // Dragging a card in the grid: the first PC lifted over the third cell, the others making room
+        { "1b12-pcs-grid-drag", "stackView.currentItem.forkDragPreview(0, 2)", 900 },
+        { nullptr, "var p = stackView.currentItem; p.forkDragEnd(); p.forkSetViewMode('carousel')", 1300 },
 
         // The stream launch screen, with sample values (a real one needs a stream). The page hides the
         // window's bars while it shows, as a stream's launch does
