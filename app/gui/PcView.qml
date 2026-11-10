@@ -38,6 +38,11 @@ Item {
     readonly property bool forkHasPcs: pcCount > 0
     // The shared sky behind the page (main.qml): none while the first run shows
     readonly property string forkSkyVariant: showFirstRun ? "none" : "main"
+    // The header's Add PC and the new-PC key: the dialog, or on the first run the address field
+    function forkAddPc() {
+        if (showFirstRun && firstRun.item) firstRun.item.focusAddress()
+        else addPcDialog.open()
+    }
     function forkSetViewMode(mode) {
         if (mode !== "carousel" && mode !== "grid") return
         if (mode === "grid") demo = false
@@ -743,13 +748,12 @@ Item {
                     onToggleDemo: pcPage.demo = !pcPage.demo
                 }
 
-                Text {
+                ForkCanvasText {
                     y: pcPage.forkViewMode === "carousel" ? 556 + 6 + 28 + 10 : 556 + 10
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("← → move between PCs · Return does the main action · ⌘N adds a PC")
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 12
+                    px: 12
                     color: ForkTheme.cv.faint
                     Accessible.role: Accessible.StaticText
                     Accessible.name: text
@@ -823,7 +827,7 @@ Item {
             revealed: pcPage.revealed
             sharedTick: pcPage.tick
             motion: pcPage.motionOn
-            onAddClicked: { pcPage.demo = false; addPcDialog.open() }
+            onAddClicked: { pcPage.demo = false; pcPage.forkAddPc() }
             onGuideClicked: Qt.openUrlExternally("https://github.com/ClassicOldSong/Apollo")
         }
     }
@@ -878,7 +882,7 @@ Item {
         if (showFirstRun || appsOpen) return
         var grid = forkViewMode === "grid"
         if (event.matches(StandardKey.New)) {
-            addPcDialog.open()
+            forkAddPc()
             event.accepted = true
         } else if (event.key === Qt.Key_Left && event.modifiers === Qt.NoModifier) {
             step(-1); event.accepted = true
@@ -1093,7 +1097,7 @@ Item {
                 color: ForkTheme.bar
                 border.color: ForkTheme.lineSoft
 
-                Text {
+                ForkCanvasText {
                     id: pinText
                     anchors.centerIn: parent
                     text: pairDialog.pin
@@ -1101,7 +1105,7 @@ Item {
                     font.family: ForkTheme.monoFamily
                     font.pixelSize: 44
                     font.weight: Font.DemiBold
-                    font.letterSpacing: 8.8
+                    tracking: 8.8
                     color: ForkTheme.accentInk
                     Accessible.name: qsTr("PIN %1").arg(pairDialog.pin.split("").join(" "))
                 }

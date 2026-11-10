@@ -209,7 +209,7 @@ ApplicationWindow {
                 window.forkPage.forkSetViewMode(mode)
             }
         }
-        onAddPcRequested: addPcDialog.open()
+        onAddPcRequested: window.addPc()
         onHelpRequested: forkShortcutsDialog.open()
         onSettingsRequested: settingsButton.clicked()
         onUpdateRequested: updateButton.clicked()
@@ -256,10 +256,20 @@ ApplicationWindow {
         onClicked: navigateTo("qrc:/gui/ForkSettingsView.qml", ForkSettingsView)
     }
 
+    // D4: a page can take Add PC itself (PcView on the first run); otherwise it's the dialog
+    function addPc() {
+        if (forkPage && typeof forkPage.forkAddPc === "function") {
+            forkPage.forkAddPc()
+        }
+        else {
+            addPcDialog.open()
+        }
+    }
+
     Shortcut {
         id: newPcShortcut
         sequence: StandardKey.New
-        onActivated: addPcDialog.open()
+        onActivated: window.addPc()
     }
 
     Shortcut {

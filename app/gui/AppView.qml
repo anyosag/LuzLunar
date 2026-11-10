@@ -371,17 +371,6 @@ FocusScope {
         return preset === "office" ? qsTr("Office profile") : preset === "gaming" ? qsTr("Gaming profile") : qsTr("Custom profile")
     }
 
-    // [fork] A chip's fill and text: a profile in its own color (Office blue, Gaming orange, Custom
-    // purple), Direct launch in gold, the rest plain
-    function forkChipColors(tone) {
-        var dark = ForkTheme.dark
-        return tone === "office" ? (dark ? [Qt.rgba(64 / 255, 156 / 255, 1, 0.15), "#7FB8FF"] : [Qt.rgba(0, 98 / 255, 204 / 255, 0.09), "#0058B8"])
-             : tone === "gaming" ? (dark ? [Qt.rgba(1, 159 / 255, 10 / 255, 0.15), "#FFB547"] : [Qt.rgba(168 / 255, 90 / 255, 0, 0.09), "#8F4C00"])
-             : tone === "custom" ? (dark ? [Qt.rgba(193 / 255, 125 / 255, 245 / 255, 0.16), "#D3A3FA"] : [Qt.rgba(142 / 255, 59 / 255, 184 / 255, 0.09), "#7A2FA0"])
-             : tone === "gold" ? (dark ? [Qt.rgba(245 / 255, 200 / 255, 120 / 255, 0.15), "#F5C878"] : [Qt.rgba(138 / 255, 90 / 255, 0, 0.09), "#7A5000"])
-             : [ForkTheme.raised, ForkTheme.text2]
-    }
-
     // Chips for the launch screen. The profile's name is last, as an object so the panel shows it
     // in the text font like the design.
     function forkStreamSummary(appName) {
@@ -1006,27 +995,25 @@ FocusScope {
                         settled: appGrid.forkSettled || ForkTheme.reduceMotion
                         delay: 240
 
-                        Text {
+                        ForkCanvasText {
                             id: pageTitle
                             height: 32
                             verticalAlignment: Text.AlignVCenter
                             text: qsTr("All apps")
                             color: ForkTheme.cv.text
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 26
-                            font.weight: 750
-                            font.letterSpacing: -0.52
+                            px: 26
+                            weight: 750
+                            tracking: -0.52
                         }
 
-                        Text {
+                        ForkCanvasText {
                             x: pageTitle.implicitWidth + 14
                             y: 8
                             height: 20
                             verticalAlignment: Text.AlignVCenter
                             text: appGrid.forkCountText
                             color: ForkTheme.cv.muted
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 14
+                            px: 14
                         }
 
                         Item {
@@ -1037,14 +1024,13 @@ FocusScope {
                             width: 38 + 14 + switchLabel.implicitWidth
                             height: 22
 
-                            Text {
+                            ForkCanvasText {
                                 id: switchLabel
                                 height: 22
                                 verticalAlignment: Text.AlignVCenter
                                 text: qsTr("Show hidden apps")
                                 color: ForkTheme.cv.text2
-                                font.family: ForkTheme.uiFamily
-                                font.pixelSize: 13
+                                px: 13
                             }
 
                             Rectangle {
@@ -1192,15 +1178,13 @@ FocusScope {
                             color: ForkTheme.cv.faint
                         }
 
-                        Text {
+                        ForkCanvasText {
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: Math.min(440, parent.width)
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.Wrap
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 15
-                            lineHeightMode: Text.FixedHeight
-                            lineHeight: 21
+                            px: 15
+                            lineHeightPx: 21
                             color: ForkTheme.cv.text2
                             // [fork] Every app hidden, and a search that matches nothing, have their own words
                             text: appGrid.forkQuery.trim() !== ""
@@ -1229,13 +1213,11 @@ FocusScope {
 
                     Item { width: 1; height: 26 }
 
-                    Text {
+                    ForkCanvasText {
                         width: Math.min(parent.width, 760)
                         wrapMode: Text.Wrap
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 12.5
-                        lineHeightMode: Text.FixedHeight
-                        lineHeight: 18
+                        px: 12.5
+                        lineHeightPx: 18
                         color: ForkTheme.cv.faint
                         text: appGrid.forkIsAsleep
                               ? qsTr("%1 is asleep, so these are the apps LuzLunar saw on its last visit. Picking one wakes %1 first.").arg(appGrid.objectName)

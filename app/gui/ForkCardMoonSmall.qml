@@ -66,17 +66,17 @@ Item {
             }
         }
     }
-    ForkCardLabel {
+    ForkCanvasText {
         visible: moon.kind === "asleep"
         x: 254; y: 24
         text: "z"; color: Qt.rgba(1, 1, 1, 0.5)
-        px: 10; font.weight: 700
+        px: 10; weight: 700
     }
-    ForkCardLabel {
+    ForkCanvasText {
         visible: moon.kind === "asleep"
         x: 262; y: 14
         text: "z"; color: Qt.rgba(1, 1, 1, 0.4)
-        px: 12; font.weight: 700
+        px: 12; weight: 700
     }
 
     ForkCardRing {
@@ -104,11 +104,11 @@ Item {
         x: 220; y: 15; size: 34
         dashed: true
         color: Qt.rgba(1, 105 / 255, 97 / 255, 0.7)
-        ForkCardLabel {
+        ForkCanvasText {
             anchors.centerIn: parent
             text: "?"
             color: Qt.rgba(1, 105 / 255, 97 / 255, 0.9)
-            px: 15; font.weight: 700
+            px: 15; weight: 700
         }
     }
 }

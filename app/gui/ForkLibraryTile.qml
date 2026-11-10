@@ -218,13 +218,12 @@ Item {
                                 opacity: 1 - 0.65 * p
                             }
 
-                            Text {
+                            ForkCanvasText {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: qsTr("Running")
                                 color: "#FFFFFF"
-                                font.family: ForkTheme.uiFamily
-                                font.pixelSize: 10.5
-                                font.weight: Font.Bold
+                                px: 10.5
+                                weight: 700
                             }
                         }
                     }
@@ -317,7 +316,7 @@ Item {
         }
 
         // The name
-        Text {
+        ForkCanvasText {
             id: nameLabel
             y: tile.coverH + 10
             width: parent.width
@@ -326,9 +325,8 @@ Item {
             elide: Text.ElideRight
             text: tile.appName
             color: tile.hidden ? ForkTheme.cv.muted : ForkTheme.cv.text
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 14
-            font.weight: 600
+            px: 14
+            weight: 600
         }
 
         // The chips: two rows at most
@@ -368,13 +366,12 @@ Item {
                             color: chip.colors[1]
                         }
 
-                        Text {
+                        ForkCanvasText {
                             anchors.verticalCenter: parent.verticalCenter
                             text: chip.modelData.text
                             color: chip.colors[1]
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 11
-                            font.weight: Font.Medium
+                            px: 11
+                            weight: 500
                         }
                     }
                 }

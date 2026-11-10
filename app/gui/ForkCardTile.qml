@@ -155,22 +155,22 @@ Item {
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 10
                 spacing: 1
-                ForkCardLabel {
+                ForkCanvasText {
                     width: parent.width
                     text: "All apps"
                     color: "white"
                     elide: Text.ElideRight
-                    px: 13; font.weight: 700
-                    lineHeightMode: Text.FixedHeight; lineHeight: 17
+                    px: 13; weight: 700
+                    lineHeightPx: 17
                 }
-                ForkCardLabel {
+                ForkCanvasText {
                     width: parent.width
                     text: tile.allNote
                     color: "white"
                     opacity: 0.72
                     elide: Text.ElideRight
-                    px: 11; font.weight: 400
-                    lineHeightMode: Text.FixedHeight; lineHeight: 14
+                    px: 11; weight: 400
+                    lineHeightPx: 14
                 }
             }
 
@@ -194,11 +194,11 @@ Item {
                         opacity: tile.ph ? 0.35 : 1
                         Behavior on opacity { NumberAnimation { duration: 1100; easing.type: Easing.InOutQuad } }
                     }
-                    ForkCardLabel {
+                    ForkCanvasText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Running"
                         color: "white"
-                        px: 10.5; font.weight: 700
+                        px: 10.5; weight: 700
                     }
                 }
             }

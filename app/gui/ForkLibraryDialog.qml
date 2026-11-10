@@ -117,30 +117,26 @@ Popup {
             }
         }
 
-        Text {
+        ForkCanvasText {
             width: 268
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             text: dialog.title
             color: ForkTheme.cv.text
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 14.5
-            font.weight: Font.Bold
-            lineHeightMode: Text.FixedHeight
-            lineHeight: 19
+            px: 14.5
+            weight: 700
+            lineHeightPx: 19
         }
 
-        Text {
+        ForkCanvasText {
             width: 268
             bottomPadding: 8
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             text: dialog.body
             color: ForkTheme.cv.text2
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 12.5
-            lineHeightMode: Text.FixedHeight
-            lineHeight: 17
+            px: 12.5
+            lineHeightPx: 17
         }
 
         ForkLibraryButton {

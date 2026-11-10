@@ -59,14 +59,13 @@ FocusScope {
             strokeWidth: button.iconStrokeWidth
         }
 
-        Text {
+        ForkCanvasText {
             id: label
             anchors.verticalCenter: parent.verticalCenter
             text: button.text
             color: button.ink
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: button.fontSize
-            font.weight: button.fontWeight
+            px: button.fontSize
+            weight: button.fontWeight
         }
     }
 

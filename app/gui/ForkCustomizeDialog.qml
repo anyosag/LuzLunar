@@ -137,27 +137,25 @@ NavigableDialog {
         Keys.onEnterPressed: sheet.save()
 
         // Title row
-        Text {
+        ForkCanvasText {
             x: 24; y: 24; height: 24
             width: 552 - faintLabel.width - 8
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
-            textFormat: Text.PlainText // a name can hold anything
+            
             text: qsTr("Customize %1").arg(sheet.savedName)
             color: sheet.cText
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 19
-            font.weight: Font.Bold
-            font.letterSpacing: -0.19
+            px: 19
+            weight: 700
+            tracking: -0.19
         }
-        Text {
+        ForkCanvasText {
             id: faintLabel
             x: 576 - width; y: 28.5; height: 15
             verticalAlignment: Text.AlignVCenter
             text: qsTr("Only on this Mac")
             color: sheet.cFaint
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 12
+            px: 12
         }
 
         // Preview band
@@ -214,37 +212,34 @@ NavigableDialog {
                     blurMax: 16
                 }
             }
-            Text {
+            ForkCanvasText {
                 x: 64; y: 20.5; height: 19; width: 400
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
-                textFormat: Text.PlainText
+                
                 text: nameField.text.trim() !== "" ? nameField.text.trim() : sheet.savedName
                 color: "#FFFFFF"
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 15
-                font.weight: 650
+                px: 15
+                weight: 650
             }
-            Text {
+            ForkCanvasText {
                 x: 64; y: 40.5; height: 15
                 verticalAlignment: Text.AlignVCenter
                 text: sheet.hostSoftware + " · " + sheet.current.name
                 color: "#FFFFFF"
                 opacity: 0.75
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 12
+                px: 12
             }
         }
 
         // Name
-        Text {
+        ForkCanvasText {
             x: 24; y: 202; height: 16
             verticalAlignment: Text.AlignVCenter
             text: qsTr("Name")
             color: sheet.cText2
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 13
-            font.weight: Font.DemiBold
+            px: 13
+            weight: 600
         }
         TextField {
             id: nameField
@@ -254,8 +249,7 @@ NavigableDialog {
             color: sheet.cText
             selectedTextColor: "#FFFFFF"
             selectionColor: sheet.current.fill
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 14
+            px: 14
             selectByMouse: true
             maximumLength: 64
             Accessible.name: qsTr("Name")
@@ -271,14 +265,13 @@ NavigableDialog {
         }
 
         // Color
-        Text {
+        ForkCanvasText {
             x: 24; y: 280; height: 16
             verticalAlignment: Text.AlignVCenter
             text: qsTr("Color")
             color: sheet.cText2
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 13
-            font.weight: Font.DemiBold
+            px: 13
+            weight: 600
         }
         Repeater {
             id: swatches
@@ -345,15 +338,15 @@ NavigableDialog {
 
             Column {
                 x: 14; y: 11; spacing: 2
-                Text {
+                ForkCanvasText {
                     height: 16; verticalAlignment: Text.AlignVCenter
                     text: row.label; color: sheet.cText
-                    font.family: ForkTheme.uiFamily; font.pixelSize: 14; font.weight: Font.Medium
+                    px: 14; weight: 500
                 }
-                Text {
+                ForkCanvasText {
                     height: 15; verticalAlignment: Text.AlignVCenter
                     text: row.help; color: sheet.cMuted
-                    font.family: ForkTheme.uiFamily; font.pixelSize: 12
+                    px: 12
                 }
             }
             Item {
@@ -422,12 +415,12 @@ NavigableDialog {
             Keys.onReturnPressed: sheet.save()
             Keys.onEnterPressed: sheet.save()
             Keys.onSpacePressed: sheet.save()
-            Text {
+            ForkCanvasText {
                 id: saveLabel
                 anchors.centerIn: parent
                 text: qsTr("Save")
                 color: sheet.current.on
-                font.family: ForkTheme.uiFamily; font.pixelSize: 14; font.weight: Font.DemiBold
+                px: 14; weight: 600
             }
             Rectangle {
                 anchors.fill: parent; anchors.margins: -3; radius: 12; color: "transparent"
@@ -449,12 +442,12 @@ NavigableDialog {
             Keys.onEnterPressed: sheet.close()
             Keys.onSpacePressed: sheet.close()
             Rectangle { anchors.fill: parent; radius: 9; color: "transparent"; border.width: 1; border.color: sheet.cLine }
-            Text {
+            ForkCanvasText {
                 id: cancelLabel
                 anchors.centerIn: parent
                 text: qsTr("Cancel")
                 color: sheet.cText
-                font.family: ForkTheme.uiFamily; font.pixelSize: 14; font.weight: Font.Medium
+                px: 14; weight: 500
             }
             Rectangle {
                 anchors.fill: parent; anchors.margins: -3; radius: 12; color: "transparent"

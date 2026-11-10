@@ -79,16 +79,15 @@ FocusScope {
             x: 7; y: 7
             width: parent.width - 14
 
-            Text {
+            ForkCanvasText {
                 x: 10
                 width: parent.width - 20
                 height: 25
                 topPadding: 6
                 text: menu.title
                 elide: Text.ElideRight
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 12
-                font.weight: 600
+                px: 12
+                weight: 600
                 color: ForkTheme.cv.faint
             }
 
@@ -137,23 +136,21 @@ FocusScope {
                                 size: 16
                                 color: row.hi ? "#FFFFFF" : (row.danger ? ForkTheme.st.red : ForkTheme.cv.muted)
                             }
-                            Text {
+                            ForkCanvasText {
                                 x: 36
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: Math.max(0, (badge.visible ? badge.x : keyText.x) - 10 - x)
                                 text: row.modelData.label
                                 elide: Text.ElideRight
-                                font.family: ForkTheme.uiFamily
-                                font.pixelSize: 13
+                                px: 13
                                 color: row.hi ? "#FFFFFF" : (row.danger ? ForkTheme.st.red : ForkTheme.cv.text)
                             }
-                            Text {
+                            ForkCanvasText {
                                 id: keyText
                                 anchors.verticalCenter: parent.verticalCenter
                                 x: parent.width - 10 - width
                                 text: row.modelData.key || ""
-                                font.family: ForkTheme.uiFamily
-                                font.pixelSize: 12
+                                px: 12
                                 opacity: 0.7
                                 color: row.hi ? "#FFFFFF" : (row.danger ? ForkTheme.st.red : ForkTheme.cv.text)
                             }
@@ -169,14 +166,13 @@ FocusScope {
                                               : (row.modelData.warm
                                                  ? (ForkTheme.dark ? Qt.rgba(255 / 255, 159 / 255, 10 / 255, 0.16) : Qt.rgba(168 / 255, 90 / 255, 0, 0.10))
                                                  : (ForkTheme.dark ? Qt.rgba(64 / 255, 156 / 255, 255 / 255, 0.16) : Qt.rgba(0, 98 / 255, 204 / 255, 0.09)))
-                                Text {
+                                ForkCanvasText {
                                     id: badgeText
                                     anchors.centerIn: parent
                                     text: row.modelData.badge || ""
-                                    font.family: ForkTheme.uiFamily
-                                    font.pixelSize: 10.5
-                                    font.weight: 700
-                                    font.letterSpacing: 0.21
+                                    px: 10.5
+                                    weight: 700
+                                    tracking: 0.21
                                     color: row.hi ? "#FFFFFF" : (row.modelData.warm ? ForkTheme.st.orange : ForkTheme.st.blue)
                                 }
                             }

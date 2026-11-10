@@ -45,32 +45,29 @@ Item {
         anchors.rightMargin: 12
         y: 0
         spacing: 1
-        Text {
+        ForkCanvasText {
             anchors.right: parent.right
             text: qsTr("Tonight’s moon")
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 10.5
-            font.weight: 700
-            font.letterSpacing: 1.26
-            font.capitalization: Font.AllUppercase
+            px: 10.5
+            weight: 700
+            tracking: 1.26
+            upper: true
             color: ForkTheme.cv.faint
         }
-        Text {
+        ForkCanvasText {
             id: nameText
             anchors.right: parent.right
             text: moon.info.name
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 14
-            font.weight: 650
+            px: 14
+            weight: 650
             height: 19
             verticalAlignment: Text.AlignVCenter
             color: ForkTheme.cv.text
         }
-        Text {
+        ForkCanvasText {
             anchors.right: parent.right
             text: moon.info.line
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 12
+            px: 12
             color: ForkTheme.cv.muted
         }
     }

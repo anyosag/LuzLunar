@@ -81,7 +81,7 @@ Item {
     }
     Repeater {
         model: moon.kind === "asleep" ? 3 : 0
-        delegate: ForkCardLabel {
+        delegate: ForkCanvasText {
             id: z
             required property int index
             readonly property int zp: (moon.tick + index) % 3
@@ -100,9 +100,8 @@ Item {
             opacity: zo
             text: "z"
             color: Qt.rgba(1, 1, 1, 0.8)
-            font.family: ForkTheme.uiFamily
             px: 11
-            font.weight: 800
+            weight: 800
             lineHeightMode: Text.FixedHeight
             lineHeight: 11
         }
@@ -141,13 +140,12 @@ Item {
         size: 54
         dashed: true
         color: Qt.rgba(1, 105 / 255, 97 / 255, 0.7)
-        ForkCardLabel {
+        ForkCanvasText {
             anchors.centerIn: parent
             text: "?"
             color: Qt.rgba(1, 105 / 255, 97 / 255, 0.9)
-            font.family: ForkTheme.uiFamily
             px: 24
-            font.weight: 700
+            weight: 700
         }
     }
 }

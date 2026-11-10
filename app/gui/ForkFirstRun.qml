@@ -108,7 +108,7 @@ Item {
             Rectangle { x: 38; y: 168; width: 5; height: 5; radius: 2.5; color: page.cv.faint }
         }
 
-        Text {
+        ForkCanvasText {
             id: heading
             y: 220 + 22
             width: parent.width; height: 40
@@ -116,13 +116,12 @@ Item {
             verticalAlignment: Text.AlignVCenter
             text: qsTr("Let’s find your PC")
             color: page.cv.text
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 34
-            font.weight: Font.Bold
-            font.letterSpacing: -0.748
+            px: 34
+            weight: 700
+            tracking: -0.748
             Accessible.role: Accessible.Heading
         }
-        Text {
+        ForkCanvasText {
             id: blurb
             y: heading.y + 40 + 10
             width: Math.min(560, parent.width)
@@ -133,8 +132,7 @@ Item {
             lineHeight: 22
             text: qsTr("LuzLunar looks for PCs running Apollo or Sunshine on your network. Yours shows up here as a card you can stream from.")
             color: page.cv.muted
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 15
+            px: 15
         }
 
         Rectangle {
@@ -149,14 +147,13 @@ Item {
             Accessible.name: pillText.text
             Rectangle { x: 8; y: 7; width: 16; height: 16; radius: 8; color: page.greenRing }
             Rectangle { x: 12; y: 11; width: 8; height: 8; radius: 4; color: ForkTheme.st.green }
-            Text {
+            ForkCanvasText {
                 id: pillText
                 x: 30; height: 30
                 verticalAlignment: Text.AlignVCenter
                 text: qsTr("Looking on your network…")
                 color: page.cv.muted
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 13
+                px: 13
             }
         }
 
@@ -187,14 +184,13 @@ Item {
                     width: 32; height: 32; radius: 9; color: head.tile
                     ForkPathIcon { anchors.centerIn: parent; size: 18; path: head.iconPath; color: "#FFFFFF"; strokeWidth: 1.8 }
                 }
-                Text {
+                ForkCanvasText {
                     height: 32
                     verticalAlignment: Text.AlignVCenter
                     text: head.title
                     color: page.cv.text
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 16
-                    font.weight: 650
+                    px: 16
+                    weight: 650
                     Accessible.role: Accessible.Heading
                 }
             }
@@ -210,14 +206,13 @@ Item {
                         iconPath: "M12 3.5a5.5 5.5 0 0 1 5.5 5.5c0 4.2-5.5 11.5-5.5 11.5S6.5 13.2 6.5 9A5.5 5.5 0 0 1 12 3.5zM12 7.2a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6z"
                         title: qsTr("Know its address?")
                     }
-                    Text {
+                    ForkCanvasText {
                         height: 16
                         verticalAlignment: Text.AlignVCenter
                         text: qsTr("IP address or hostname")
                         color: page.cv.text2
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 13
-                        font.weight: Font.DemiBold
+                        px: 13
+                        weight: 600
                     }
                     Row {
                         spacing: 8
@@ -233,8 +228,7 @@ Item {
                             color: page.cv.text
                             selectionColor: page.cv.gold
                             selectedTextColor: "#1A1405"
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 14
+                            px: 14
                             selectByMouse: true
                             Accessible.name: qsTr("IP address or hostname")
                             Keys.onReturnPressed: page.addAddress()
@@ -262,14 +256,13 @@ Item {
                             Keys.onReturnPressed: page.addAddress()
                             Keys.onEnterPressed: page.addAddress()
                             Keys.onSpacePressed: page.addAddress()
-                            Text {
+                            ForkCanvasText {
                                 id: addLabel
                                 anchors.centerIn: parent
                                 text: qsTr("Add")
                                 color: "#1A1405"
-                                font.family: ForkTheme.uiFamily
-                                font.pixelSize: 14
-                                font.weight: Font.DemiBold
+                                px: 14
+                                weight: 600
                             }
                             Rectangle { anchors.fill: parent; radius: 10; color: Qt.rgba(0, 0, 0, 0.12); visible: addTap.pressed }
                             Rectangle {
@@ -279,7 +272,7 @@ Item {
                             TapHandler { id: addTap; onTapped: page.addAddress() }
                         }
                     }
-                    Text {
+                    ForkCanvasText {
                         width: parent.width
                         elide: Text.ElideRight
                         height: 18
@@ -288,8 +281,7 @@ Item {
                               ? qsTr("Use the PC's IP address or hostname: letters, digits, dots, colons and dashes.")
                               : qsTr("From outside your home, use its public address or a DDNS name.")
                         color: addressField.text !== "" && !page.addressValid ? ForkTheme.danger : page.cv.muted
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 12
+                        px: 12
                     }
                 }
             }
@@ -318,22 +310,20 @@ Item {
                                 height: 22
                                 Rectangle {
                                     width: 22; height: 22; radius: 11; color: page.cv.chip
-                                    Text {
+                                    ForkCanvasText {
                                         anchors.centerIn: parent
                                         text: index + 1
                                         color: page.cv.text
-                                        font.family: ForkTheme.uiFamily
-                                        font.pixelSize: 12
-                                        font.weight: Font.Bold
+                                        px: 12
+                                        weight: 700
                                     }
                                 }
-                                Text {
+                                ForkCanvasText {
                                     height: 22
                                     verticalAlignment: Text.AlignVCenter
                                     text: modelData
                                     color: page.cv.text2
-                                    font.family: ForkTheme.uiFamily
-                                    font.pixelSize: 13
+                                    px: 13
                                 }
                             }
                         }
@@ -352,14 +342,13 @@ Item {
                     Keys.onReturnPressed: Qt.openUrlExternally(page.setupUrl)
                     Keys.onEnterPressed: Qt.openUrlExternally(page.setupUrl)
                     Keys.onSpacePressed: Qt.openUrlExternally(page.setupUrl)
-                    Text {
+                    ForkCanvasText {
                         height: 16
                         verticalAlignment: Text.AlignVCenter
                         text: qsTr("How to set up Apollo")
                         color: page.dk ? "#7DB7FF" : "#0062CC"
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 13
-                        font.weight: Font.DemiBold
+                        px: 13
+                        weight: 600
                     }
                     ForkPathIcon {
                         y: 1

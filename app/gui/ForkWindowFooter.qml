@@ -48,10 +48,6 @@ Item {
 
     property string versionText: qsTr("LuzLunar %1").arg(ForkPreferences.buildId)
 
-    // 10.5 px: a pixel size has to be a whole number, so it goes by points (72 dpi on a Mac, where a
-    // point is a pixel)
-    readonly property real eyebrowPoints: 10.5 * 72 / (Screen.logicalPixelDensity * 25.4)
-
     height: 36
     implicitHeight: 36
 
@@ -78,16 +74,14 @@ Item {
         height: 17
         spacing: 16
 
-        Text {
+        ForkCanvasText {
             anchors.verticalCenter: parent.verticalCenter
             text: qsTr("This Mac")
             color: ForkTheme.cv.faint
-            font.family: ForkTheme.uiFamily
-            font.pointSize: root.eyebrowPoints
-            font.weight: Font.Bold
-            font.letterSpacing: 0.84
-            font.capitalization: Font.AllUppercase
-            textFormat: Text.PlainText
+            px: 10.5
+            weight: Font.Bold
+            tracking: 0.84
+            upper: true
         }
 
         Row {

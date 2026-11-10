@@ -109,22 +109,20 @@ Item {
     }
 
     // The letter: 66 px at 24 % of a 173.333 wide tile (800 weight, -0.04em, a soft shadow)
-    Text {
+    ForkCanvasText {
         id: letter
-        readonly property real px: cover.kind === "tile" ? 66 * cover.width / 173.333 : (cover.kind === "thumb" ? 36 : 28)
+        readonly property real size: cover.kind === "tile" ? 66 * cover.width / 173.333 : (cover.kind === "thumb" ? 36 : 28)
         anchors.left: parent.left
         anchors.right: parent.right
         y: cover.height * (cover.kind === "dialog" ? 0.30 : 0.24)
         horizontalAlignment: Text.AlignHCenter
         text: cover.initial(cover.name)
         color: "#F5EBD3"
-        font.family: ForkTheme.uiFamily
-        font.pixelSize: px
-        font.weight: Font.ExtraBold
-        font.letterSpacing: -0.04 * px
-        lineHeightMode: Text.FixedHeight
-        lineHeight: px
-        height: px
+        px: size
+        weight: 800
+        tracking: -0.04 * size
+        lineHeightPx: size
+        height: size
         layer.enabled: cover.fx
         layer.effect: MultiEffect {
             shadowEnabled: true
@@ -136,7 +134,7 @@ Item {
     }
 
     // The name, centered along the bottom
-    Text {
+    ForkCanvasText {
         visible: cover.showName
         anchors.left: parent.left
         anchors.right: parent.right
@@ -148,11 +146,9 @@ Item {
         wrapMode: Text.Wrap
         text: cover.name
         color: "#FFFFFF"
-        font.family: ForkTheme.uiFamily
-        font.pixelSize: 14 * cover.width / 173.333
-        font.weight: 650
-        lineHeightMode: Text.FixedHeight
-        lineHeight: 17 * cover.width / 173.333
+        px: 14 * cover.width / 173.333
+        weight: 650
+        lineHeightPx: 17 * cover.width / 173.333
         layer.enabled: cover.fx && visible
         layer.effect: MultiEffect {
             shadowEnabled: true

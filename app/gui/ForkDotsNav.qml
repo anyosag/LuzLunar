@@ -57,12 +57,11 @@ Item {
                         color: chip.modelData.dot
                         Accessible.ignored: true
                     }
-                    Text {
+                    ForkCanvasText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: chip.modelData.name
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 12.5
-                        font.weight: chip.sel ? 600 : 500
+                        px: 12.5
+                        weight: chip.sel ? 600 : 500
                         color: chip.sel ? ForkTheme.cv.text : ForkTheme.cv.muted
                         Behavior on color { enabled: !ForkTheme.reduceMotion; ColorAnimation { duration: 250 } }
                     }
@@ -110,12 +109,11 @@ Item {
                     filled: !nav.demoOn
                     color: ForkTheme.cv.text2
                 }
-                Text {
+                ForkCanvasText {
                     anchors.verticalCenter: parent.verticalCenter
                     text: nav.demoOn ? qsTr("Pause demo") : qsTr("Play demo")
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 12.5
-                    font.weight: 500
+                    px: 12.5
+                    weight: 500
                     color: ForkTheme.cv.text2
                 }
             }

@@ -43,13 +43,12 @@ Item {
             color: chip.ink
             strokeWidth: chip.big ? 1.9 : 2
         }
-        ForkCardLabel {
+        ForkCanvasText {
             anchors.verticalCenter: parent.verticalCenter
             text: chip.text
             color: chip.ink
-            font.family: ForkTheme.uiFamily
             px: chip.big ? 12 : 11.5
-            font.weight: chip.warm ? 600 : 500
+            weight: chip.warm ? 600 : 500
         }
     }
 

@@ -243,22 +243,22 @@ Item {
                 x: 86
                 y: (104 - height) / 2
                 spacing: 4
-                ForkCardLabel {
+                ForkCanvasText {
                     width: Math.min(360, implicitWidth)
                     text: card.pcName
                     elide: Text.ElideRight
                     color: "white"
-                    px: 22; font.weight: 700
-                    font.letterSpacing: -0.33
-                    lineHeightMode: Text.FixedHeight; lineHeight: 28
+                    px: 22; weight: 700
+                    tracking: -0.33
+                    lineHeightPx: 28
                 }
-                ForkCardLabel {
+                ForkCanvasText {
                     width: Math.min(360, implicitWidth)
                     text: card.info.subLine
                     elide: Text.ElideRight
                     color: Qt.rgba(1, 1, 1, 0.78)
-                    px: 13; font.weight: 400
-                    lineHeightMode: Text.FixedHeight; lineHeight: 17
+                    px: 13; weight: 400
+                    lineHeightPx: 17
                 }
                 Item {
                     width: 360
@@ -274,14 +274,14 @@ Item {
                             x: 8
                             height: parent.height
                             spacing: 6
-                            ForkCardLabel {
+                            ForkCanvasText {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "IP"
                                 color: "white"; opacity: 0.7
-                                px: 10; font.weight: 700
-                                font.letterSpacing: 0.6
+                                px: 10; weight: 700
+                                tracking: 0.6
                             }
-                            ForkCardLabel {
+                            ForkCanvasText {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: card.address
                                 color: "white"
@@ -305,7 +305,7 @@ Item {
                             }
                         }
                     }
-                    ForkCardLabel {
+                    ForkCanvasText {
                         anchors.left: ipChip.right
                         anchors.leftMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
@@ -373,33 +373,33 @@ Item {
                         x: 60
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 2
-                        ForkCardLabel {
+                        ForkCanvasText {
                             width: Math.min(implicitWidth, 518 - 60 - 14 - statusLabel.implicitWidth - 12)
                             text: card.info.title
                             elide: Text.ElideRight
                             color: ForkTheme.cv.text
-                            px: 15; font.weight: 650
-                            lineHeightMode: Text.FixedHeight; lineHeight: 20
+                            px: 15; weight: 650
+                            lineHeightPx: 20
                         }
-                        ForkCardLabel {
+                        ForkCanvasText {
                             width: Math.min(implicitWidth, 518 - 60 - 14 - statusLabel.implicitWidth - 12)
                             text: card.info.sub
                             elide: Text.ElideRight
                             color: ForkTheme.cv.muted
                             px: 12.5
-                            lineHeightMode: Text.FixedHeight; lineHeight: 17
+                            lineHeightPx: 17
                         }
                     }
-                    ForkCardLabel {
+                    ForkCanvasText {
                         id: statusLabel
                         anchors.right: parent.right
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
                         text: card.info.label
                         color: card.stateInk(card.info.labelKey)
-                        px: 11; font.weight: 700
-                        font.letterSpacing: 0.66
-                        font.capitalization: Font.AllUppercase
+                        px: 11; weight: 700
+                        tracking: 0.66
+                        upper: true
                     }
                 }
             }
@@ -415,15 +415,15 @@ Item {
                     Item {
                         width: 518
                         height: card.info.tilesNote !== "" ? 15 : 14
-                        ForkCardLabel {
+                        ForkCanvasText {
                             id: appsTitle
                             text: card.info.tilesTitle
                             color: ForkTheme.cv.faint
-                            px: 11; font.weight: 700
-                            font.letterSpacing: 0.88
-                            font.capitalization: Font.AllUppercase
+                            px: 11; weight: 700
+                            tracking: 0.88
+                            upper: true
                         }
-                        ForkCardLabel {
+                        ForkCanvasText {
                             anchors.right: parent.right
                             anchors.baseline: appsTitle.baseline
                             text: card.info.tilesNote
@@ -482,12 +482,12 @@ Item {
                     shown: card.settled || card.revealed
                     revealed: card.revealed
                     delay: 130
-                    ForkCardLabel {
+                    ForkCanvasText {
                         text: "How to pair"
                         color: ForkTheme.cv.faint
-                        px: 11; font.weight: 700
-                        font.letterSpacing: 0.88
-                        font.capitalization: Font.AllUppercase
+                        px: 11; weight: 700
+                        tracking: 0.88
+                        upper: true
                     }
                 }
                 Repeater {
@@ -504,14 +504,14 @@ Item {
                             Rectangle {
                                 width: 24; height: 24; radius: 12
                                 color: card.tileDisc
-                                ForkCardLabel {
+                                ForkCanvasText {
                                     anchors.centerIn: parent
                                     text: stepEnter.index + 1
                                     color: card.tileInk
-                                    px: 12; font.weight: 700
+                                    px: 12; weight: 700
                                 }
                             }
-                            ForkCardLabel {
+                            ForkCanvasText {
                                 x: 34
                                 width: 518 - 34
                                 anchors.verticalCenter: parent.verticalCenter
@@ -519,7 +519,7 @@ Item {
                                 elide: Text.ElideRight
                                 color: ForkTheme.cv.text2
                                 px: 13.5
-                                lineHeightMode: Text.FixedHeight; lineHeight: 19
+                                lineHeightPx: 19
                             }
                         }
                     }

@@ -46,14 +46,13 @@ Column {
                 }
                 Accessible.ignored: true
             }
-            Text {
+            ForkCanvasText {
                 anchors.verticalCenter: parent.verticalCenter
                 text: story.greeting
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 11.5
-                font.weight: 700
-                font.letterSpacing: 1.38
-                font.capitalization: Font.AllUppercase
+                px: 11.5
+                weight: 700
+                tracking: 1.38
+                upper: true
                 color: ForkTheme.st.gold
             }
         }
@@ -78,14 +77,13 @@ Column {
                     delay: 80 + index * 40
                     dy: 16
                     height: 48
-                    Text {
+                    ForkCanvasText {
                         text: modelData
                         height: 48
                         verticalAlignment: Text.AlignVCenter
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 42
-                        font.weight: 750
-                        font.letterSpacing: -1.26
+                        px: 42
+                        weight: 750
+                        tracking: -1.26
                         color: ForkTheme.cv.text
                     }
                     Accessible.ignored: true
@@ -137,24 +135,22 @@ Column {
                         }
                         Row {
                             anchors.verticalCenter: parent.verticalCenter
-                            Text {
+                            ForkCanvasText {
                                 visible: item.modelData.before !== ""
                                 text: item.modelData.before
-                                font.family: ForkTheme.uiFamily
-                                font.pixelSize: 14
-                                lineHeight: 22; lineHeightMode: Text.FixedHeight
+                                px: 14
+                                lineHeightPx: 22
                                 color: ForkTheme.cv.text2
                             }
                             Item {
                                 width: nameText.width
                                 height: 22
-                                Text {
+                                ForkCanvasText {
                                     id: nameText
                                     text: item.modelData.name
-                                    font.family: ForkTheme.uiFamily
-                                    font.pixelSize: 14
-                                    font.weight: 650
-                                    lineHeight: 22; lineHeightMode: Text.FixedHeight
+                                    px: 14
+                                    weight: 650
+                                    lineHeightPx: 22
                                     color: ForkTheme.cv.text
                                 }
                                 Rectangle {
@@ -172,12 +168,11 @@ Column {
                                     onClicked: story.pick(item.index)
                                 }
                             }
-                            Text {
+                            ForkCanvasText {
                                 visible: item.modelData.after !== ""
                                 text: item.modelData.after
-                                font.family: ForkTheme.uiFamily
-                                font.pixelSize: 14
-                                lineHeight: 22; lineHeightMode: Text.FixedHeight
+                                px: 14
+                                lineHeightPx: 22
                                 color: ForkTheme.cv.text2
                             }
                         }
@@ -202,12 +197,11 @@ Column {
                                     size: 11; strokeWidth: 1.6; filled: true
                                     color: "#FFFFFF"
                                 }
-                                Text {
+                                ForkCanvasText {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: item.modelData.action
-                                    font.family: ForkTheme.uiFamily
-                                    font.pixelSize: 12
-                                    font.weight: 600
+                                    px: 12
+                                    weight: 600
                                     color: "#FFFFFF"
                                 }
                             }

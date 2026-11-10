@@ -122,15 +122,14 @@ FocusScope {
                             filled: row.modelData.filled ? 1 : 0
                         }
 
-                        Text {
+                        ForkCanvasText {
                             x: 36
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - 36 - 10 - (row.modelData.check && row.modelData.checked ? 24 : 0) - (row.modelData.key ? 22 : 0)
                             text: row.modelData.label || ""
                             elide: Text.ElideRight
                             color: row.ink
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 13
+                            px: 13
                         }
 
                         ForkLibraryIcon {
@@ -142,15 +141,14 @@ FocusScope {
                             color: row.ink
                         }
 
-                        Text {
+                        ForkCanvasText {
                             anchors.verticalCenter: parent.verticalCenter
                             x: parent.width - 10 - width
                             visible: !!row.modelData.key
                             text: row.modelData.key || ""
                             opacity: 0.7
                             color: row.ink
-                            font.family: ForkTheme.uiFamily
-                            font.pixelSize: 12
+                            px: 12
                         }
 
                         Accessible.role: row.modelData.check ? Accessible.CheckBox : Accessible.MenuItem

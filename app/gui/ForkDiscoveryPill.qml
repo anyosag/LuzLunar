@@ -31,13 +31,12 @@ Rectangle {
         }
     }
 
-    Text {
+    ForkCanvasText {
         id: label
         x: 12 + 8 + 10
         anchors.verticalCenter: parent.verticalCenter
         text: pill.text
-        font.family: ForkTheme.uiFamily
-        font.pixelSize: 12.5
+        px: 12.5
         color: ForkTheme.cv.muted
     }
 }

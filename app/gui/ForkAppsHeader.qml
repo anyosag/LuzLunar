@@ -146,7 +146,7 @@ Item {
     Repeater {
         model: band.asleep ? 3 : 0
 
-        delegate: Text {
+        delegate: ForkCanvasText {
             id: z
             required property int index
             readonly property int zp: (band.tick + index) % 3
@@ -155,9 +155,8 @@ Item {
             visible: x < status.x
             text: "z"
             color: Qt.rgba(1, 1, 1, 0.8)
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 11
-            font.weight: Font.ExtraBold
+            px: 11
+            weight: 800
             scale: 1 + 0.2 * zp
             opacity: zp === 1 ? 0.75 : 0
 
@@ -207,13 +206,12 @@ Item {
             radius: 16
             color: band.pcFill
 
-            Text {
+            ForkCanvasText {
                 anchors.centerIn: parent
                 text: band.pcName.charAt(0).toUpperCase()
                 color: band.pcOnFill
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 34
-                font.weight: Font.Bold
+                px: 34
+                weight: 700
             }
         }
     }
@@ -229,7 +227,7 @@ Item {
         settled: band.settled
         delay: 140
 
-        Text {
+        ForkCanvasText {
             y: 0
             width: parent.width
             height: 34
@@ -237,13 +235,12 @@ Item {
             elide: Text.ElideRight
             text: band.pcName
             color: "#FFFFFF"
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 28
-            font.weight: 750
-            font.letterSpacing: -0.56
+            px: 28
+            weight: 750
+            tracking: -0.56
         }
 
-        Text {
+        ForkCanvasText {
             y: 38
             width: parent.width
             height: 17
@@ -251,8 +248,7 @@ Item {
             elide: Text.ElideRight
             text: band.hostLine
             color: Qt.rgba(1, 1, 1, 0.78)
-            font.family: ForkTheme.uiFamily
-            font.pixelSize: 13
+            px: 13
         }
 
         Row {
@@ -275,23 +271,22 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
 
-                    Text {
+                    ForkCanvasText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "IP"
                         opacity: 0.7
                         color: "#FFFFFF"
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 10
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.6
+                        px: 10
+                        weight: 700
+                        tracking: 0.6
                     }
 
-                    Text {
+                    ForkCanvasText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: band.address
                         color: "#FFFFFF"
                         font.family: ForkTheme.monoFamily
-                        font.pixelSize: 12
+                        px: 12
                     }
 
                     Item {
@@ -319,15 +314,14 @@ Item {
                 }
             }
 
-            Text {
+            ForkCanvasText {
                 width: Math.max(0, parent.width - (ipChip.visible ? ipChip.width + 8 : 0))
                 height: 22
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
                 text: band.ipNote
                 color: Qt.rgba(1, 1, 1, 0.62)
-                font.family: ForkTheme.uiFamily
-                font.pixelSize: 11.5
+                px: 11.5
             }
         }
     }
@@ -465,30 +459,28 @@ Item {
                         }
                     }
 
-                    Text {
+                    ForkCanvasText {
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("Now running").toUpperCase()
                         color: "#79D6B5"
-                        font.family: ForkTheme.uiFamily
-                        font.pixelSize: 10.5
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1.26
+                        px: 10.5
+                        weight: 700
+                        tracking: 1.26
                     }
                 }
 
-                Text {
+                ForkCanvasText {
                     width: parent.width
                     height: 23
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     text: band.runningName
                     color: "#FFFFFF"
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 18
-                    font.weight: 650
+                    px: 18
+                    weight: 650
                 }
 
-                Text {
+                ForkCanvasText {
                     width: parent.width
                     height: 15
                     verticalAlignment: Text.AlignVCenter
@@ -496,7 +488,7 @@ Item {
                     text: band.runningSummary
                     color: Qt.rgba(1, 1, 1, 0.72)
                     font.family: ForkTheme.monoFamily
-                    font.pixelSize: 11.5
+                    px: 11.5
                 }
             }
 
@@ -562,31 +554,28 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 3
 
-                Text {
+                ForkCanvasText {
                     height: 14
                     text: qsTr("Ready").toUpperCase()
                     color: "#7EE2A0"
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 10.5
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.26
+                    px: 10.5
+                    weight: 700
+                    tracking: 1.26
                 }
-                Text {
+                ForkCanvasText {
                     height: 23
                     verticalAlignment: Text.AlignVCenter
                     text: qsTr("Nothing running")
                     color: "#FFFFFF"
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 18
-                    font.weight: 650
+                    px: 18
+                    weight: 650
                 }
-                Text {
+                ForkCanvasText {
                     height: 16
                     verticalAlignment: Text.AlignVCenter
                     text: qsTr("Pick an app below to start it")
                     color: Qt.rgba(1, 1, 1, 0.72)
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 12.5
+                    px: 12.5
                 }
             }
 
@@ -619,35 +608,32 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 3
 
-                Text {
+                ForkCanvasText {
                     height: 14
                     text: qsTr("Asleep").toUpperCase()
                     color: "#CFC8F3"
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 10.5
-                    font.weight: Font.Bold
-                    font.letterSpacing: 1.26
+                    px: 10.5
+                    weight: 700
+                    tracking: 1.26
                 }
-                Text {
+                ForkCanvasText {
                     width: parent.width
                     height: 22
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     text: qsTr("Picking an app wakes it first")
                     color: "#FFFFFF"
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 17
-                    font.weight: 650
+                    px: 17
+                    weight: 650
                 }
-                Text {
+                ForkCanvasText {
                     width: parent.width
                     height: 16
                     verticalAlignment: Text.AlignVCenter
                     elide: Text.ElideRight
                     text: band.wakeReady ? qsTr("Wake from off is ready") : qsTr("Wakes from sleep, not from off")
                     color: Qt.rgba(1, 1, 1, 0.72)
-                    font.family: ForkTheme.uiFamily
-                    font.pixelSize: 12.5
+                    px: 12.5
                 }
             }
 
