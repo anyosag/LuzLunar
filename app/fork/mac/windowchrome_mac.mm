@@ -16,15 +16,19 @@
 //   - put the real traffic lights where the design has them: 12 pt discs at x 20, 40 and 60, their
 //     centres 25.5 pt below the top (an empty unified toolbar would centre them in 52 pt too, but
 //     an NSToolbar can take the clicks of the band under it, which the header's buttons need).
-//     Setting LUZLUNAR_LIGHTS=toolbar in the environment tries that instead.
+//     Setting LUZLUNAR_LIGHTS=toolbar in the environment tries that instead, and
+//     LUZLUNAR_LIGHTS=system leaves the lights where AppKit puts them (the header then has them
+//     off its x 96 content: a way to tell what is wrong).
 @interface ForkChromeController : NSObject
 {
-    NSWindow* m_Window;        // weak: the window outlives its observers, which are removed in dealloc
+    NSWindow* m_Window;        // retained while attached, released when the window closes
     NSMutableArray* m_Tokens;  // notification observers
-    BOOL m_ToolbarMode;
+    BOOL m_ToolbarMode;        // LUZLUNAR_LIGHTS=toolbar
+    BOOL m_SystemLights;       // LUZLUNAR_LIGHTS=system: leave the lights where AppKit puts them
 }
 - (void)attachToWindow:(NSWindow*)window;
 - (void)relayout;
+- (void)detach;
 @end
 
 @implementation ForkChromeController
@@ -36,17 +40,27 @@
         m_Tokens = [[NSMutableArray alloc] init];
         const char* mode = getenv("LUZLUNAR_LIGHTS");
         m_ToolbarMode = mode != nullptr && strcmp(mode, "toolbar") == 0;
+        m_SystemLights = mode != nullptr && strcmp(mode, "system") == 0;
     }
     return self;
 }
 
 - (void)dealloc
 {
+    [self detach];
+    [m_Tokens release];
+    [super dealloc];
+}
+
+// Stops observing and lets go of the window
+- (void)detach
+{
     for (id token in m_Tokens) {
         [NSNotificationCenter.defaultCenter removeObserver:token];
     }
-    [m_Tokens release];
-    [super dealloc];
+    [m_Tokens removeAllObjects];
+    [m_Window release];
+    m_Window = nil;
 }
 
 - (void)attachToWindow:(NSWindow*)window
@@ -54,7 +68,12 @@
     if (window == nil || window == m_Window) {
         return;
     }
-    m_Window = window;
+    [self detach];
+    m_Window = [window retain];
+
+    // A block holds what it captures, so capture a plain pointer: the controller lives as long as
+    // ForkWindowChrome, and detach (also on dealloc) removes the observers
+    __block ForkChromeController* controller = self;
 
     // AppKit lays the title bar out again on these, putting the lights back where it wants them
     NSArray* names = @[NSWindowDidResizeNotification,
@@ -69,12 +88,19 @@
                         object:window
                          queue:NSOperationQueue.mainQueue
                     usingBlock:^(NSNotification*) {
-                        [self relayout];
+                        [controller relayout];
                         // AppKit's own layout can run after the notification
-                        dispatch_async(dispatch_get_main_queue(), ^{ [self relayout]; });
+                        dispatch_async(dispatch_get_main_queue(), ^{ [controller relayout]; });
                     }];
         [m_Tokens addObject:token];
     }
+    // The window is going away: let go of it (relayout then does nothing)
+    id closeToken = [NSNotificationCenter.defaultCenter
+        addObserverForName:NSWindowWillCloseNotification
+                    object:window
+                     queue:NSOperationQueue.mainQueue
+                usingBlock:^(NSNotification*) { [controller detach]; }];
+    [m_Tokens addObject:closeToken];
 
     [self install];
 }
@@ -115,7 +141,7 @@
         }
         window.toolbarStyle = NSWindowToolbarStyleUnified;
     }
-    else if (window.toolbar != nil) {
+    else if (window.toolbar != nil && !m_SystemLights) {
         window.toolbar = nil;
     }
 
@@ -126,7 +152,7 @@
 - (void)relayout
 {
     NSWindow* window = m_Window;
-    if (window == nil || m_ToolbarMode) {
+    if (window == nil || m_ToolbarMode || m_SystemLights) {
         return;
     }
     // Full screen has no lights (the menu bar's are AppKit's)

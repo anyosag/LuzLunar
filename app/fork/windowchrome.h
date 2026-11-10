@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QSize>
 #include <QVariantList>
 #include <QWindow>
 
@@ -34,6 +35,10 @@ public:
     // What a double click on the window's title bar does, per the user's setting (System Settings >
     // Desktop & Dock): zoom, minimize or nothing. Off macOS it toggles maximized.
     Q_INVOKABLE void zoomWindow(QWindow* window);
+
+    // The free area (below the menu bar, beside the Dock) of the screen the window is on, in points;
+    // the primary screen's if it has none yet. QML's Screen.desktopAvailable* is the union of all screens.
+    Q_INVOKABLE QSize availableSize(QWindow* window) const;
 
     // The native toolbar is gone (the header is QML). These stay only for ForkNativeToolbar.qml,
     // which nothing loads any more, and do nothing.

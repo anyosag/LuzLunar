@@ -31,7 +31,7 @@ AbstractButton {
 
     readonly property bool hasLabel: text !== ""
 
-    focusPolicy: Qt.StrongFocus
+    focusPolicy: Qt.TabFocus // keyboard only: a click leaves the focus where it was
     activeFocusOnTab: true
     hoverEnabled: true
     implicitHeight: contentHeight
@@ -43,8 +43,6 @@ AbstractButton {
 
     Accessible.role: Accessible.Button
     Accessible.name: text
-    Accessible.checkable: checkable
-    Accessible.checked: checked
     Accessible.onPressAction: root.clicked()
 
     Keys.onReturnPressed: root.clicked()

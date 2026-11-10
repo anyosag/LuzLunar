@@ -276,7 +276,7 @@ Item {
                     border.color: ForkTheme.cv.line
 
                     Rectangle {
-                        visible: !!searchField && searchField.visualFocus === true
+                        visible: !!searchField && searchField.activeFocus
                         anchors.fill: parent
                         anchors.margins: -2
                         radius: 10
@@ -414,8 +414,8 @@ Item {
                             contentHeight: 24
                             radius: 7
                             borderWidth: 0
-                            checkable: true
-                            checked: on
+                            Accessible.checkable: true
+                            Accessible.checked: on
                             iconName: modelData.mode
                             iconSize: 16
                             iconColor: on ? ForkTheme.cv.text : ForkTheme.cv.muted

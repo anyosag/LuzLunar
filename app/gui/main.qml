@@ -1,5 +1,6 @@
-// [fork] Versionless imports: the window's padding (set to 0 below, so the content starts under the
-// transparent title bar) and Overlay need Qt Quick Controls newer than the 2.2 these were pinned to
+// [fork] Versionless imports (they were pinned to Controls 2.2 and Layouts 1.3). The Fusion
+// ApplicationWindow already exposes its padding, which the window sets to 0 below so the content
+// starts under the transparent title bar; the T import below is still what reaches Overlay.overlay.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -34,7 +35,7 @@ ApplicationWindow {
     width: 1280
     height: 900
     minimumWidth: 1024
-    minimumHeight: Math.min(700, Screen.desktopAvailableHeight)
+    minimumHeight: 700 // clamped to the screen in Component.onCompleted
     title: qsTr("LuzLunar")
     flags: Qt.platform.os === "osx" ? (Qt.Window | Qt.ExpandedClientAreaHint | Qt.NoTitleBarBackgroundHint) : Qt.Window
     topPadding: 0
@@ -74,9 +75,16 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        // [fork] Fit the default size to the screen's free area (below the menu bar, beside the Dock)
-        width = Math.min(1280, Screen.desktopAvailableWidth)
-        height = Math.min(900, Screen.desktopAvailableHeight)
+        // [fork] The native side of the drawn header: the traffic lights' place, the hidden title
+        // and separator, the ground colour (windowchrome_mac.mm). First, before anything shows.
+        WindowChrome.attach(window)
+
+        // [fork] Fit the default size to the free area (below the menu bar, beside the Dock) of this
+        // window's own screen
+        var free = WindowChrome.availableSize(window)
+        width = Math.min(1280, free.width)
+        height = Math.min(900, free.height)
+        minimumHeight = Math.min(700, free.height)
 
         // Show the window according to the user's preferences
         if (forkHiddenScreenshots) {
@@ -184,17 +192,17 @@ ApplicationWindow {
         fakeLights: forkHiddenScreenshots || ForkPcPrefs.screenshotMode
         lightsVisible: window.visibility !== Window.FullScreen
 
-        variant: window.isSettingsPage ? "back" : pageValue("forkHeaderVariant", "pcs")
+        variant: window.isSettingsPage ? "back" : pageValue("forkHeaderVariant", stackView.depth > 1 ? "back" : "pcs")
         viewMode: pageValue("forkViewMode", "carousel")
-        hasPcs: pageValue("forkHasPcs", true)
+        hasPcs: pageValue("forkHasPcs", true) && typeof pageValue("forkSetViewMode", null) === "function"
         backTitle: {
-            if (window.isSettingsPage) {
+            if (window.isSettingsPage || (window.forkPage && window.forkPage.forkBackTitle === undefined)) {
                 var below = stackView.get(stackView.depth - 2)
                 return below instanceof PcView ? qsTr("Your PCs") : qsTr("Back")
             }
             return pageValue("forkBackTitle", qsTr("Your PCs"))
         }
-        pageTitle: window.isSettingsPage ? qsTr("Settings") : ""
+        pageTitle: window.isSettingsPage ? qsTr("Settings") : (window.forkPage ? window.forkPage.objectName : "")
         searchPlaceholder: pageValue("forkSearchPlaceholder", qsTr("Search apps"))
         searchAccessibleName: pageValue("forkSearchAccessibleName",
                                         window.forkPage && window.forkPage.objectName !== ""
@@ -383,11 +391,14 @@ ApplicationWindow {
         }
         pushEnter: Transition { }
         popEnter: Transition { }
+        // (ViewTransition.item has to be read through the transition's own id here)
         pushExit: Transition {
-            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(ViewTransition.item) }
+            id: pushExitTx
+            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(pushExitTx.ViewTransition.item) }
         }
         popExit: Transition {
-            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(ViewTransition.item) }
+            id: popExitTx
+            PauseAnimation { duration: ForkTheme.reduceMotion ? 0 : stackView.holdFor(popExitTx.ViewTransition.item) }
         }
 
         Component.onCompleted: {
@@ -526,7 +537,7 @@ ApplicationWindow {
     }
 
     // In the window's overlay, where dialogs and menus go, above them all. The Overlay type has to
-    // come from the T import: with this file's QtQuick.Controls 2.2 it's undefined, and the toasts
+    // come from the T import: with a plain import of this file's QtQuick.Controls it may be undefined, and the toasts
     // stayed in the window's content, under any open dialog and its dim.
     ForkToast {
         id: forkToasts

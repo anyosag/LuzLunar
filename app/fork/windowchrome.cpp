@@ -1,5 +1,8 @@
 #include "windowchrome.h"
 
+#include <QGuiApplication>
+#include <QScreen>
+
 // The platform parts (attach, apply, zoomWindow and the destructor) are in mac/windowchrome_mac.mm on macOS (a different name, so qmake doesn't give both files the same object file)
 
 ForkWindowChrome* ForkWindowChrome::get()
@@ -11,6 +14,15 @@ ForkWindowChrome* ForkWindowChrome::get()
 bool ForkWindowChrome::isActive() const
 {
     return m_Active;
+}
+
+QSize ForkWindowChrome::availableSize(QWindow* window) const
+{
+    QScreen* screen = window != nullptr ? window->screen() : nullptr;
+    if (screen == nullptr) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    return screen != nullptr ? screen->availableGeometry().size() : QSize(1280, 900);
 }
 
 void ForkWindowChrome::setToolbarItems(const QVariantList&)
