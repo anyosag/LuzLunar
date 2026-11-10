@@ -2,6 +2,7 @@
 // sky blue on the right) that drift between four shapes every 4 s (Main.dc.html 1235-1256,
 // sky-chrome.md 4.5). The canvas blurs them by 28 px; here they are drawn in a quarter-size layer and
 // blurred there, which is cheap while they move. Decorative.
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects

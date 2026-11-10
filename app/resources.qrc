@@ -19,6 +19,10 @@
         <file>res/baseline-error_outline-24px.svg</file>
         <file>res/baseline-check_circle_outline-24px.svg</file>
         <file>res/discord.svg</file>
+        <file>res/samples/desktop.png</file>
+        <file>res/samples/desktop_multi.png</file>
+        <file>res/samples/steam.png</file>
+        <file>res/samples/virtual_desktop.png</file>
         <file>languages/qml_de.ts</file>
         <file>languages/qml_de.qm</file>
         <file>languages/qml_fr.ts</file>

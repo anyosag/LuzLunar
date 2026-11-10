@@ -3,6 +3,7 @@
 // copy of them is made in `glow`, and both are screened over the sky gradient into `out`, which is what
 // shows. Plain Qt Quick has no screen blend mode, so the compositing happens in Context2D ("qt-screen").
 // Decorative: no input, no accessibility.
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 
@@ -18,13 +19,12 @@ Item {
     property real time: 12000
     // true: paint a frame at every change of `time` (the owner throttles it to 30 fps)
     property bool active: false
-    // Fraction of the canvas's own resolution to draw at. 1 = the canvas's 1 px per logical px
+    // Fraction of the canvas's own resolution to draw at. 1 = the canvas's 1 px per logical px (D10)
     property real quality: 1
     // The sky gradient stops (bottom of the stack, behind the aurora): [[pos, "#rrggbb"], ...]
     property var gradientStops: [[0, "#05070F"], [0.4, "#0A0E20"], [0.78, "#111833"], [1, "#18204A"]]
-    // The Milky Way is part of this composite so the aurora can sit over it, as on the canvas
-    property real milkyAngle: 0
-    property real fieldScale: 1
+    // smoothed milliseconds spent drawing the curtains (for tests and tuning)
+    property real drawMs: 0
     // emitted when a frame has been fully composed
     signal frameReady()
     readonly property bool ready: out.available
@@ -43,69 +43,6 @@ Item {
     readonly property int gw: Math.max(8, Math.round(skyWidth / 4))
     readonly property int gh: 130
 
-    function paintSprite(cv, stops, h) {
-        var g = cv.getContext("2d")
-        g.reset()
-        var grad = g.createLinearGradient(0, h, 0, 0)
-        for (var i = 0; i < stops.length; i++)
-            grad.addColorStop(stops[i][0], stops[i][1])
-        g.fillStyle = grad
-        g.fillRect(0, 0, 4, h)
-    }
-
-    // One column of a curtain, bottom to top: 4 x 256 sprites, as in the canvas
-    Canvas {
-        id: spriteGreen
-        width: 4; height: 256
-        canvasSize: Qt.size(4, 256)
-        tileSize: canvasSize
-        opacity: 0
-        onPaint: aurora.paintSprite(spriteGreen, [
-            [0, "rgba(210,255,230,0)"], [0.015, "rgba(215,255,232,0.95)"], [0.06, "rgba(110,255,170,0.9)"],
-            [0.2, "rgba(45,235,135,0.6)"], [0.42, "rgba(30,200,120,0.3)"], [0.65, "rgba(90,120,170,0.14)"],
-            [0.82, "rgba(160,70,150,0.09)"], [1, "rgba(170,50,120,0)"]], 256)
-        onPainted: aurora.spritesReady()
-    }
-    Canvas {
-        id: spriteTeal
-        width: 4; height: 256
-        canvasSize: Qt.size(4, 256)
-        tileSize: canvasSize
-        opacity: 0
-        onPaint: aurora.paintSprite(spriteTeal, [
-            [0, "rgba(200,255,245,0)"], [0.02, "rgba(190,255,240,0.8)"], [0.08, "rgba(80,240,200,0.7)"],
-            [0.28, "rgba(40,200,170,0.4)"], [0.55, "rgba(60,140,190,0.18)"], [0.8, "rgba(140,80,190,0.08)"],
-            [1, "rgba(140,80,190,0)"]], 256)
-        onPainted: aurora.spritesReady()
-    }
-    Canvas {
-        id: spriteFringe
-        width: 4; height: 32
-        canvasSize: Qt.size(4, 32)
-        tileSize: canvasSize
-        opacity: 0
-        onPaint: {
-            var g = getContext("2d")
-            g.reset()
-            var grad = g.createLinearGradient(0, 0, 0, 32)
-            grad.addColorStop(0, "rgba(255,110,190,0.75)")
-            grad.addColorStop(1, "rgba(255,110,190,0)")
-            g.fillStyle = grad
-            g.fillRect(0, 0, 4, 32)
-        }
-        onPainted: aurora.spritesReady()
-    }
-
-    property int spriteCount: 0
-    property bool spritesOk: false
-    function spritesReady() {
-        spriteCount++
-        if (spriteCount >= 3 && !spritesOk) {
-            spritesOk = true
-            if (active) aurora.paintFrame()
-        }
-    }
-
     // The curtains (additive), at quality x the canvas's pixels. Sits under `out`, which is opaque
     Canvas {
         id: curtains
@@ -114,8 +51,12 @@ Item {
         tileSize: canvasSize
         canvasWindow: Qt.rect(0, 0, aurora.bw, aurora.bh)
         renderTarget: Canvas.Image
-        renderStrategy: Canvas.Cooperative
-        onPaint: aurora.drawCurtains(curtains.getContext("2d"), aurora.bw, aurora.bh, 1)
+        renderStrategy: Canvas.Threaded
+        onPaint: {
+            var t0 = Date.now()
+            aurora.drawCurtains(curtains.getContext("2d"), aurora.bw, aurora.bh, 1)
+            aurora.drawMs = aurora.drawMs * 0.9 + (Date.now() - t0) * 0.1
+        }
         onPainted: glowA.requestPaint()
     }
 
@@ -129,7 +70,7 @@ Item {
         tileSize: canvasSize
         canvasWindow: Qt.rect(0, 0, aurora.gw, aurora.gh)
         renderTarget: Canvas.Image
-        renderStrategy: Canvas.Cooperative
+        renderStrategy: Canvas.Threaded
         onPaint: aurora.drawCurtains(glowA.getContext("2d"), aurora.gw, aurora.gh, 0.75)
         onPainted: h1.requestPaint()
     }
@@ -137,13 +78,13 @@ Item {
         property Canvas src
         property int dx: 0
         property int dy: 0
-        property Item next
+        property Canvas next
         width: aurora.gw; height: aurora.gh
         canvasSize: Qt.size(aurora.gw, aurora.gh)
         tileSize: canvasSize
         canvasWindow: Qt.rect(0, 0, aurora.gw, aurora.gh)
         renderTarget: Canvas.Image
-        renderStrategy: Canvas.Cooperative
+        renderStrategy: Canvas.Threaded
         onPaint: aurora.average(getContext("2d"), src, dx, dy)
         onPainted: if (next) next.requestPaint()
     }
@@ -163,7 +104,7 @@ Item {
         tileSize: canvasSize
         canvasWindow: Qt.rect(0, 0, aurora.bw, aurora.bh)
         renderTarget: Canvas.Image
-        renderStrategy: Canvas.Cooperative
+        renderStrategy: Canvas.Threaded
         onPaint: aurora.drawOut(out.getContext("2d"))
         onPainted: aurora.frameReady()
     }
@@ -177,20 +118,13 @@ Item {
     }
 
     function paintFrame() {
-        if (!spritesOk) {
-            spriteGreen.requestPaint(); spriteTeal.requestPaint(); spriteFringe.requestPaint()
-            return
-        }
         curtains.requestPaint()
     }
     onTimeChanged: if (active) paintFrame()
     onActiveChanged: if (active) paintFrame()
-    onGradientStopsChanged: if (spritesOk) paintFrame()
-    onSkyWidthChanged: if (spritesOk) paintFrame()
-    onMilkyAngleChanged: if (spritesOk && active) paintFrame()
-    Component.onCompleted: {
-        spriteGreen.requestPaint(); spriteTeal.requestPaint(); spriteFringe.requestPaint()
-    }
+    onGradientStopsChanged: if (active) paintFrame()
+    onSkyWidthChanged: if (active) paintFrame()
+    Component.onCompleted: if (active) paintFrame()
 
     // The column gradients (offset 0 = lower edge), as in the canvas's sprites
     readonly property var tealStops: [[0, "rgba(200,255,245,0)"], [0.02, "rgba(190,255,240,0.8)"], [0.08, "rgba(80,240,200,0.7)"],
@@ -199,8 +133,8 @@ Item {
         [0.2, "rgba(45,235,135,0.6)"], [0.42, "rgba(30,200,120,0.3)"], [0.65, "rgba(90,120,170,0.14)"], [0.82, "rgba(160,70,150,0.09)"], [1, "rgba(170,50,120,0)"]]
 
     readonly property var curtainDefs: [
-        { sprite: 0, y: 320, a: [26, 12, 5], f: [2.4, 7.1, 19], s: [-0.035, 0.08, 0.22], h: 160, hf: 3.1, g: [4.2, 1.7], strength: 0.5, fringe: false, p: 2.1 },
-        { sprite: 1, y: 410, a: [38, 16, 6], f: [3.1, 8.7, 23], s: [0.045, -0.11, 0.3], h: 235, hf: 4.3, g: [5.3, 2.2], strength: 1, fringe: true, p: 0 }
+        { y: 320, a: [26, 12, 5], f: [2.4, 7.1, 19], s: [-0.035, 0.08, 0.22], h: 160, hf: 3.1, g: [4.2, 1.7], strength: 0.5, fringe: false, p: 2.1 },
+        { y: 410, a: [38, 16, 6], f: [3.1, 8.7, 23], s: [0.045, -0.11, 0.3], h: 235, hf: 4.3, g: [5.3, 2.2], strength: 1, fringe: true, p: 0 }
     ]
 
     // Copy a whole source canvas (logical size sw x sh) into the destination rectangle. At 1x the
@@ -218,11 +152,20 @@ Item {
         ctx.clearRect(0, 0, pw, ph)
         ctx.scale(pw / W, ph / 520)
         var t = aurora.time / 1000
+        // unit-space gradients, made once per paint
+        var grads = [tealStops, greenStops].map(function (stops) {
+            var g = ctx.createLinearGradient(0, 0, 0, -1)
+            for (var i = 0; i < stops.length; i++)
+                g.addColorStop(stops[i][0], stops[i][1])
+            return g
+        })
+        var fringeGrad = ctx.createLinearGradient(0, 0, 0, 1)
+        fringeGrad.addColorStop(0, "rgba(255,110,190,0.75)")
+        fringeGrad.addColorStop(1, "rgba(255,110,190,0)")
         ctx.globalCompositeOperation = "lighter"
         var step = 2
         for (var ci = 0; ci < 2; ci++) {
             var c = curtainDefs[ci]
-            var stops = ci === 0 ? tealStops : greenStops
             var PI = Math.PI
             for (var x = -10; x < W + 10; x += step) {
                 var u = x / W
@@ -239,18 +182,21 @@ Item {
                     continue
                 var tall = c.h * (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(u * c.hf * PI + t * 0.25 + c.p))) * (0.85 + 0.15 * rays)
                 ctx.globalAlpha = Math.min(1, light) * gain
-                var grad = ctx.createLinearGradient(0, base, 0, base - tall)
-                for (var si = 0; si < stops.length; si++)
-                    grad.addColorStop(stops[si][0], stops[si][1])
-                ctx.fillStyle = grad
-                ctx.fillRect(x, base - tall, 3, tall)
+                // the column is the unit gradient (0,0)-(0,-1) moved to its lower edge and stretched
+                ctx.save()
+                ctx.translate(x, base)
+                ctx.scale(1, tall)
+                ctx.fillStyle = grads[ci]
+                ctx.fillRect(0, -1, 3, 1)
+                ctx.restore()
                 if (c.fringe && light > 0.55) {
                     ctx.globalAlpha = Math.min(1, (light - 0.55) * 1.6) * gain
-                    var fg = ctx.createLinearGradient(0, base - 2, 0, base + 8)
-                    fg.addColorStop(0, "rgba(255,110,190,0.75)")
-                    fg.addColorStop(1, "rgba(255,110,190,0)")
-                    ctx.fillStyle = fg
-                    ctx.fillRect(x, base - 2, 3, 10)
+                    ctx.save()
+                    ctx.translate(x, base - 2)
+                    ctx.scale(1, 10)
+                    ctx.fillStyle = fringeGrad
+                    ctx.fillRect(0, 0, 3, 1)
+                    ctx.restore()
                 }
             }
         }

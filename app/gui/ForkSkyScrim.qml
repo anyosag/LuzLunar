@@ -1,5 +1,6 @@
 // [fork] The frosted band under the header (Main.dc.html 1632, sky-chrome.md 4.11): the sky behind it
 // blurred (18 px) and slightly saturated, tinted, and faded out over its last 30 %. Decorative.
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 

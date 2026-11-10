@@ -1,9 +1,8 @@
 // [fork] The night sky's three details: the Big Dipper, a satellite crossing the top, and a shooting
 // star now and then (Main.dc.html 1257-1297 and 375-444, sky-chrome.md 4.6-4.8). Decorative.
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Shapes
-import QtQuick.Effects
-import ForkTheme
 
 Item {
     id: night

@@ -1,6 +1,7 @@
 // [fork] The sky's star field: the Milky Way and 390 stars on a 1500 x 1500 field that turns about a
 // point above the cards (Main.dc.html 1199-1234, sky-chrome.md 4.2), or, for the All apps page,
 // its 80 still stars (Library.dc.html 617-630, Appendix B.1). Decorative.
+pragma ComponentBehavior: Bound
 import QtQuick
 
 Item {

@@ -3,10 +3,10 @@
 // Dipper, a satellite, shooting stars, a horizon glow, mountains) and a dawn sky in light mode, with a
 // frosted scrim under the header. See spec/sky-chrome.md section 4 and contract-sky.md.
 // One instance, filling the window and painted below everything. Decorative: no input, no focus.
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Window
 import QtQuick.Shapes
-import QtQuick.Effects
 import ForkTheme
 
 Item {
@@ -37,6 +37,7 @@ Item {
     readonly property real fieldScale: Math.max(1, width / 1280, height / 900)
 
     function dumpAurora(prefix) { aurora.dump(prefix) }
+    readonly property real auroraDrawMs: aurora.drawMs
 
     Accessible.ignored: true
     activeFocusOnTab: false
