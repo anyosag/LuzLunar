@@ -134,7 +134,7 @@ Item {
         dragTo = to
         var c = cellCenter(to)
         dragCx = c.x + 10
-        dragCy = c.y - 8
+        dragCy = c.y
         dragPy = dragCy
         dragActive = true
     }

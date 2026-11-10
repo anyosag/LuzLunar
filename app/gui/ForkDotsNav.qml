@@ -1,6 +1,7 @@
 // [fork] "Pick a PC": one chip per PC (and Add a PC) in the PC's own color, the selected one a
 // pill, and, in the autoplay demo, a divider and the Pause demo button (carousel.md §3.9, §5).
 import QtQuick
+import QtQuick.Controls
 import ForkTheme
 
 Item {
@@ -24,7 +25,20 @@ Item {
     property real dragX: 0
     property real _grabDx: 0
     property string _dragName: ""
-    // Each chip's width, by place
+    // The width this row may use. When every chip with its name doesn't fit, the PC chips that
+    // aren't selected shrink to their dot (compact); decided while no drag is going on.
+    property real availableWidth: parent ? parent.width - 128 : 1e9
+    property var fullWidths: []
+    readonly property real fullTotal: {
+        var w = 0
+        for (var i = 0; i < chips.length; i++) w += (fullWidths[i] || 0) + (i > 0 ? 6 : 0)
+        if (showDemo) w += 6 + 13 + 6 + demoBtn.width
+        return w
+    }
+    readonly property bool compactWanted: fullTotal > availableWidth
+    property bool compact: false
+    onCompactWantedChanged: if (dragFrom < 0) compact = compactWanted
+    // Each chip's width, by place (as drawn now)
     property var widths: []
     readonly property int pcChips: Math.max(0, chips.length - 1)
     readonly property real chipsWidth: {
@@ -33,6 +47,12 @@ Item {
         return w
     }
 
+    function setFullWidth(i, w) {
+        if (fullWidths[i] === w) return
+        var a = fullWidths.slice()
+        a[i] = w
+        fullWidths = a
+    }
     function setWidth(i, w) {
         if (widths[i] === w) return
         var a = widths.slice()
@@ -100,6 +120,7 @@ Item {
         dragFrom = -1
         dragTo = -1
         dragActive = false
+        compact = compactWanted
     }
     Timer {
         id: pendingClear
@@ -111,6 +132,8 @@ Item {
         var c = chips[dragTo]
         if (c && c.name === _dragName) clearDrag()
     }
+
+    Component.onCompleted: compact = compactWanted
 
     implicitHeight: 28
     implicitWidth: chipHost.width
@@ -132,7 +155,11 @@ Item {
                 readonly property bool sel: index === nav.current
                 readonly property bool isPc: index < nav.pcChips
                 readonly property bool dragging: nav.dragActive && nav.dragFrom === index
-                width: chipRow.width + 24
+                readonly property bool small: nav.compact && isPc && !sel
+                readonly property real fullW: 39 + Math.min(label.implicitWidth, 160)
+                width: small ? 28 : fullW
+                Behavior on width { enabled: !ForkTheme.reduceMotion; NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: [0.2, 0.8, 0.2, 1, 1, 1] } }
+                onFullWChanged: nav.setFullWidth(index, fullW)
                 height: 28
                 radius: 14
                 x: dragging ? nav.dragX : nav.xOf(index)
@@ -141,7 +168,7 @@ Item {
                 border.width: 1
                 border.color: sel ? ForkTheme.cv.lineStrong : "transparent"
                 onWidthChanged: nav.setWidth(index, width)
-                Component.onCompleted: nav.setWidth(index, width)
+                Component.onCompleted: { nav.setWidth(index, width); nav.setFullWidth(index, fullW) }
                 Behavior on x { enabled: !ForkTheme.reduceMotion && !chip.dragging; NumberAnimation { duration: 220; easing.type: Easing.Bezier; easing.bezierCurve: [0.2, 0.8, 0.2, 1, 1, 1] } }
                 Behavior on color { enabled: !ForkTheme.reduceMotion; ColorAnimation { duration: 250; easing.type: Easing.Bezier; easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1] } }
                 Behavior on border.color { enabled: !ForkTheme.reduceMotion; ColorAnimation { duration: 250; easing.type: Easing.Bezier; easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1] } }
@@ -153,7 +180,7 @@ Item {
 
                 Row {
                     id: chipRow
-                    x: 12
+                    x: chip.small ? (chip.width - width) / 2 : 12
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 7
                     Rectangle {
@@ -163,6 +190,8 @@ Item {
                         Accessible.ignored: true
                     }
                     ForkCanvasText {
+                        id: label
+                        visible: !chip.small
                         anchors.verticalCenter: parent.verticalCenter
                         text: chip.modelData.name
                         px: 12.5
@@ -178,6 +207,10 @@ Item {
                     cursorShape: chip.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                     onClicked: nav.picked(chip.index)
                 }
+                HoverHandler { id: chipHover }
+                ToolTip.visible: chip.small && chipHover.hovered && !chip.dragging
+                ToolTip.text: modelData.name
+                ToolTip.delay: 400
                 // Past the drag threshold the chip follows the pointer; a plain click still picks
                 DragHandler {
                     target: null

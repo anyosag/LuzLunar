@@ -9,6 +9,7 @@ import ForkHostPower // [fork]
 import ForkPcPrefs // [fork]
 
 import "ForkLibraryLaunch.js" as Launch // [fork] the launch screen's summary chips
+import "ForkStoryLines.js" as StoryLines // [fork] the story line's sentences, one per state
 
 import ComputerManager
 import StreamingPreferences
@@ -284,26 +285,13 @@ Item {
     // ---- the story under the title (carousel.md §2.3)
     readonly property var storyLines: {
         var rev = stage.itemsRevision
-        var out = []
+        var pcs = []
         for (var i = 0; i < pcCount; i++) {
             var m = rowOf(i)
             if (!m) continue
-            var st = stateOf(m)
-            var line = { name: m.name, before: "", after: "", dot: ForkTheme.st.green, action: "" }
-            switch (st) {
-            case "streaming":
-                line.before = qsTr("%1 is running on ").arg(appName(m)); line.dot = ForkTheme.st.blue; line.action = qsTr("Resume"); break
-            case "asleep": line.after = qsTr(" is asleep"); line.dot = ForkTheme.st.purple; break
-            case "pair": line.after = qsTr(" is waiting to pair"); line.dot = ForkTheme.st.gold; break
-            case "waking": line.after = qsTr(" is waking up…"); line.dot = ForkTheme.st.amber; break
-            case "off": case "offNoWake": line.after = qsTr(" is shut down"); line.dot = ForkTheme.st.gray; break
-            case "lost": line.before = qsTr("Can’t reach "); line.dot = ForkTheme.st.red; break
-            case "checking": line.before = qsTr("Looking for "); line.after = qsTr("…"); line.dot = ForkTheme.st.gray; break
-            default: line.after = qsTr(" is ready"); break
-            }
-            out.push(line)
+            pcs.push({ index: i, name: m.name, state: stateOf(m), app: appName(m) })
         }
-        return out
+        return StoryLines.build(pcs, ForkTheme.st)
     }
     readonly property var navChips: {
         var rev = stage.itemsRevision
@@ -785,6 +773,13 @@ Item {
                 instant: pcPage.noEntrance
                 onPick: function (i) { pcPage.pick(i) }
                 onAct: function (i) { pcPage.runAction(i, "resume") }
+                // "N PCs": the first of them, or the next one after the PC in front when it's one of them
+                onPickGroup: function (indexes) {
+                    var next = indexes[0]
+                    var at = indexes.indexOf(pcPage.idx)
+                    if (at >= 0) next = indexes[(at + 1) % indexes.length]
+                    pcPage.pick(next)
+                }
             }
 
             ForkStoryRise {

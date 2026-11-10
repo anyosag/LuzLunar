@@ -181,11 +181,11 @@ Column {
                                     }
                                     Item {
                                         id: link
-                                        width: Math.min(nameText.implicitWidth, 200)
+                                        width: Math.ceil(nameText.contentWidth)
                                         height: 22
                                         ForkCanvasText {
                                             id: nameText
-                                            width: link.width
+                                            width: Math.min(implicitWidth, 200)
                                             text: linkRow.modelData.name
                                             elide: Text.ElideRight
                                             px: 14
