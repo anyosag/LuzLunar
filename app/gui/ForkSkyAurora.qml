@@ -35,8 +35,8 @@ Item {
 
     readonly property int bw: Math.max(8, Math.round(skyWidth * quality))
     readonly property int bh: Math.max(8, Math.round(520 * quality))
-    readonly property int gw: Math.max(32, Math.round(skyWidth / 8))
-    readonly property int gh: 64
+    readonly property int gw: Math.max(8, Math.round(skyWidth / 4))
+    readonly property int gh: 130
 
     function paintSprite(cv, stops, h) {
         var g = cv.getContext("2d")
@@ -102,27 +102,38 @@ Item {
         canvasSize: Qt.size(aurora.bw, aurora.bh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
-        onPaint: aurora.drawCurtains(curtains.getContext("2d"))
-        onPainted: glowMid.requestPaint()
+        onPaint: aurora.drawCurtains(curtains.getContext("2d"), aurora.bw, aurora.bh, 1)
+        onPainted: glowA.requestPaint()
     }
 
-    // A small copy, blurred: the glow the curtains cast
+    // The glow the curtains cast: the curtains again at 1/4 size (the canvas's glow bitmap is 320 x 130),
+    // blurred there by a box blur done with shifted copies (Context2D has no blur and no smooth
+    // up-scaling), then blown up 4 times. Each stage is its own canvas: Canvas to Canvas copies work
     Canvas {
-        id: glowMid
+        id: glowA
         width: aurora.gw; height: aurora.gh
         canvasSize: Qt.size(aurora.gw, aurora.gh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
-        onPaint: aurora.drawGlowMid(glowMid.getContext("2d"))
+        onPaint: aurora.drawCurtains(glowA.getContext("2d"), aurora.gw, aurora.gh, 0.75)
+        onPainted: glowH.requestPaint()
+    }
+    Canvas {
+        id: glowH
+        width: aurora.gw; height: aurora.gh
+        canvasSize: Qt.size(aurora.gw, aurora.gh)
+        renderTarget: Canvas.Image
+        renderStrategy: Canvas.Cooperative
+        onPaint: aurora.blurPass(glowH.getContext("2d"), glowA, true)
         onPainted: glow.requestPaint()
     }
     Canvas {
         id: glow
-        width: aurora.gw / 4; height: aurora.gh / 4
-        canvasSize: Qt.size(aurora.gw / 4, aurora.gh / 4)
+        width: aurora.gw; height: aurora.gh
+        canvasSize: Qt.size(aurora.gw, aurora.gh)
         renderTarget: Canvas.Image
         renderStrategy: Canvas.Cooperative
-        onPaint: aurora.drawGlow(glow.getContext("2d"))
+        onPaint: aurora.blurPass(glow.getContext("2d"), glowH, false)
         onPainted: out.requestPaint()
     }
 
@@ -140,6 +151,7 @@ Item {
     function dump(prefix) {
         curtains.save(prefix + "-curtains.png")
         glow.save(prefix + "-glow.png")
+        glowA.save(prefix + "-glowA.png")
         out.save(prefix + "-out.png")
     }
 
@@ -164,12 +176,11 @@ Item {
         { sprite: 1, y: 410, a: [38, 16, 6], f: [3.1, 8.7, 23], s: [0.045, -0.11, 0.3], h: 235, hf: 4.3, g: [5.3, 2.2], strength: 1, fringe: true, p: 0 }
     ]
 
-    function drawCurtains(ctx) {
+    function drawCurtains(ctx, pw, ph, gain) {
         var W = aurora.skyWidth
-        var q = aurora.quality
         ctx.reset()
-        ctx.clearRect(0, 0, aurora.bw, aurora.bh)
-        ctx.scale(aurora.bw / W, aurora.bh / 520)
+        ctx.clearRect(0, 0, pw, ph)
+        ctx.scale(pw / W, ph / 520)
         var t = aurora.time / 1000
         ctx.globalCompositeOperation = "lighter"
         var step = 2
@@ -191,10 +202,10 @@ Item {
                 if (light < 0.03)
                     continue
                 var tall = c.h * (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(u * c.hf * PI + t * 0.25 + c.p))) * (0.85 + 0.15 * rays)
-                ctx.globalAlpha = Math.min(1, light)
+                ctx.globalAlpha = Math.min(1, light) * gain
                 ctx.drawImage(sprite, x, base - tall, 3, tall)
                 if (c.fringe && light > 0.55) {
-                    ctx.globalAlpha = Math.min(1, (light - 0.55) * 1.6)
+                    ctx.globalAlpha = Math.min(1, (light - 0.55) * 1.6) * gain
                     ctx.drawImage(spriteFringe, x, base - 2, 3, 10)
                 }
             }
@@ -203,17 +214,18 @@ Item {
         ctx.globalCompositeOperation = "source-over"
     }
 
-    // The glow: a 1/8 size copy, then a 1/32 size copy of that (area averaging), blown up again with
-    // linear filtering: together about the canvas's 16 px Gaussian, with no per-pixel work in JS
-    function drawGlowMid(ctx) {
+    // A box blur of the previous stage along one axis: 13 shifted copies averaged by running mean
+    function blurPass(ctx, src, horizontal) {
         ctx.reset()
         ctx.globalCompositeOperation = "copy"
-        ctx.drawImage(curtains, 0, 0, aurora.bw, aurora.bh, 0, 0, aurora.gw, aurora.gh)
-    }
-    function drawGlow(ctx) {
-        ctx.reset()
-        ctx.globalCompositeOperation = "copy"
-        ctx.drawImage(glowMid, 0, 0, aurora.gw, aurora.gh, 0, 0, aurora.gw / 4, aurora.gh / 4)
+        ctx.drawImage(src, -6 * (horizontal ? 1 : 0), -6 * (horizontal ? 0 : 1))
+        ctx.globalCompositeOperation = "source-over"
+        for (var i = 1; i < 13; i++) {
+            ctx.globalAlpha = 1 / (i + 1)
+            var o = i - 6
+            ctx.drawImage(src, horizontal ? o : 0, horizontal ? 0 : o)
+        }
+        ctx.globalAlpha = 1
     }
 
     function drawOut(ctx) {
@@ -227,7 +239,7 @@ Item {
         ctx.fillRect(0, 0, bw, bh)
         ctx.globalCompositeOperation = "qt-screen"
         ctx.globalAlpha = 0.85
-        ctx.drawImage(glow, 0, 0, aurora.gw / 4, aurora.gh / 4, 0, 0, bw, bh)
+        ctx.drawImage(glow, 0, 0, aurora.gw, aurora.gh, 0, 0, bw, bh)
         ctx.globalAlpha = 0.92
         ctx.drawImage(curtains, 0, 0, bw, bh, 0, 0, bw, bh)
         ctx.globalAlpha = 1

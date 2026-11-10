@@ -8,7 +8,7 @@ import QtQuick
 import ForkTheme
 
 Item {
-    id: stage
+    id: stageRoot
 
     property var pcModel: null
     property Component pcCard
@@ -102,26 +102,26 @@ Item {
 
     Repeater {
         id: pcRepeater
-        model: stage.pcModel
-        onItemAdded: stage.itemsRevision++
-        onItemRemoved: stage.itemsRevision++
+        model: stageRoot.pcModel
+        onItemAdded: stageRoot.itemsRevision++
+        onItemRemoved: stageRoot.itemsRevision++
         delegate: ForkPcStageSlot {
             required property var model
             required property int index
-            stage: stage
+            stage: stageRoot
             slotIndex: index
             slotName: model.name
             rowModel: model
-            sourceComponent: stage.pcCard
+            sourceComponent: stageRoot.pcCard
         }
     }
     ForkPcStageSlot {
         id: addSlot
-        stage: stage
-        slotIndex: stage.pcCount
+        stage: stageRoot
+        slotIndex: stageRoot.pcCount
         isAdd: true
         slotName: qsTr("Add a PC")
-        sourceComponent: stage.addCard
+        sourceComponent: stageRoot.addCard
     }
 
     // Prev / next arrows (carousel only)
@@ -130,20 +130,20 @@ Item {
         delegate: Rectangle {
             id: arrow
             required property int index
-            readonly property bool left: index === 0
-            readonly property bool disabled: !stage.loop && (left ? stage.index <= 0 : stage.index >= stage.n - 1)
-            visible: !stage.grid
+            readonly property bool isPrev: index === 0
+            readonly property bool disabled: !stageRoot.loop && (isPrev ? stageRoot.index <= 0 : stageRoot.index >= stageRoot.n - 1)
+            visible: !stageRoot.grid
             z: 20
             y: 258
-            x: left ? 24 : stage.width - 24 - 40
+            x: isPrev ? 24 : stageRoot.width - 24 - 40
             width: 40; height: 40; radius: 20
             color: ForkTheme.dark ? Qt.rgba(30 / 255, 34 / 255, 48 / 255, 0.92) : Qt.rgba(1, 1, 1, 0.95)
             border.width: 1
             border.color: ForkTheme.cv.line
             opacity: disabled ? 0.35 : 1
             Accessible.role: Accessible.Button
-            Accessible.name: left ? qsTr("Previous PC") : qsTr("Next PC")
-            Accessible.onPressAction: if (!disabled) stage.step(left ? -1 : 1)
+            Accessible.name: isPrev ? qsTr("Previous PC") : qsTr("Next PC")
+            Accessible.onPressAction: if (!disabled) stageRoot.step(isPrev ? -1 : 1)
 
             Rectangle {
                 z: -1
@@ -158,13 +158,13 @@ Item {
                 size: 18
                 strokeWidth: 2.2
                 color: ForkTheme.cv.text
-                name: arrow.left ? "chevronLeft" : "chevronRight"
+                name: arrow.isPrev ? "chevronLeft" : "chevronRight"
             }
             MouseArea {
                 anchors.fill: parent
                 enabled: !arrow.disabled
                 cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: stage.step(arrow.left ? -1 : 1)
+                onClicked: stageRoot.step(arrow.isPrev ? -1 : 1)
             }
         }
     }

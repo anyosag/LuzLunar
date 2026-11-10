@@ -24,8 +24,9 @@ var ICONS = {
     plus: "M12 4.5v15M4.5 12h15"
 }
 
-// The state ids: ready streaming waking asleep offCanWake offNoWake notPaired unreachable
-var STATES = ["ready", "streaming", "waking", "asleep", "offCanWake", "offNoWake", "notPaired", "unreachable"]
+// The state ids: ready streaming waking asleep offCanWake offNoWake notPaired unreachable checking
+// (checking is not on the canvas: a PC that has not answered since launch, drawn neutral)
+var STATES = ["ready", "streaming", "waking", "asleep", "offCanWake", "offNoWake", "notPaired", "unreachable", "checking"]
 
 // The model's short state names (contract-data) to the card's
 var ALIASES = { off: "offCanWake", offNoWake: "offNoWake", pair: "notPaired", lost: "unreachable" }
@@ -57,7 +58,8 @@ function tint(state, dark, big) {
     case "waking": return rgba(255, 179, 64, a)
     case "asleep": return rgba(193, 125, 245, a)
     case "offCanWake":
-    case "offNoWake": return dark ? rgba(255, 255, 255, 0.06) : rgba(0, 0, 0, 0.05)
+    case "offNoWake":
+    case "checking": return dark ? rgba(255, 255, 255, 0.06) : rgba(0, 0, 0, 0.05)
     case "notPaired":
         if (big) return dark ? rgba(245, 200, 120, 0.12) : rgba(168, 114, 15, 0.09)
         return rgba(245, 200, 120, a)
@@ -84,13 +86,14 @@ var DISCS = {
     offCanWake: { disc: "#636366", ink: "#FFFFFF", glyph: "power", fill: false },
     offNoWake: { disc: "#636366", ink: "#FFFFFF", glyph: "power", fill: false },
     notPaired: { disc: "#F5C878", ink: "#1A1405", glyph: "lock", fill: false },
-    unreachable: { disc: "#C62828", ink: "#FFFFFF", glyph: "noWifi", fill: false }
+    unreachable: { disc: "#C62828", ink: "#FFFFFF", glyph: "noWifi", fill: false },
+    checking: { disc: "#636366", ink: "#FFFFFF", glyph: "spinner", fill: false }
 }
 
 // Which moon the header draws: live (the lit crescent), waking, asleep, off (plain ring), pair, lost
 var MOONS = {
     ready: "live", streaming: "live", waking: "waking", asleep: "asleep", offCanWake: "off",
-    offNoWake: "off", notPaired: "pair", unreachable: "lost"
+    offNoWake: "off", notPaired: "pair", unreachable: "lost", checking: "off"
 }
 
 function join(parts) {
@@ -214,6 +217,11 @@ function describe(p) {
         out.chips.push({ label: "Last seen at home", icon: "cable", colorKey: "text2" })
         out.primary = { id: "testNetwork", label: "Test Network", icon: "wifi", fill: false, quietLook: true }
         break
+    case "checking":
+        out.title = "Looking for " + p.name + "\u2026"; out.sub = "LuzLunar is checking where it is on your network."
+        out.label = ""; out.labelKey = ""
+        out.primary = { id: "", label: "Checking\u2026", icon: "spinner", fill: false, disabled: true }
+        break
     }
     return out
 }
@@ -273,6 +281,11 @@ function describeSmall(p) {
         o.headline = "Can’t reach it"; o.sub = "Not on this network, or Apollo isn’t running."
         o.chip = { label: "Last seen at home", icon: "cable", colorKey: "text2" }
         o.action = { id: "testNetwork", label: "Test Network", icon: "wifi", fill: false, quietLook: true }
+        break
+    case "checking":
+        o.headline = "Looking for " + p.name + "\u2026"; o.sub = "LuzLunar is checking where it is on your network."
+        o.chip = null
+        o.action = { id: "", label: "Checking\u2026", icon: "spinner", fill: false, disabled: true }
         break
     }
     return o

@@ -698,8 +698,8 @@ Item {
                     id: pill
                     anchors.right: parent.right
                     y: moon.height + 10
-                    active: StreamingPreferences.enableMdns
-                    text: StreamingPreferences.enableMdns ? qsTr("Looking for PCs on your network") : qsTr("Automatic discovery is off")
+                    active: !!StreamingPreferences.enableMdns
+                    text: !!StreamingPreferences.enableMdns ? qsTr("Looking for PCs on your network") : qsTr("Automatic discovery is off")
                 }
             }
         }
@@ -838,7 +838,7 @@ Item {
         anchors.fill: parent
         active: pcPage.showFirstRun
         sourceComponent: ForkFirstRun {
-            discovering: StreamingPreferences.enableMdns
+            discovering: !!StreamingPreferences.enableMdns
             onAdded: pcPage.forkLastAdded = address
         }
     }

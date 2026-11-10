@@ -82,7 +82,7 @@ Item {
     // The moon, lit on the left, with a soft halo that breathes (the box stays dark inside)
     Item {
         id: liveMoon
-        visible: band.live && x + 54 < status.x - 8
+        visible: band.live && x + 54 < statusBox.x - 8
         x: 496
         y: 26
         width: 54
@@ -119,7 +119,7 @@ Item {
 
     // Asleep: a crescent rising over the band's bottom edge, bobbing, and Zs drifting up from it
     Item {
-        visible: band.asleep && x + 76 < status.x
+        visible: band.asleep && x + 76 < statusBox.x
         x: 486
         y: band.ph ? 74 : 70
         width: 76
@@ -152,7 +152,7 @@ Item {
             readonly property int zp: (band.tick + index) % 3
             x: 548 + zp * 8
             y: 72 - zp * 12
-            visible: x < status.x
+            visible: x < statusBox.x
             text: "z"
             color: Qt.rgba(1, 1, 1, 0.8)
             px: 11
@@ -221,7 +221,7 @@ Item {
         id: names
         x: 104
         y: (band.height - height) / 2
-        width: Math.max(80, Math.min(360, status.x - 18 - 104))
+        width: Math.max(80, Math.min(360, statusBox.x - 18 - 104))
         height: 81
         entered: band.entered
         settled: band.settled
@@ -328,7 +328,7 @@ Item {
 
     // What the PC is doing: running an app, ready, or asleep
     ForkLibraryEnter {
-        id: status
+        id: statusBox
         x: band.width - 18 - width
         y: 16
         width: 1 + 10 + statusRow.implicitWidth + 12 + 1

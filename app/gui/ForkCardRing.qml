@@ -16,8 +16,9 @@ Item {
 
     Shape {
         anchors.fill: parent
-        preferredRendererType: Shape.CurveRenderer
+        preferredRendererType: ring.dashed ? Shape.GeometryRenderer : Shape.CurveRenderer
         ShapePath {
+            id: sp
             readonly property real r: (ring.size - 1) / 2
             strokeColor: ring.color
             strokeWidth: 1
@@ -25,9 +26,9 @@ Item {
             strokeStyle: ring.dashed ? ShapePath.DashLine : ShapePath.SolidLine
             dashPattern: [3, 1.9]
             PathSvg {
-                path: "M " + (ring.size / 2 + parent.r) + " " + ring.size / 2
-                      + " A " + parent.r + " " + parent.r + " 0 1 1 " + (ring.size / 2 - parent.r) + " " + ring.size / 2
-                      + " A " + parent.r + " " + parent.r + " 0 1 1 " + (ring.size / 2 + parent.r) + " " + ring.size / 2 + " Z"
+                path: "M " + (ring.size / 2 + sp.r) + " " + ring.size / 2
+                      + " A " + sp.r + " " + sp.r + " 0 1 1 " + (ring.size / 2 - sp.r) + " " + ring.size / 2
+                      + " A " + sp.r + " " + sp.r + " 0 1 1 " + (ring.size / 2 + sp.r) + " " + ring.size / 2 + " Z"
             }
         }
     }

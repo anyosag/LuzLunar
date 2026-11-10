@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects // [fork] MultiEffect and RectangularShadow, for the panel's corners and shadows
-import QtQuick.Layouts // [fork] The grid, whose rows grow with their tallest tile
 import QtQml // [fork] Instantiator, to count the hidden apps
 // [fork] No explicit Material import: it would override the native macOS style set in main.cpp
 
@@ -727,6 +726,33 @@ FocusScope {
 
     // ---- Keyboard and gamepad ---------------------------------------------------------------
 
+    // The grid: tiles in rows of forkColumns, 20 apart across and 26 down; a row is as tall as its
+    // tallest tile (a manual layout, since Layouts round to whole points)
+    function forkQueueLayout() {
+        Qt.callLater(forkRelayout)
+    }
+
+    function forkRelayout() {
+        var list = forkTileItems()
+        var cols = forkColumns
+        var y = 0
+        for (var r = 0; r * cols < list.length; r++) {
+            var h = 0
+            for (var c = 0; c < cols && r * cols + c < list.length; c++) {
+                var item = list[r * cols + c]
+                item.gx = c * (forkTileWidth + 20)
+                item.gy = y
+                item.column = c
+                h = Math.max(h, item.implicitHeight)
+            }
+            y += h + 26
+        }
+        grid.height = Math.max(0, y - 26)
+    }
+
+    onForkColumnsChanged: forkQueueLayout()
+    onForkTileWidthChanged: forkQueueLayout()
+
     function forkTileItems() {
         var list = []
         for (var i = 0; i < tiles.count; i++) {
@@ -1080,13 +1106,10 @@ FocusScope {
                     Item { width: 1; height: 18 }
 
                     // The grid: rows are as tall as their tallest tile
-                    GridLayout {
+                    Item {
                         id: grid
                         width: parent.width
                         visible: appGrid.forkListCount > 0
-                        columns: appGrid.forkColumns
-                        columnSpacing: 20
-                        rowSpacing: 26
 
                         Repeater {
                             id: tiles
@@ -1104,11 +1127,15 @@ FocusScope {
 
                                 visible: !appGrid.forkSample || appGrid.forkSampleMatches(model.name, !!model.hidden)
                                 enabled: appGrid.forkMenuId < 0 || isMenu
-                                Layout.alignment: Qt.AlignTop
-                                Layout.preferredWidth: appGrid.forkTileWidth
-                                Layout.minimumWidth: appGrid.forkTileWidth
-                                Layout.maximumWidth: appGrid.forkTileWidth
+                                property real gx: 0
+                                property real gy: 0
+                                x: gx
+                                y: gy
+                                width: appGrid.forkTileWidth
                                 column: index % appGrid.forkColumns
+                                onImplicitHeightChanged: appGrid.forkQueueLayout()
+                                onVisibleChanged: appGrid.forkQueueLayout()
+                                Component.onCompleted: appGrid.forkQueueLayout()
 
                                 pcFill: appGrid.forkFill
                                 pcOnFill: appGrid.forkOnFill
