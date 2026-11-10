@@ -6,9 +6,11 @@
 #include "fork/mac/networklink.h"
 
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #include <net/if_media.h>
+#include <unistd.h>
 
 using ForkLinkRules::Kind;
 
@@ -28,6 +30,43 @@ static void show(const char* what, const MacNetworkLink::Probe& probe)
                 probe.interfaceName.empty() ? "(none)" : probe.interfaceName.c_str(),
                 ForkLinkRules::badge(probe.link, false).c_str(), probe.onLink ? "yes" : "no",
                 probe.networkId.empty() ? "(none)" : "known");
+}
+
+// The route macOS itself has to an address, as route(8) reads it from the routing table: like the
+// probe, it sends nothing
+struct SystemRoute {
+    bool read = false;          // route answered: an interface, or "not in table"
+    std::string interfaceName;  // empty when there's no route
+    std::string output;         // what route printed
+
+    bool operator==(const SystemRoute& other) const { return read == other.read && interfaceName == other.interfaceName; }
+};
+
+static SystemRoute systemRoute(const char* address)
+{
+    SystemRoute route;
+    FILE* pipe = popen((std::string("/sbin/route -n get ") + address + " 2>&1").c_str(), "r");
+    if (pipe == nullptr) {
+        return route;
+    }
+    bool notInTable = false;
+    char line[256];
+    while (std::fgets(line, sizeof(line), pipe) != nullptr) {
+        route.output += line;
+        char name[64];
+        if (std::sscanf(line, " interface: %63s", name) == 1) {
+            route.interfaceName = name;
+        }
+        notInTable = notInTable || std::strstr(line, "not in table") != nullptr;
+    }
+    // route get exits 0 with or without a route
+    route.read = pclose(pipe) == 0 && (route.interfaceName.empty() ? notInTable : !notInTable);
+    return route;
+}
+
+static std::string describe(const SystemRoute& route)
+{
+    return !route.read ? std::string("unreadable") : route.interfaceName.empty() ? std::string("no route") : route.interfaceName;
 }
 
 int main()
@@ -56,12 +95,42 @@ int main()
     CHECK(MacNetworkLink::numericAddress("").empty());
     CHECK(MacNetworkLink::numericAddress("no-such-host.invalid").empty());
 
-    // The route to a public address: an interface this Mac has, not on its LAN
-    MacNetworkLink::Probe internet = MacNetworkLink::probe("1.1.1.1");
+    // The route to a public address: the interface macOS routes it through, not on its LAN. The CI
+    // Mac can be briefly offline, with no IPv4 route to the internet; then the probe finds none
+    // either. macOS's own route (route -n get) is read before and after the probe, which runs again
+    // if the network changed in between.
+    SystemRoute route, routeAfter;
+    MacNetworkLink::Probe internet;
+    for (int attempt = 1;; attempt++) {
+        route = systemRoute("1.1.1.1");
+        internet = MacNetworkLink::probe("1.1.1.1");
+        routeAfter = systemRoute("1.1.1.1");
+        if (routeAfter == route || attempt == 5) {
+            break;
+        }
+        std::printf("1.1.1.1: the route changed during the probe (%s, then %s); probing again\n",
+                    describe(route).c_str(), describe(routeAfter).c_str());
+        sleep(1);
+    }
     show("1.1.1.1", internet);
-    CHECK(!internet.interfaceName.empty());
-    CHECK(internet.link.kind != Kind::Unknown);
-    CHECK(!internet.onLink);
+    CHECK(routeAfter == route);     // the network held still for one of five probes
+    CHECK(route.read);
+    if (!route.read) {
+        std::printf("route -n get 1.1.1.1 printed:\n%s", route.output.c_str());
+    }
+    else if (!route.interfaceName.empty()) {
+        std::printf("1.1.1.1: macOS routes it through %s (route -n get)\n", route.interfaceName.c_str());
+        CHECK(internet.interfaceName == route.interfaceName);
+        CHECK(internet.link.kind != Kind::Unknown);
+        CHECK(!internet.onLink);
+    }
+    else {
+        std::printf("1.1.1.1: this Mac has no IPv4 route to the internet (route -n get: not in table), so the "
+                    "online-only checks ran in their offline form\n");
+        CHECK(internet.interfaceName.empty());
+        CHECK(internet.link.kind == Kind::Unknown);
+        CHECK(!internet.onLink);
+    }
 
     // Loopback is on-link, with no router
     MacNetworkLink::Probe loopback = MacNetworkLink::probe("127.0.0.1");
