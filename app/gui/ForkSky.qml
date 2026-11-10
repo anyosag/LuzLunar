@@ -21,6 +21,8 @@ Item {
     // The header and footer heights: the scrim starts under the header, the mountains stand on the footer
     property real headerHeight: 52
     property real footerHeight: 36
+    // the aurora's renderer: "auto" (GPU shaders, Canvas in software rendering), "gpu" or "canvas"
+    property string auroraMode: "auto"
 
     // False when the window isn't visible or active, under Reduce Motion, in still mode, or with no sky
     readonly property bool running: variant !== "none" && !still && !ForkTheme.reduceMotion
@@ -85,6 +87,7 @@ Item {
         ForkSkyAurora {
             id: aurora
             visible: root.night
+            mode: root.auroraMode
             active: root.night && (root.running || root.still || ForkTheme.reduceMotion)
             skyWidth: root.width
             skyHeight: root.height
