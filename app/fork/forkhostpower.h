@@ -107,7 +107,6 @@ private:
         WakeSetupRules::Status wake;
         int wakeInFlight = 0;
         qint64 wakeSentAtMs = 0;    // when Wake PC was sent, until the PC is online
-        bool lastOff = false;       // the request in flight shuts the PC down (not sleep), for ForkPcPrefs
     };
 
     struct Answer {
@@ -131,7 +130,7 @@ private:
     Names names(const QString& uuid) const;
 
     void onStatus(const QString& uuid, const Answer& answer);
-    void onSlept(const QString& uuid, bool ok, const QString& text, const Answer& status);
+    void onSlept(const QString& uuid, bool ok, const QString& text, const Answer& status, bool off);
     void onWakeStatus(const QString& uuid, const Answer& answer);
 
     static WakeSetupRules::Status parseWake(const QVariantMap& json);

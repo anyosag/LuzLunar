@@ -141,7 +141,7 @@ QtObject {
         { "1b6-pcs-grid", "stackView.currentItem.forkCloseMenu(); stackView.currentItem.forkSetViewMode('grid')", 1500 },
         // The Customize sheet, from the menu's action
         { nullptr, "stackView.currentItem.forkSetViewMode('carousel')", 1300 },
-        { "1b7-customize", "stackView.currentItem.runAction(0, 'customize')", 1000 },
+        { "1b7-customize", "stackView.currentItem.forkOpenCustomize(0)", 1000 },
         { nullptr, P "var d = p.data; for (var i = 0; i < d.length; i++) if (d[i] && d[i].opened === true && typeof d[i].close === 'function') d[i].close()", 600 },
         // The other card states on the focused card (streaming, asleep and not paired are above)
         { "1b-pcs-state-ready", P "setRow(p.forkSampleModel, 0, 'ready')", 1000, "harnessSamples" },

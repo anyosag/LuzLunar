@@ -19,7 +19,9 @@ namespace PcCardRules
     //   off        this Mac shut it down and Wake PC can turn it on (the canvas's "Off, can turn on")
     //   offNoWake  this Mac shut it down and wake from off isn't set up
     //   pair       reachable, not paired
-    //   lost       away and can't be woken, or the wake got no answer
+    //   lost       away, and Wake PC can't help: never paired from this Mac, or no MAC address known.
+    //              (A wake that got no answer, or a PC last seen over the internet, is still "asleep":
+    //              Wake PC stays available, as it is today.)
     //   checking   not polled yet
     struct Inputs {
         bool online = false;            // NvComputer::state == CS_ONLINE
@@ -29,11 +31,9 @@ namespace PcCardRules
         bool running = false;           // online and currentGameId != 0
         bool wakeable = false;          // a MAC address is known
         bool waking = false;            // Wake PC sent from this Mac less than k_WakeWaitSecs ago, no answer yet
-        bool wakeTimedOut = false;      // the last Wake PC got no answer in k_WakeWaitSecs, and the PC hasn't answered since
         std::string powerAction;        // "sleep" or "off": this Mac's last accepted request, since the PC was last online
         long long powerActionAgeSecs = -1;  // how long ago; -1 unknown
         std::string wakeFromOff;        // Apollo's fromOff: ready, fixable, blocked, unknown; "" never told
-        bool atHome = true;             // the PC is on the network this Mac last saw it on (or that isn't known yet)
     };
 
     // How long Wake PC waits for the PC to answer
@@ -68,7 +68,7 @@ namespace PcCardRules
         if (in.unknown) {
             return "checking";
         }
-        if (!in.knownPaired || !in.wakeable || in.wakeTimedOut || !in.atHome) {
+        if (!in.knownPaired || !in.wakeable) {
             return "lost";
         }
         return downState(in);

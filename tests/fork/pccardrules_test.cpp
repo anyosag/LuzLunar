@@ -51,7 +51,6 @@ static void testOnline()
     // Online beats a stale waking flag
     in = onlinePaired();
     in.waking = true;
-    in.wakeTimedOut = true;
     CHECK(state(in) == "ready");
 }
 
@@ -110,13 +109,10 @@ static void testLost()
     in.wakeable = false;                          // no MAC: Wake PC can't reach it
     CHECK(state(in) == "lost");
 
+    // Wake PC stays available: neither a wake that got no answer nor an unknown home network
+    // (a PC last seen over the internet) hides it. Such a PC is asleep, with a MAC to wake it by.
     in = awayPaired();
-    in.wakeTimedOut = true;
-    CHECK(state(in) == "lost");
-
-    in = awayPaired();
-    in.atHome = false;
-    CHECK(state(in) == "lost");
+    CHECK(state(in) == "asleep");
 
     // Never paired from this Mac and away
     in = awayPaired();
@@ -139,8 +135,6 @@ static void testWakingAndChecking()
 
     // Waking shows even when the PC would otherwise be lost: it's what the person just did
     in.wakeable = false;
-    CHECK(state(in) == "waking");
-    in.wakeTimedOut = true;
     CHECK(state(in) == "waking");
 
     // Not polled yet
