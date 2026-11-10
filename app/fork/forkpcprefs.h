@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QVariantMap>
 
@@ -69,6 +70,11 @@ public:
     // Removes everything kept about the PC (it was removed from LuzLunar)
     Q_INVOKABLE void forget(const QString& uuid);
 
+    // The PC is present again (it answered): a color is stored for it on the next read, even if it
+    // was forgotten before. Until then colorKey() of a forgotten uuid stores nothing, so a view that
+    // still shows the removed PC can't bring its settings back.
+    void adopt(const QString& uuid);
+
     // --- Remembered for the cards of PCs that are away (ComputerModel writes them) ---
 
     // When the PC was last online (seconds since 1970 UTC, 0 never) and through which address:
@@ -105,12 +111,22 @@ public:
 
     // Wake PC was sent from this Mac (memory only): the card says "Waking…" until the PC answers
     // or k_WakeWaitSecs pass
+    // The mark ends when the PC answers (clearWakeSent), or after k_WakeWaitSecs: then wakeTimedOut(uuid)
+    // is emitted once and isWakeTimedOut() is true until the PC answers or Wake PC is sent again.
+    // Only for a PC that isn't online: the caller checks.
     void noteWakeSent(const QString& uuid);
     void clearWakeSent(const QString& uuid);
     qint64 wakeSentSecs(const QString& uuid) const;        // 0 none
+    bool isWakeTimedOut(const QString& uuid) const;
 
 signals:
     void pcsViewChanged();
+
+    // The PC kept first changed, so the order of the PCs may have: models re-read the list
+    void orderChanged();
+
+    // Wake PC got no answer in time (once per Wake PC)
+    void wakeTimedOut(QString uuid);
 
     // Something about this PC changed (ComputerModel and the dialogs listen)
     void changed(QString uuid);
@@ -121,10 +137,17 @@ private:
     static bool validUuid(const QString& uuid);
     static QString key(const QString& uuid, const QString& name);
     QVariant read(const QString& uuid, const QString& name) const;
+    QVariantMap& group(const QString& uuid) const;
+    void onWakeDeadline(const QString& uuid, qint64 sentAt);
     void write(const QString& uuid, const QString& name, const QVariant& value, bool notify = true);
     void bump(const QString& uuid);
 
     int m_Revision = 0;
     QString m_PcsView;      // loaded on first use
     QHash<QString, qint64> m_WakeSent;
+    QSet<QString> m_WakeTimedOut;
+    QSet<QString> m_Forgotten;
+
+    // Every value read once, written through (QSettings on macOS is a CFPreferences call per read)
+    mutable QHash<QString, QVariantMap> m_Cache;
 };

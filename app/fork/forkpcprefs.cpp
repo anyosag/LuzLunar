@@ -1,6 +1,8 @@
 #include "forkpcprefs.h"
 #include "pccardrules.h"
 
+#include <QTimer>
+
 #include <QDateTime>
 #include <QMutex>
 #include <QMutexLocker>
@@ -154,12 +156,28 @@ QString ForkPcPrefs::key(const QString& uuid, const QString& name)
     return QStringLiteral("fork/pcs/") + uuid + QLatin1Char('/') + name;
 }
 
+QVariantMap& ForkPcPrefs::group(const QString& uuid) const
+{
+    auto it = m_Cache.find(uuid);
+    if (it == m_Cache.end()) {
+        QVariantMap values;
+        QSettings& s = settings();
+        s.beginGroup(QStringLiteral("fork/pcs/") + uuid);
+        for (const QString& name : s.allKeys()) {
+            values.insert(name, s.value(name));
+        }
+        s.endGroup();
+        it = m_Cache.insert(uuid, values);
+    }
+    return it.value();
+}
+
 QVariant ForkPcPrefs::read(const QString& uuid, const QString& name) const
 {
     if (!validUuid(uuid)) {
         return QVariant();
     }
-    return settings().value(key(uuid, name));
+    return group(uuid).value(name);
 }
 
 void ForkPcPrefs::write(const QString& uuid, const QString& name, const QVariant& value, bool notify)
@@ -167,9 +185,12 @@ void ForkPcPrefs::write(const QString& uuid, const QString& name, const QVariant
     if (!validUuid(uuid)) {
         return;
     }
+    QVariantMap& values = group(uuid);
     if (value.isNull() || (value.typeId() == QMetaType::QString && value.toString().isEmpty())) {
+        values.remove(name);
         settings().remove(key(uuid, name));
     } else {
+        values.insert(name, value);
         settings().setValue(key(uuid, name), value);
     }
     if (notify) {
@@ -206,7 +227,9 @@ QString ForkPcPrefs::colorKey(const QString& uuid)
     }
     s.endGroup();
     const QString next = QString::fromStdString(PcCardRules::nextColor(used));
-    write(uuid, QStringLiteral("color"), next, false);   // silent: reading a PC's color changes nothing for others
+    if (!m_Forgotten.contains(uuid)) {
+        write(uuid, QStringLiteral("color"), next, false);   // silent: reading a PC's color changes nothing for others
+    }
     return next;
 }
 
@@ -215,6 +238,7 @@ void ForkPcPrefs::setColorKey(const QString& uuid, const QString& color)
     if (!PcCardRules::isColor(color.toStdString())) {
         return;
     }
+    m_Forgotten.remove(uuid);
     write(uuid, QStringLiteral("color"), color);
 }
 
@@ -234,12 +258,14 @@ void ForkPcPrefs::setKeepFirst(const QString& uuid, bool on)
             return;
         }
         storeFirstPc(uuid);
+        emit orderChanged();
         if (!previous.isEmpty()) {
             bump(previous);
         }
         bump(uuid);
     } else if (previous == uuid) {
         storeFirstPc(QString());
+        emit orderChanged();
         bump(uuid);
     }
 }
@@ -267,11 +293,23 @@ void ForkPcPrefs::forget(const QString& uuid)
         return;
     }
     settings().remove(QStringLiteral("fork/pcs/") + uuid);
+    m_Cache.remove(uuid);
     m_WakeSent.remove(uuid);
-    if (loadFirstPc() == uuid) {
+    m_WakeTimedOut.remove(uuid);
+    m_Forgotten.insert(uuid);
+    const bool wasFirst = loadFirstPc() == uuid;
+    if (wasFirst) {
         storeFirstPc(QString());
     }
     bump(uuid);
+    if (wasFirst) {
+        emit orderChanged();
+    }
+}
+
+void ForkPcPrefs::adopt(const QString& uuid)
+{
+    m_Forgotten.remove(uuid);
 }
 
 qint64 ForkPcPrefs::lastSeenSecs(const QString& uuid) const
@@ -416,13 +454,31 @@ void ForkPcPrefs::noteWakeSent(const QString& uuid)
     if (!validUuid(uuid)) {
         return;
     }
-    m_WakeSent.insert(uuid, QDateTime::currentSecsSinceEpoch());
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    m_WakeSent.insert(uuid, now);
+    m_WakeTimedOut.remove(uuid);
+    QTimer::singleShot((PcCardRules::k_WakeWaitSecs + 1) * 1000, this, [this, uuid, now]() { onWakeDeadline(uuid, now); });
     bump(uuid);
+}
+
+// Wake PC got no answer: the mark ends, so the card goes back to what the poll says (Wake PC stays
+// available), and whoever wants to tell the person hears it once
+void ForkPcPrefs::onWakeDeadline(const QString& uuid, qint64 sentAt)
+{
+    if (m_WakeSent.value(uuid, 0) != sentAt) {
+        return;     // answered, or sent again since
+    }
+    m_WakeSent.remove(uuid);
+    m_WakeTimedOut.insert(uuid);
+    bump(uuid);
+    emit wakeTimedOut(uuid);
 }
 
 void ForkPcPrefs::clearWakeSent(const QString& uuid)
 {
-    if (m_WakeSent.remove(uuid) > 0) {
+    const bool had = m_WakeSent.remove(uuid) > 0;
+    const bool timedOut = m_WakeTimedOut.remove(uuid);
+    if (had || timedOut) {
         bump(uuid);
     }
 }
@@ -430,4 +486,9 @@ void ForkPcPrefs::clearWakeSent(const QString& uuid)
 qint64 ForkPcPrefs::wakeSentSecs(const QString& uuid) const
 {
     return m_WakeSent.value(uuid, 0);
+}
+
+bool ForkPcPrefs::isWakeTimedOut(const QString& uuid) const
+{
+    return m_WakeTimedOut.contains(uuid);
 }
