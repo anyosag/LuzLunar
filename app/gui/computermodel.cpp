@@ -3,6 +3,8 @@
 #include "fork/forkhostupdates.h" // [fork]
 #include "fork/forkmultidisplay.h" // [fork]
 #include "fork/forkpcprefs.h" // [fork]
+#include "fork/forkpcprobe.h" // [fork]
+#include "fork/clienthardware.h" // [fork]
 #include "fork/pccardrules.h" // [fork]
 #include "fork/streamprofiles.h" // [fork]
 
@@ -30,25 +32,21 @@ void ComputerModel::initialize(ComputerManager* computerManager)
     m_Computers = m_ComputerManager->getComputers();
 
     // [fork] The card's roles also depend on what this Mac remembers about each PC and on what
-    // Apollo told ForkHostPower and ForkHostUpdates, so those changes refresh the rows
+    // Apollo told ForkHostPower and ForkHostUpdates, so those changes refresh the rows. What is
+    // remembered about a PC coming and going, and the latency, is ForkPcProbe's (one for the process).
     connect(ForkPcPrefs::get(), &ForkPcPrefs::changed, this, &ComputerModel::forkHandlePrefsChanged);
+    connect(ForkPcPrefs::get(), &ForkPcPrefs::orderChanged, this, &ComputerModel::forkHandleOrderChanged);
     connect(ForkHostPower::get(), &ForkHostPower::changed, this, &ComputerModel::forkHandleHostInfoChanged);
     connect(ForkHostUpdates::get(), &ForkHostUpdates::changed, this, &ComputerModel::forkHandleHostInfoChanged);
     connect(&m_ForkBoxArt, &BoxArtManager::boxArtLoadComplete, this, &ComputerModel::forkHandleBoxArtLoaded);
-    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &ComputerModel::forkWriteLastSeen);
+    connect(ForkPcProbe::get(), &ForkPcProbe::latencyChanged, this, &ComputerModel::forkHandleLatency);
+    // The multi-display app comes and goes with the Mac's displays: preview, counts and main app change
+    connect(ClientHardware::get(), &ClientHardware::changed, this, &ComputerModel::forkRefreshAll);
 
+    ForkPcProbe::get()->attach(m_ComputerManager);
     for (NvComputer* computer : m_Computers) {
-        forkNoteTransitions(computer);
-    }
-
-    // The latency chip: how fast each online PC answers, measured every 10 s while the app is in front.
-    // A screenshot run has no real PCs and measures nothing.
-    if (!qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS")) {
-        QTimer* probe = new QTimer(this);
-        probe->setInterval(10 * 1000);
-        connect(probe, &QTimer::timeout, this, &ComputerModel::forkProbeLatency);
-        probe->start();
-        QTimer::singleShot(2000, this, &ComputerModel::forkProbeLatency);
+        QReadLocker lock(&computer->lock);
+        m_ForkWasOnline.insert(computer->uuid, computer->state == NvComputer::CS_ONLINE);
     }
 }
 
@@ -240,19 +238,19 @@ void ComputerModel::deleteComputer(int computerIndex)
 
     beginRemoveRows(QModelIndex(), computerIndex, computerIndex);
 
-    // m_Computer[computerIndex] will be deleted by this call
-    m_ComputerManager->deleteHost(m_Computers[computerIndex]);
-
-    // [fork] What this Mac kept about the PC goes with it (its color, which PC is first, ...)
-    ForkPcPrefs::get()->forget(forkUuid);
-    m_ForkWasOnline.remove(forkUuid);
-    m_ForkVia.remove(forkUuid);
-    m_ForkLatency.remove(forkUuid);
-
-    // Remove the now invalid item
-    m_Computers.removeAt(computerIndex);
+    // Remove the item first (upstream did it after): deleteHost() tells the other models at once,
+    // and this one must already be without the PC when it hears
+    NvComputer* forkDeleted = m_Computers.takeAt(computerIndex);
 
     endRemoveRows();
+
+    // forkDeleted will be deleted by this call
+    m_ComputerManager->deleteHost(forkDeleted);
+
+    // [fork] What this Mac kept about the PC goes with it (its color, which PC is first, ...). After
+    // the row is gone: forgetting tells the other models, which must not re-read a list in the middle of this.
+    m_ForkWasOnline.remove(forkUuid);
+    ForkPcPrefs::get()->forget(forkUuid);
 }
 
 class DeferredWakeHostTask : public QRunnable
@@ -273,13 +271,24 @@ private:
 void ComputerModel::wakeComputer(int computerIndex)
 {
     Q_ASSERT(computerIndex < m_Computers.count());
+    if (computerIndex < 0 || computerIndex >= m_Computers.count()) { // [fork]
+        return;
+    }
 
     DeferredWakeHostTask* wakeTask = new DeferredWakeHostTask(m_Computers[computerIndex]);
     QThreadPool::globalInstance()->start(wakeTask);
 
-    // [fork] The card says "Waking…" until the PC answers; if it doesn't in time, it says it can't be reached
-    ForkPcPrefs::get()->noteWakeSent(m_Computers[computerIndex]->uuid);
-    QTimer::singleShot((PcCardRules::k_WakeWaitSecs + 1) * 1000, this, &ComputerModel::forkRefreshAll);
+    // [fork] The card says "Waking…" until the PC answers or 180 s pass. A PC that answers has
+    // nothing to wake, so it gets no mark.
+    NvComputer* computer = m_Computers[computerIndex];
+    bool online;
+    {
+        QReadLocker lock(&computer->lock);
+        online = computer->state == NvComputer::CS_ONLINE;
+    }
+    if (!online) {
+        ForkPcPrefs::get()->noteWakeSent(computer->uuid);
+    }
 }
 
 void ComputerModel::renameComputer(int computerIndex, QString name)
@@ -337,7 +346,18 @@ void ComputerModel::handlePairingCompleted(NvComputer*, QString error)
 
 void ComputerModel::handleComputerStateChanged(NvComputer* computer)
 {
-    forkNoteTransitions(computer); // [fork]
+    // [fork] A PC that came back may have art that failed before
+    {
+        bool online;
+        {
+            QReadLocker lock(&computer->lock);
+            online = computer->state == NvComputer::CS_ONLINE;
+        }
+        if (online && !m_ForkWasOnline.value(computer->uuid, false)) {
+            m_ForkArtRequested.clear();
+        }
+        m_ForkWasOnline.insert(computer->uuid, online);
+    }
 
     QVector<NvComputer*> newComputerList = m_ComputerManager->getComputers();
 
@@ -350,7 +370,9 @@ void ComputerModel::handleComputerStateChanged(NvComputer* computer)
     else {
         // Let the view know that this specific computer changed
         int index = m_Computers.indexOf(computer);
-        emit dataChanged(createIndex(index, 0), createIndex(index, 0));
+        if (index >= 0) { // [fork] -1 for a PC that was just deleted
+            emit dataChanged(createIndex(index, 0), createIndex(index, 0));
+        }
     }
 }
 
@@ -421,19 +443,23 @@ static QVariantMap appMap(const NvApp& app, int runningId, const QUrl& art)
     return map;
 }
 
-QVariantList ComputerModel::forkPreviewApps(const Facts& f, NvComputer* computer) const
+// The apps the PC's card and All apps list: the multi-display app only when this Mac and the PC can
+// stream several displays, or while it runs (so it can be quit); same test as AppModel
+QVector<NvApp> ComputerModel::forkVisibleApps(const Facts& f, NvComputer* computer) const
 {
-    // The multi-display app only shows when this Mac and the PC can stream several displays, or
-    // while it runs (so it can be quit); same test as AppModel
     QVector<NvApp> visible;
-    const bool groupOk = ForkMultiDisplay::canStreamGroup(computer);
+    const bool groupOk = f.groupAppId == 0 || ForkMultiDisplay::canStreamGroup(computer);
     for (const NvApp& app : f.apps) {
         if (f.groupAppId != 0 && app.id == f.groupAppId && app.id != f.currentGameId && !groupOk) {
             continue;
         }
         visible.append(app);
     }
+    return visible;
+}
 
+QVariantList ComputerModel::forkPreviewApps(const Facts& f, const QVector<NvApp>& visible, NvComputer* computer) const
+{
     std::vector<PcCardRules::App> rules;
     for (const NvApp& app : visible) {
         PcCardRules::App a;
@@ -450,12 +476,9 @@ QVariantList ComputerModel::forkPreviewApps(const Facts& f, NvComputer* computer
     QVariantList list;
     for (int i : PcCardRules::previewOrder(rules, f.currentGameId, recent)) {
         NvApp app = visible[i];
-        QUrl art;
-        if (!f.online) {
-            art = m_ForkBoxArt.cachedBoxArt(computer, app.id);   // never fetches while the PC is away
-        } else {
-            art = m_ForkBoxArt.cachedBoxArt(computer, app.id);
-            const QPair<QString, int> request(f.uuid, app.id);
+        QUrl art = m_ForkBoxArt.cachedBoxArt(computer, app.id);   // never fetches while the PC is away
+        if (f.online) {
+            const QPair<NvComputer*, int> request(computer, app.id);
             if (art.scheme() == QLatin1String("qrc") && !m_ForkArtRequested.contains(request)) {
                 m_ForkArtRequested.insert(request);
                 art = m_ForkBoxArt.loadBoxArt(computer, app);    // starts a fetch; dataChanged when it lands
@@ -499,7 +522,7 @@ QVariant ComputerModel::forkData(NvComputer* computer, int role) const
     const qint64 now = nowSecs();
     const qint64 wakeSent = prefs->wakeSentSecs(uuid);
     const bool waking = !f.online && wakeSent > 0 && now - wakeSent < PcCardRules::k_WakeWaitSecs;
-    const bool wakeTimedOut = !f.online && wakeSent > 0 && now - wakeSent >= PcCardRules::k_WakeWaitSecs;
+    const bool wakeTimedOut = !f.online && prefs->isWakeTimedOut(uuid);
 
     const QString via = f.online ? (f.activeIsLocal ? QStringLiteral("home") : f.activeIsRemote ? QStringLiteral("internet") : prefs->lastSeenVia(uuid))
                                  : prefs->lastSeenVia(uuid);
@@ -522,13 +545,9 @@ QVariant ComputerModel::forkData(NvComputer* computer, int role) const
         in.running = f.currentGameId != 0;
         in.wakeable = f.wakeable;
         in.waking = waking;
-        in.wakeTimedOut = wakeTimedOut;
         in.powerAction = prefs->powerAction(uuid).toStdString();
         in.powerActionAgeSecs = powerAt > 0 ? now - powerAt : -1;
         in.wakeFromOff = wakeFromOff.toStdString();
-        // Not known: whether this Mac is on the PC's home network now. Only a PC last seen over
-        // the internet counts as away from home.
-        in.atHome = prefs->lastSeenVia(uuid) != QLatin1String("internet");
         return QString::fromStdString(PcCardRules::state(in));
     }
     case KnownPairedRole:
@@ -545,10 +564,7 @@ QVariant ComputerModel::forkData(NvComputer* computer, int role) const
     case NetworkRole:
         return network;
     case LatencyMsRole:
-    {
-        const QVector<int> samples = m_ForkLatency.value(uuid);
-        return f.online ? PcCardRules::median(std::vector<int>(samples.begin(), samples.end())) : -1;
-    }
+        return f.online ? ForkPcProbe::get()->latencyMs(uuid) : -1;
     case AddressRole: {
         if (f.online && !f.activeAddress.isEmpty()) {
             return f.activeAddress;
@@ -624,15 +640,11 @@ QVariant ComputerModel::forkData(NvComputer* computer, int role) const
     case CanSetUpWakeRole:
         return f.online ? wakeInfo.value(QStringLiteral("supported")).toBool() : !wakeFromOff.isEmpty();
     case PreviewAppsRole:
-        return forkPreviewApps(f, computer);
+        return forkPreviewApps(f, forkVisibleApps(f, computer), computer);
     case AppCountRole:
     case HiddenAppCountRole: {
-        const bool groupOk = ForkMultiDisplay::canStreamGroup(computer);
         int count = 0, hidden = 0;
-        for (const NvApp& app : f.apps) {
-            if (f.groupAppId != 0 && app.id == f.groupAppId && app.id != f.currentGameId && !groupOk) {
-                continue;
-            }
+        for (const NvApp& app : forkVisibleApps(f, computer)) {
             count++;
             if (app.hidden) {
                 hidden++;
@@ -644,9 +656,10 @@ QVariant ComputerModel::forkData(NvComputer* computer, int role) const
         return !f.online && !f.apps.isEmpty();
     case MainAppIdRole:
     case MainAppRole: {
+        const QVector<NvApp> visible = forkVisibleApps(f, computer);
         std::vector<PcCardRules::App> rules;
         std::vector<bool> direct;
-        for (const NvApp& app : f.apps) {
+        for (const NvApp& app : visible) {
             PcCardRules::App a;
             a.id = app.id;
             a.name = app.name.toStdString();
@@ -660,9 +673,9 @@ QVariant ComputerModel::forkData(NvComputer* computer, int role) const
         }
         const int i = PcCardRules::mainApp(rules, direct, f.currentGameId, recent);
         if (role == MainAppIdRole) {
-            return i >= 0 ? f.apps[i].id : 0;
+            return i >= 0 ? visible[i].id : 0;
         }
-        return i >= 0 ? f.apps[i].name : QString();
+        return i >= 0 ? visible[i].name : QString();
     }
     default:
         return QVariant();
@@ -717,31 +730,42 @@ void ComputerModel::forkRefreshAll()
     }
 }
 
-// The PC kept first can change the order: reset when it does, else refresh the PC's row
-void ComputerModel::forkRecheckOrder(const QString& changedUuid)
+// The PC kept first changed the order: reset when the list differs
+void ComputerModel::forkRecheckOrder()
 {
     QVector<NvComputer*> newList = m_ComputerManager->getComputers();
     if (m_Computers != newList) {
         beginResetModel();
         m_Computers = newList;
         endResetModel();
-        return;
     }
-    const int row = changedUuid.isEmpty() ? -1 : forkIndexOf(changedUuid);
+}
+
+void ComputerModel::forkHandleOrderChanged()
+{
+    forkRecheckOrder();
+}
+
+void ComputerModel::forkHandlePrefsChanged(const QString& uuid)
+{
+    const int row = uuid.isEmpty() ? -1 : forkIndexOf(uuid);
     if (row >= 0) {
         emit dataChanged(createIndex(row, 0), createIndex(row, 0));
     } else {
         forkRefreshAll();
     }
-}
-
-void ComputerModel::forkHandlePrefsChanged(const QString& uuid)
-{
-    forkRecheckOrder(uuid);
 
     // The card shows the result of Sleep PC or Shut Down PC for a minute, then goes by what the poll says
     if (!uuid.isEmpty() && !ForkPcPrefs::get()->powerAction(uuid).isEmpty()) {
         QTimer::singleShot((PcCardRules::k_GoingDownSecs + 1) * 1000, this, &ComputerModel::forkRefreshAll);
+    }
+}
+
+void ComputerModel::forkHandleLatency(const QString& uuid)
+{
+    const int row = forkIndexOf(uuid);
+    if (row >= 0) {
+        emit dataChanged(createIndex(row, 0), createIndex(row, 0), QVector<int>() << LatencyMsRole);
     }
 }
 
@@ -774,126 +798,14 @@ void ComputerModel::forkHandleHostInfoChanged()
 
 void ComputerModel::forkHandleBoxArtLoaded(NvComputer* computer, NvApp app, QUrl)
 {
+    // The PC may have been deleted since the request: only a PC in the list counts, and nothing
+    // reads the pointer otherwise
     const int row = m_Computers.indexOf(computer);
-    m_ForkArtRequested.remove(QPair<QString, int>(computer->uuid, app.id));
-    if (row >= 0) {
-        emit dataChanged(createIndex(row, 0), createIndex(row, 0), QVector<int>() << PreviewAppsRole);
-    }
-}
-
-// Called on the main thread whenever a PC's poll changed: what a card remembers about a PC that's away
-void ComputerModel::forkNoteTransitions(NvComputer* computer)
-{
-    const Facts f = forkFacts(computer);
-    ForkPcPrefs* prefs = ForkPcPrefs::get();
-    const bool was = m_ForkWasOnline.value(f.uuid, false);
-    const bool known = m_ForkWasOnline.contains(f.uuid);
-    const qint64 now = nowSecs();
-
-    if (f.online) {
-        // Which address it's reached at, for "last seen at home" later
-        if (f.activeIsLocal) {
-            m_ForkVia.insert(f.uuid, QStringLiteral("home"));
-        } else if (f.activeIsRemote) {
-            m_ForkVia.insert(f.uuid, QStringLiteral("internet"));
-            // The only proof that its outside address works: it answered there
-            if (now - prefs->remoteWorkedSecs(f.uuid) > 3600) {
-                prefs->noteRemoteWorked(f.uuid, now);
-            }
-        }
-
-        if (!was) {
-            // Back: the wake worked, a request to go down is over, art that failed can be asked again
-            prefs->clearWakeSent(f.uuid);
-            m_ForkArtRequested.clear();
-            m_ForkProbing.remove(f.uuid);
-            if (f.knownPaired) {
-                // Ask Apollo once now, so a PC that came online after launch shows its version and wake setup
-                ForkHostUpdates::get()->refresh(f.uuid);
-                ForkHostPower::get()->refresh(f.uuid);
-            }
-        }
-        // A request to go down is history once the PC is up again, was never seen going down (a
-        // leftover from an earlier run), or still answers a minute after the request
-        const qint64 powerAt = prefs->powerActionSecs(f.uuid);
-        if (!prefs->powerAction(f.uuid).isEmpty() &&
-                (!known || !was || now - powerAt >= PcCardRules::k_GoingDownSecs)) {
-            prefs->clearPowerAction(f.uuid);
-        }
-    } else if (known && was) {
-        // Online until now: it went away
-        prefs->noteLastSeen(f.uuid, now, m_ForkVia.value(f.uuid));
-        m_ForkLatency.remove(f.uuid);
-    }
-
-    m_ForkWasOnline.insert(f.uuid, f.online);
-}
-
-void ComputerModel::forkWriteLastSeen()
-{
-    const qint64 now = nowSecs();
-    for (NvComputer* computer : m_Computers) {
-        const Facts f = forkFacts(computer);
-        if (f.online) {
-            ForkPcPrefs::get()->noteLastSeen(f.uuid, now, m_ForkVia.value(f.uuid));
-        }
-    }
-}
-
-// Times a TCP connect to each online PC's HTTP port: about one round trip. Never blocks.
-void ComputerModel::forkProbeLatency()
-{
-    if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
+    if (row < 0) {
         return;
     }
-    for (NvComputer* computer : m_Computers) {
-        QString uuid, host;
-        quint16 port = 0;
-        {
-            QReadLocker lock(&computer->lock);
-            if (computer->state != NvComputer::CS_ONLINE || computer->activeAddress.isNull()) {
-                continue;
-            }
-            uuid = computer->uuid;
-            host = computer->activeAddress.address();
-            port = computer->activeAddress.port();
-        }
-        if (m_ForkProbing.contains(uuid)) {
-            continue;
-        }
-        m_ForkProbing.insert(uuid);
-
-        QTcpSocket* socket = new QTcpSocket(this);
-        QElapsedTimer* timer = new QElapsedTimer();
-        timer->start();
-        auto done = std::make_shared<bool>(false);
-        auto finish = [this, socket, timer, done, uuid](bool connected) {
-            if (*done) {
-                return;
-            }
-            *done = true;
-            if (connected) {
-                QVector<int>& samples = m_ForkLatency[uuid];
-                samples.append(qMax(1, int((timer->nsecsElapsed() + 500000) / 1000000)));
-                while (samples.size() > 5) {
-                    samples.removeFirst();
-                }
-                const int row = forkIndexOf(uuid);
-                if (row >= 0) {
-                    emit dataChanged(createIndex(row, 0), createIndex(row, 0), QVector<int>() << LatencyMsRole);
-                }
-            }
-            m_ForkProbing.remove(uuid);
-            delete timer;
-            socket->abort();
-            socket->deleteLater();
-        };
-        connect(socket, &QTcpSocket::connected, this, [finish]() { finish(true); });
-        connect(socket, &QTcpSocket::errorOccurred, this, [finish](QAbstractSocket::SocketError) { finish(false); });
-        // A silent PC: give up after 2 s
-        QTimer::singleShot(2000, this, [finish]() { finish(false); });
-        socket->connectToHost(host, port);
-    }
+    m_ForkArtRequested.remove(QPair<NvComputer*, int>(computer, app.id));
+    emit dataChanged(createIndex(row, 0), createIndex(row, 0), QVector<int>() << PreviewAppsRole);
 }
 
 #include "computermodel.moc"

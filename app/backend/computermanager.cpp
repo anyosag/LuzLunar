@@ -570,6 +570,10 @@ void ComputerManager::deleteHost(NvComputer* computer)
         m_KnownHosts.remove(computer->uuid);
     }
 
+    // [fork] Every model that still lists the PC re-reads the list now, while the pointer is valid
+    // (the task below deletes it)
+    emit computerStateChanged(computer);
+
     // Punt to a worker thread to avoid stalling the
     // UI while waiting for the polling thread to die
     QThreadPool::globalInstance()->start(new DeferredHostDeletionTask(this, computer, pollingEntry));

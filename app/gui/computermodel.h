@@ -5,6 +5,7 @@
 #include <QAbstractListModel>
 #include <QHash> // [fork]
 #include <QSet> // [fork]
+#include <QPair> // [fork]
 #include <QVector> // [fork]
 
 class ComputerModel : public QAbstractListModel
@@ -114,28 +115,25 @@ private slots:
     void forkHandlePrefsChanged(const QString& uuid); // [fork]
     void forkHandleHostInfoChanged(); // [fork]
     void forkHandleBoxArtLoaded(NvComputer* computer, NvApp app, QUrl image); // [fork]
+    void forkHandleLatency(const QString& uuid); // [fork]
+    void forkHandleOrderChanged(); // [fork]
 
 private:
     // [fork]
     struct Facts;
     Facts forkFacts(NvComputer* computer) const;
     QVariant forkData(NvComputer* computer, int role) const;
-    QVariantList forkPreviewApps(const Facts& facts, NvComputer* computer) const;
-    void forkRecheckOrder(const QString& changedUuid);
+    QVector<NvApp> forkVisibleApps(const Facts& facts, NvComputer* computer) const;
+    QVariantList forkPreviewApps(const Facts& facts, const QVector<NvApp>& visible, NvComputer* computer) const;
+    void forkRecheckOrder();
     void forkRefreshAll();
-    void forkNoteTransitions(NvComputer* computer);
-    void forkProbeLatency();
-    void forkWriteLastSeen();
 
     QVector<NvComputer*> m_Computers;
     ComputerManager* m_ComputerManager;
 
-    // [fork] Per PC (by uuid): what the last poll said, through which address it was reached, the
-    // last latency samples (ms), and the art requests in flight
+    // [fork] Per PC (by uuid): whether the last poll found it online (to ask for its art again when it
+    // returns); the art requests in flight, by PC pointer (a PC can be deleted meanwhile)
     QHash<QString, bool> m_ForkWasOnline;
-    QHash<QString, QString> m_ForkVia;
-    QHash<QString, QVector<int>> m_ForkLatency;
-    QSet<QString> m_ForkProbing;
-    mutable QSet<QPair<QString, int>> m_ForkArtRequested;
+    mutable QSet<QPair<NvComputer*, int>> m_ForkArtRequested;
     mutable BoxArtManager m_ForkBoxArt;
 };
