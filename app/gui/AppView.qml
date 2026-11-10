@@ -142,6 +142,11 @@ FocusScope {
     // [fork] The page's beat (1100 ms) and entrance
     property int forkTick: 0
     property bool forkOpen: false
+    // Closing (Back): the panel shrinks toward forkOriginX/Y and fades while the window's hold
+    // transition keeps the page up for forkHoldMs. Set when the page starts to leave, cleared when it
+    // is shown again (a stream pushed over it, then popped).
+    property bool forkClosing: false
+    readonly property int forkHoldMs: 440
     property bool forkSettled: false
 
     // [fork] The picked tile (keyboard and gamepad) and the app whose menu is open
@@ -786,24 +791,37 @@ FocusScope {
         y: 12
         width: appGrid.forkSheetWidth
         height: appGrid.height - 22
-        opacity: appGrid.forkOpen || !appGrid.forkAnimateOpen ? 1 : 0
+        opacity: appGrid.forkClosing ? 0 : (appGrid.forkOpen || !appGrid.forkAnimateOpen ? 1 : 0)
         scale: 1
         transform: Scale {
             id: sheetScale
             origin.x: (appGrid.forkOriginX >= 0 ? appGrid.forkOriginX : appGrid.width / 2) - sheet.x
             origin.y: (appGrid.forkOriginY >= 0 ? appGrid.forkOriginY : appGrid.height / 2) - sheet.y
-            xScale: appGrid.forkOpen || !appGrid.forkAnimateOpen || ForkTheme.reduceMotion ? 1 : 0.58
+            xScale: appGrid.forkClosing ? (ForkTheme.reduceMotion ? 1 : 0.58)
+                    : (appGrid.forkOpen || !appGrid.forkAnimateOpen || ForkTheme.reduceMotion ? 1 : 0.58)
             yScale: xScale
 
+            // Opening grows with a slight overshoot; closing shrinks back, accelerating
             Behavior on xScale {
                 enabled: appGrid.forkAnimateOpen && !ForkTheme.reduceMotion
-                NumberAnimation { duration: 580; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.22, 1.12, 0.36, 1, 1, 1] }
+                NumberAnimation {
+                    duration: appGrid.forkClosing ? 380 : 580
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: appGrid.forkClosing ? [0.5, 0, 0.75, 0.3, 1, 1] : [0.22, 1.12, 0.36, 1, 1, 1]
+                }
             }
         }
 
         Behavior on opacity {
             enabled: appGrid.forkAnimateOpen
-            NumberAnimation { duration: 220; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1] }
+            SequentialAnimation {
+                PauseAnimation { duration: appGrid.forkClosing && !ForkTheme.reduceMotion ? 100 : 0 }
+                NumberAnimation {
+                    duration: appGrid.forkClosing ? 260 : 220
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: [0.25, 0.1, 0.25, 1, 1, 1]
+                }
+            }
         }
 
         RectangularShadow {
@@ -1230,6 +1248,7 @@ FocusScope {
     }
 
     StackView.onActivated: {
+        forkClosing = false
         if (forkVisibleModel) {
             forkVisibleModel.computerLost.connect(computerLost) // [fork] was appModel, which can be swapped now
         }
@@ -1260,7 +1279,17 @@ FocusScope {
         }
     }
 
+    function forkBeginClose() {
+        // Not in screenshot runs that hide the transitions
+        if (forkAnimateOpen && !(typeof forkHiddenScreenshots !== "undefined" && forkHiddenScreenshots)) {
+            forkMenuId = -1
+            forkClosing = true
+        }
+    }
+
+    StackView.onActivating: forkClosing = false
     StackView.onDeactivating: {
+        forkBeginClose()
         if (forkVisibleModel) {
             forkVisibleModel.computerLost.disconnect(computerLost) // [fork] was appModel
         }

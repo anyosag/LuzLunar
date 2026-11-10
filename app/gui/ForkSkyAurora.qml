@@ -192,6 +192,12 @@ Item {
         spriteGreen.requestPaint(); spriteTeal.requestPaint(); spriteFringe.requestPaint()
     }
 
+    // The column gradients (offset 0 = lower edge), as in the canvas's sprites
+    readonly property var tealStops: [[0, "rgba(200,255,245,0)"], [0.02, "rgba(190,255,240,0.8)"], [0.08, "rgba(80,240,200,0.7)"],
+        [0.28, "rgba(40,200,170,0.4)"], [0.55, "rgba(60,140,190,0.18)"], [0.8, "rgba(140,80,190,0.08)"], [1, "rgba(140,80,190,0)"]]
+    readonly property var greenStops: [[0, "rgba(210,255,230,0)"], [0.015, "rgba(215,255,232,0.95)"], [0.06, "rgba(110,255,170,0.9)"],
+        [0.2, "rgba(45,235,135,0.6)"], [0.42, "rgba(30,200,120,0.3)"], [0.65, "rgba(90,120,170,0.14)"], [0.82, "rgba(160,70,150,0.09)"], [1, "rgba(170,50,120,0)"]]
+
     readonly property var curtainDefs: [
         { sprite: 0, y: 320, a: [26, 12, 5], f: [2.4, 7.1, 19], s: [-0.035, 0.08, 0.22], h: 160, hf: 3.1, g: [4.2, 1.7], strength: 0.5, fringe: false, p: 2.1 },
         { sprite: 1, y: 410, a: [38, 16, 6], f: [3.1, 8.7, 23], s: [0.045, -0.11, 0.3], h: 235, hf: 4.3, g: [5.3, 2.2], strength: 1, fringe: true, p: 0 }
@@ -216,7 +222,7 @@ Item {
         var step = 2
         for (var ci = 0; ci < 2; ci++) {
             var c = curtainDefs[ci]
-            var sprite = ci === 0 ? spriteTeal : spriteGreen
+            var stops = ci === 0 ? tealStops : greenStops
             var PI = Math.PI
             for (var x = -10; x < W + 10; x += step) {
                 var u = x / W
@@ -233,10 +239,18 @@ Item {
                     continue
                 var tall = c.h * (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(u * c.hf * PI + t * 0.25 + c.p))) * (0.85 + 0.15 * rays)
                 ctx.globalAlpha = Math.min(1, light) * gain
-                aurora.blit(ctx, sprite, 4, 256, x, base - tall, 3, tall)
+                var grad = ctx.createLinearGradient(0, base, 0, base - tall)
+                for (var si = 0; si < stops.length; si++)
+                    grad.addColorStop(stops[si][0], stops[si][1])
+                ctx.fillStyle = grad
+                ctx.fillRect(x, base - tall, 3, tall)
                 if (c.fringe && light > 0.55) {
                     ctx.globalAlpha = Math.min(1, (light - 0.55) * 1.6) * gain
-                    aurora.blit(ctx, spriteFringe, 4, 32, x, base - 2, 3, 10)
+                    var fg = ctx.createLinearGradient(0, base - 2, 0, base + 8)
+                    fg.addColorStop(0, "rgba(255,110,190,0.75)")
+                    fg.addColorStop(1, "rgba(255,110,190,0)")
+                    ctx.fillStyle = fg
+                    ctx.fillRect(x, base - 2, 3, 10)
                 }
             }
         }
@@ -247,6 +261,7 @@ Item {
     // The mean of a stage and itself shifted by (dx, dy): half of each, added
     function average(ctx, src, dx, dy) {
         ctx.reset()
+        ctx.scale(aurora.dpr, aurora.dpr)
         ctx.globalCompositeOperation = "copy"
         ctx.globalAlpha = 0.5
         aurora.blit(ctx, src, aurora.gw, aurora.gh, 0, 0, aurora.gw, aurora.gh)
@@ -259,6 +274,7 @@ Item {
     function drawOut(ctx) {
         var bw = aurora.bw, bh = aurora.bh
         ctx.reset()
+        ctx.scale(aurora.dpr, aurora.dpr)
         // The sky's own gradient behind this band
         var grad = ctx.createLinearGradient(0, -aurora.bandTop * bh / 520, 0, (aurora.skyHeight - aurora.bandTop) * bh / 520)
         for (var i = 0; i < gradientStops.length; i++)
