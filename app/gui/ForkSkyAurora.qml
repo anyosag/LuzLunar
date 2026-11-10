@@ -197,12 +197,20 @@ Item {
         { sprite: 1, y: 410, a: [38, 16, 6], f: [3.1, 8.7, 23], s: [0.045, -0.11, 0.3], h: 235, hf: 4.3, g: [5.3, 2.2], strength: 1, fringe: true, p: 0 }
     ]
 
+    // Copy a whole source canvas (logical size sw x sh) into the destination rectangle. At 1x the
+    // 5-argument form is exact; on a 2x screen the source rectangle has to be named in device pixels
+    function blit(ctx, src, sw, sh, dx, dy, dw, dh) {
+        if (aurora.dpr === 1)
+            ctx.drawImage(src, dx, dy, dw, dh)
+        else
+            ctx.drawImage(src, 0, 0, sw * aurora.dpr, sh * aurora.dpr, dx, dy, dw, dh)
+    }
+
     function drawCurtains(ctx, pw, ph, gain) {
         var W = aurora.skyWidth
         ctx.reset()
         ctx.clearRect(0, 0, pw, ph)
         var ks = pw / W, ls = ph / 520
-        var dpr = aurora.dpr
         var t = aurora.time / 1000
         ctx.globalCompositeOperation = "lighter"
         var step = 2
@@ -225,10 +233,10 @@ Item {
                     continue
                 var tall = c.h * (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(u * c.hf * PI + t * 0.25 + c.p))) * (0.85 + 0.15 * rays)
                 ctx.globalAlpha = Math.min(1, light) * gain
-                ctx.drawImage(sprite, 0, 0, 4 * dpr, 256 * dpr, x * ks, (base - tall) * ls, 3 * ks, tall * ls)
+                aurora.blit(ctx, sprite, 4, 256, x * ks, (base - tall) * ls, 3 * ks, tall * ls)
                 if (c.fringe && light > 0.55) {
                     ctx.globalAlpha = Math.min(1, (light - 0.55) * 1.6) * gain
-                    ctx.drawImage(spriteFringe, 0, 0, 4 * dpr, 32 * dpr, x * ks, (base - 2) * ls, 3 * ks, 10 * ls)
+                    aurora.blit(ctx, spriteFringe, 4, 32, x * ks, (base - 2) * ls, 3 * ks, 10 * ls)
                 }
             }
         }
@@ -241,9 +249,9 @@ Item {
         ctx.reset()
         ctx.globalCompositeOperation = "copy"
         ctx.globalAlpha = 0.5
-        ctx.drawImage(src, 0, 0, aurora.gw * dpr, aurora.gh * dpr, 0, 0, aurora.gw, aurora.gh)
+        aurora.blit(ctx, src, aurora.gw, aurora.gh, 0, 0, aurora.gw, aurora.gh)
         ctx.globalCompositeOperation = "lighter"
-        ctx.drawImage(src, 0, 0, aurora.gw * dpr, aurora.gh * dpr, dx, dy, aurora.gw, aurora.gh)
+        aurora.blit(ctx, src, aurora.gw, aurora.gh, dx, dy, aurora.gw, aurora.gh)
         ctx.globalAlpha = 1
         ctx.globalCompositeOperation = "source-over"
     }
@@ -260,9 +268,9 @@ Item {
         ctx.globalCompositeOperation = "qt-screen"
         ctx.globalAlpha = 0.85
         // the 15 px box shifts the glow by 7.5 stage px; put it back
-        ctx.drawImage(glow, 0, 0, aurora.gw * dpr, aurora.gh * dpr, -30 * bw / aurora.skyWidth, -30 * bh / 520, bw, bh)
+        aurora.blit(ctx, glow, aurora.gw, aurora.gh, -30 * bw / aurora.skyWidth, -30 * bh / 520, bw, bh)
         ctx.globalAlpha = 0.92
-        ctx.drawImage(curtains, 0, 0, bw * dpr, bh * dpr, 0, 0, bw, bh)
+        aurora.blit(ctx, curtains, bw, bh, 0, 0, bw, bh)
         ctx.globalAlpha = 1
         ctx.globalCompositeOperation = "source-over"
     }
