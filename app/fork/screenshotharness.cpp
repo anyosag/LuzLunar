@@ -188,7 +188,8 @@ QtObject {
         { "1b11-pcs-many-grid", "stackView.currentItem.forkSetViewMode('grid')", 1500 },
         // Dragging a card in the grid: the first PC lifted over the third cell, the others making room
         { "1b12-pcs-grid-drag", "stackView.currentItem.forkDragPreview(0, 2)", 900 },
-        { nullptr, "var p = stackView.currentItem; p.forkDragEnd(); p.forkSetViewMode('carousel')", 1300 },
+        // Back to the carousel with the three PCs, the page the dialogs below open over
+        { nullptr, P "p.forkDragEnd(); p.forkSetViewMode('carousel'); p.forkSampleModel = pcsModel(['gonzalo', 'living', 'office']); p.forkSkipEntrance(); p.forkFocus(0)", 1300, "harnessSamples" },
 
         // The stream launch screen, with sample values (a real one needs a stream). The page hides the
         // window's bars while it shows, as a stream's launch does
