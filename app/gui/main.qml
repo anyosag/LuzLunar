@@ -144,11 +144,13 @@ ApplicationWindow {
         visible: false
         font: ToolTip.toolTip.font
         text: ToolTip.toolTip.text
-    }
 
-    // This configures the maximum width of the singleton attached QML ToolTip. If left unconstrained,
-    // it will never insert a line break and just extend on forever.
-    ToolTip.toolTip.contentWidth: Math.min(tooltipTextLayoutHelper.width, 400)
+        // This configures the maximum width of the singleton attached QML ToolTip. If left unconstrained,
+        // it will never insert a line break and just extend on forever.
+        // [fork] Set from this Item rather than the window: Qt 6 warns when the ToolTip attached property
+        // is on a Window, which isn't an Item. The ToolTip is one shared instance either way.
+        ToolTip.toolTip.contentWidth: Math.min(width, 400)
+    }
 
     function goBack() {
         if (clearOnBack) {
@@ -313,25 +315,25 @@ ApplicationWindow {
 
     Shortcut {
         id: newPcShortcut
-        sequence: StandardKey.New
+        sequences: [StandardKey.New] // [fork] every key the platform binds to it (one sequence warns on a Mac)
         onActivated: window.addPc()
     }
 
     Shortcut {
         id: helpShortcut
-        sequence: StandardKey.HelpContents
+        sequences: [StandardKey.HelpContents] // [fork] every key the platform binds to it (one sequence warns on a Mac)
         onActivated: forkShortcutsDialog.open()
     }
 
     Shortcut {
         id: settingsShortcut
-        sequence: StandardKey.Preferences
+        sequences: [StandardKey.Preferences] // [fork] every key the platform binds to it (one sequence warns on a Mac)
         onActivated: settingsButton.clicked()
     }
 
     // ⌘F on All apps goes to the header's search
     Shortcut {
-        sequence: StandardKey.Find
+        sequences: [StandardKey.Find] // [fork] every key the platform binds to it (one sequence warns on a Mac)
         enabled: toolBar.visible && toolBar.variant === "apps"
         onActivated: toolBar.focusSearch()
     }
