@@ -76,7 +76,7 @@ FocusScope {
         color: "transparent"
         border.width: 2
         border.color: ForkTheme.cv.menuHi
-        visible: button.visualFocus
+        visible: button.activeFocus
     }
 
     MouseArea {

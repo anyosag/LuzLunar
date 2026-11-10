@@ -102,8 +102,7 @@ Item {
             color: Qt.rgba(1, 1, 1, 0.8)
             px: 11
             weight: 800
-            lineHeightMode: Text.FixedHeight
-            lineHeight: 11
+            lineHeightPx: 11
         }
     }
 

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import QtQuick.Shapes
 
 import ForkTheme 1.0
@@ -228,7 +229,8 @@ Item {
                             color: page.cv.text
                             selectionColor: page.cv.gold
                             selectedTextColor: "#1A1405"
-                            px: 14
+                            font.family: ForkTheme.uiFamily
+                            font.pointSize: 14 * 72 / (Screen.logicalPixelDensity * 25.4)
                             selectByMouse: true
                             Accessible.name: qsTr("IP address or hostname")
                             Keys.onReturnPressed: page.addAddress()
@@ -274,14 +276,14 @@ Item {
                     }
                     ForkCanvasText {
                         width: parent.width
-                        elide: Text.ElideRight
                         height: 18
                         verticalAlignment: Text.AlignVCenter
                         text: addressField.text !== "" && !page.addressValid
                               ? qsTr("Use the PC's IP address or hostname: letters, digits, dots, colons and dashes.")
                               : qsTr("From outside your home, use its public address or a DDNS name.")
+                        elide: addressField.text !== "" && !page.addressValid ? Text.ElideRight : Text.ElideNone
                         color: addressField.text !== "" && !page.addressValid ? ForkTheme.danger : page.cv.muted
-                        px: 12
+                        px: 12.5
                     }
                 }
             }

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import QtQuick.Shapes
 import QtQuick.Effects
 
@@ -31,38 +32,29 @@ NavigableDialog {
     property bool wakeOnPick: true
     property bool keepFirst: false
 
-    readonly property var colors: [
-        { key: "indigo", name: qsTr("Indigo"), fill: "#5E5CE6", on: "#FFFFFF", sky: "#17163F" },
-        { key: "blue", name: qsTr("Blue"), fill: "#0A6CDB", on: "#FFFFFF", sky: "#0B1F3D" },
-        { key: "purple", name: qsTr("Purple"), fill: "#9B45D9", on: "#FFFFFF", sky: "#24123A" },
-        { key: "pink", name: qsTr("Pink"), fill: "#D7264B", on: "#FFFFFF", sky: "#36111F" },
-        { key: "red", name: qsTr("Red"), fill: "#C62828", on: "#FFFFFF", sky: "#36100F" },
-        { key: "orange", name: qsTr("Orange"), fill: "#B85800", on: "#FFFFFF", sky: "#33200C" },
-        { key: "gold", name: qsTr("Moon gold"), fill: "#F5C878", on: "#1A1405", sky: "#2B2410" },
-        { key: "green", name: qsTr("Green"), fill: "#1E7B34", on: "#FFFFFF", sky: "#0E2A17" },
-        { key: "teal", name: qsTr("Teal"), fill: "#0E7C93", on: "#FFFFFF", sky: "#0A2A33" },
-        { key: "graphite", name: qsTr("Graphite"), fill: "#4B4F5C", on: "#FFFFFF", sky: "#1A1C24" }
-    ]
     readonly property var current: {
-        for (var i = 0; i < colors.length; i++) {
-            if (colors[i].key === colorKey) {
-                return colors[i]
+        var list = ForkTheme.pcPalette
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].key === colorKey) {
+                return { key: list[i].key, name: list[i].name, fill: list[i].fill, sky: list[i].sky,
+                         on: list[i].key === "gold" ? "#1A1405" : "#FFFFFF" }
             }
         }
-        return colors[0]
+        return { key: list[0].key, name: list[0].name, fill: list[0].fill, sky: list[0].sky, on: "#FFFFFF" }
     }
 
-    // The sheet's own tokens (they differ a little from the pages')
+    // The sheet's tokens: the canvas's, from ForkTheme.cv where they match; the surface, raised fill
+    // and divider line are the sheet's own (a little different from the pages')
     readonly property bool dk: ForkTheme.dark
     readonly property color cSurface: dk ? "#1A1D29" : "#FFFFFF"
     readonly property color cRaised: dk ? "#232736" : "#F6F6F9"
-    readonly property color cChip: dk ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.045)
+    readonly property color cChip: ForkTheme.cv.chip
     readonly property color cLine: dk ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.08)
-    readonly property color cLineStrong: dk ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.18)
-    readonly property color cText: dk ? "#F2F3F7" : "#1D1D1F"
-    readonly property color cText2: dk ? "#C9CCD8" : "#3A3A42"
-    readonly property color cMuted: dk ? "#9EA3B5" : "#5F616E"
-    readonly property color cFaint: dk ? "#868B9E" : "#6B6D7B"
+    readonly property color cLineStrong: ForkTheme.cv.lineStrong
+    readonly property color cText: ForkTheme.cv.text
+    readonly property color cText2: ForkTheme.cv.text2
+    readonly property color cMuted: ForkTheme.cv.muted
+    readonly property color cFaint: ForkTheme.cv.faint
     readonly property color cTrackOff: dk ? "#3E414B" : "#D6D6D6" // the translucent track over the surface
     readonly property int fadeMs: ForkTheme.reduceMotion ? 0 : 240
     readonly property int flipMs: ForkTheme.reduceMotion ? 0 : 200
@@ -249,7 +241,8 @@ NavigableDialog {
             color: sheet.cText
             selectedTextColor: "#FFFFFF"
             selectionColor: sheet.current.fill
-            px: 14
+            font.family: ForkTheme.uiFamily
+            font.pointSize: 14 * 72 / (Screen.logicalPixelDensity * 25.4)
             selectByMouse: true
             maximumLength: 64
             Accessible.name: qsTr("Name")
@@ -275,7 +268,7 @@ NavigableDialog {
         }
         Repeater {
             id: swatches
-            model: sheet.colors
+            model: ForkTheme.pcPalette
             delegate: Item {
                 id: sw
                 required property int index
@@ -289,8 +282,8 @@ NavigableDialog {
                 Accessible.checked: picked
                 Accessible.onPressAction: sheet.colorKey = modelData.key
                 Keys.onSpacePressed: sheet.colorKey = modelData.key
-                Keys.onLeftPressed: if (index > 0) { swatches.itemAt(index - 1).forceActiveFocus(); sheet.colorKey = sheet.colors[index - 1].key }
-                Keys.onRightPressed: if (index < 9) { swatches.itemAt(index + 1).forceActiveFocus(); sheet.colorKey = sheet.colors[index + 1].key }
+                Keys.onLeftPressed: if (index > 0) { swatches.itemAt(index - 1).forceActiveFocus(); sheet.colorKey = ForkTheme.pcPalette[index - 1].key }
+                Keys.onRightPressed: if (index < 9) { swatches.itemAt(index + 1).forceActiveFocus(); sheet.colorKey = ForkTheme.pcPalette[index + 1].key }
 
                 Rectangle { // selected: the swatch's fill, the sheet color, then the disc
                     anchors.centerIn: parent; width: 40; height: 40; radius: 20
@@ -341,7 +334,7 @@ NavigableDialog {
                 ForkCanvasText {
                     height: 16; verticalAlignment: Text.AlignVCenter
                     text: row.label; color: sheet.cText
-                    px: 14; weight: 500
+                    px: 13.5; weight: 500
                 }
                 ForkCanvasText {
                     height: 15; verticalAlignment: Text.AlignVCenter
@@ -420,7 +413,7 @@ NavigableDialog {
                 anchors.centerIn: parent
                 text: qsTr("Save")
                 color: sheet.current.on
-                px: 14; weight: 600
+                px: 13.5; weight: 600
             }
             Rectangle {
                 anchors.fill: parent; anchors.margins: -3; radius: 12; color: "transparent"
@@ -447,7 +440,7 @@ NavigableDialog {
                 anchors.centerIn: parent
                 text: qsTr("Cancel")
                 color: sheet.cText
-                px: 14; weight: 500
+                px: 13.5; weight: 500
             }
             Rectangle {
                 anchors.fill: parent; anchors.margins: -3; radius: 12; color: "transparent"
