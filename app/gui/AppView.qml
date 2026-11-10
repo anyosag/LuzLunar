@@ -64,7 +64,38 @@ FocusScope {
     property real forkOriginY: -1
     property bool forkAnimateOpen: true
 
-    readonly property bool forkIsAsleep: forkSample ? !!forkSampleHost.asleep : forkAsleep
+    // [fork] Asleep, live: from the PC's row in forkComputerModel when there is one (online turns it off),
+    // else the caller's forkAsleep
+    property int forkPcRevision: 0
+    readonly property int forkPcRow: {
+        forkPcRevision
+        return forkComputerModel && forkComputerModel.forkIndexOf && forkHostUuid !== "" ? forkComputerModel.forkIndexOf(forkHostUuid) : -1
+    }
+    readonly property bool forkPcOnline: {
+        forkPcRevision
+        if (forkPcRow < 0) {
+            return !forkAsleep
+        }
+        if (forkComputerModel.get) {
+            var pc = forkComputerModel.get(forkPcRow)
+            return pc ? !!pc.online : !forkAsleep
+        }
+        return !!forkComputerModel.data(forkComputerModel.index(forkPcRow, 0), 257) // ComputerModel::OnlineRole
+    }
+    readonly property bool forkIsAsleep: forkSample ? !!forkSampleHost.asleep : !forkPcOnline
+    onForkIsAsleepChanged: {
+        // The PC woke (or went away): read its address and what runs on it again
+        forkReadHost()
+        forkReadRunning()
+    }
+    Connections {
+        target: appGrid.forkComputerModel
+        ignoreUnknownSignals: true
+        function onDataChanged() { appGrid.forkPcRevision++ }
+        function onModelReset() { appGrid.forkPcRevision++ }
+        function onRowsInserted() { appGrid.forkPcRevision++ }
+        function onRowsRemoved() { appGrid.forkPcRevision++ }
+    }
     readonly property var forkHue: ForkTheme.hue(forkColorKey)
     readonly property color forkFill: forkHue.fill
     readonly property color forkOnFill: forkHue.onFill
@@ -123,8 +154,11 @@ FocusScope {
         }
         return parts.join(" · ")
     }
+    // The address on the band: where it answers, or for a PC that's away the last one it had
+    readonly property string forkAddress: forkHostInfo.address || forkHostInfo.lastAddress || ""
     // The line beside the address
-    readonly property string forkIpNote: forkHostInfo.ipNote !== undefined ? forkHostInfo.ipNote
+    readonly property string forkIpNote: forkAddress === "" ? ""
+                                       : forkHostInfo.ipNote !== undefined ? forkHostInfo.ipNote
                                        : forkIsAsleep ? qsTr("Its last address")
                                        : forkHostInfo.reachableRemote ? qsTr("Reachable from outside too") : ""
 
@@ -136,8 +170,6 @@ FocusScope {
     // rows; and, for samples, how many of them the grid shows
     readonly property int forkAppTotal: forkCounter.count
     property int forkHiddenCount: 0
-    property int forkSampleListCount: 0
-    readonly property int forkListCount: forkSample ? forkSampleListCount : tiles.count
 
     // [fork] The page's beat (1100 ms) and entrance
     property int forkTick: 0
@@ -187,7 +219,6 @@ FocusScope {
     function forkCountHidden() {
         var hidden = 0
         var matches = 0
-        var listed = 0
         var query = forkQuery.trim().toLowerCase()
         for (var i = 0; i < forkCounter.count; i++) {
             var row = forkCounter.objectAt(i)
@@ -200,13 +231,9 @@ FocusScope {
             if (query !== "" && (forkShowHidden || !row.hidden) && row.name.toLowerCase().indexOf(query) >= 0) {
                 matches++
             }
-            if ((forkShowHidden || !row.hidden) && (query === "" || row.name.toLowerCase().indexOf(query) >= 0)) {
-                listed++
-            }
         }
         forkHiddenCount = hidden
         forkMatchCount = matches
-        forkSampleListCount = listed
     }
 
     function forkRecount() {
@@ -309,7 +336,7 @@ FocusScope {
 
     // [fork] The band's copy button. QML has no clipboard of its own, so a hidden text editor copies it.
     function forkCopyAddress() {
-        var address = forkHostInfo.address || ""
+        var address = forkAddress
         if (address === "") {
             return
         }
@@ -394,7 +421,7 @@ FocusScope {
     readonly property string forkCountText: {
         var q = forkQuery.trim()
         if (q !== "") {
-            return qsTr("%1 of %2 apps match").arg(forkListCount).arg(forkAppTotal)
+            return qsTr("%1 of %2 apps match").arg(forkMatchCount).arg(forkAppTotal)
         }
         var shown = forkAppTotal - forkHiddenCount
         var text = shown === 1 ? qsTr("1 app") : qsTr("%1 apps").arg(shown)
@@ -410,25 +437,42 @@ FocusScope {
             return
         }
         ForkHostPower.noteWakeSent(forkHostUuid)
-        if (forkComputerModel) {
-            forkComputerModel.wakeComputer(forkComputerModel.forkIndexOf(forkHostUuid))
+        var row = forkComputerModel ? forkComputerModel.forkIndexOf(forkHostUuid) : -1
+        if (row >= 0) {
+            forkComputerModel.wakeComputer(row)
         }
     }
+
+    // One wake-launch for the whole app: main.qml's (window.forkWakeLaunch) when it has one, else this
+    // page's own. A wake this page started is dropped when the page goes away.
+    readonly property var forkWaker: typeof window !== "undefined" && window && window.forkWakeLaunch ? window.forkWakeLaunch : wakeLaunch
+    property bool forkWakeStarted: false
 
     // Picking an app on a sleeping PC wakes it first, then starts the app (ForkWakeLaunch)
     function forkPickAsleep(id, name) {
         if (forkSample) {
             forkSay(qsTr("Waking %1, then starting %2…").arg(objectName).arg(name))
         }
-        else if (forkComputerModel) {
-            wakeLaunch.start(forkComputerModel, forkComputerModel.forkIndexOf(forkHostUuid), id, name)
+        else if (forkComputerModel && forkPcRow >= 0) {
+            forkWakeStarted = true
+            forkWaker.start(forkComputerModel, forkPcRow, id, name, function(appName) { return appGrid.forkStreamSummary(appName) })
+        }
+    }
+
+    function forkStopWake() {
+        if (forkWakeStarted) {
+            forkWakeStarted = false
+            forkWaker.stop()
         }
     }
 
     ForkWakeLaunch {
         id: wakeLaunch
-        summaryFor: function(appName) { return appGrid.forkStreamSummary(appName) }
     }
+
+    // The page was taken off the stack (Back): a wake it started has no page to start the app for
+    StackView.onRemoved: forkStopWake()
+    Component.onDestruction: forkStopWake()
 
     // Click, Return or the menu's first row
     function forkPick(index, name, appid, running, boxart, colorKey) {
@@ -567,8 +611,10 @@ FocusScope {
               "icon": asleep ? "power" : "play", "filled": !asleep, "key": "↩" },
             { "id": "settings", "label": qsTr("Stream Settings…"), "icon": "sliders" },
             { "sep": true },
-            { "id": "direct", "label": qsTr("Direct Launch"), "icon": "bolt", "check": true, "checked": direct, "disabled": hidden },
-            { "id": "hide", "label": qsTr("Hide App"), "icon": "eyeSlash", "check": true, "checked": hidden, "disabled": !hidden && (runs || direct) }
+            { "id": "direct", "label": qsTr("Direct Launch"), "icon": "bolt", "check": true, "checked": direct, "disabled": hidden,
+              "tip": qsTr("Starts this app as soon as you click the PC, without showing its apps.") },
+            { "id": "hide", "label": qsTr("Hide App"), "icon": "eyeSlash", "check": true, "checked": hidden, "disabled": !hidden && (runs || direct),
+              "tip": qsTr("Hides this app from the grid. Show hidden apps, at the top of this page, brings it back.") }
         ]
         if (runs) {
             items.push({ "sep": true })
@@ -619,100 +665,111 @@ FocusScope {
         }
     }
 
-    // ---- Keyboard and gamepad ---------------------------------------------------------------
+    // ---- The grid's items, keyboard and gamepad ---------------------------------------------
 
-    // The grid: tiles in rows of forkColumns, 20 apart across and 26 down; a row is as tall as its
-    // tallest tile (a manual layout, since Layouts round to whole points)
-    function forkQueueLayout() {
-        Qt.callLater(forkRelayout)
-    }
+    // Bumped whenever the model's rows or data change, so everything read from it is read again
+    property int forkDataRevision: 0
 
-    function forkRelayout() {
-        var list = forkTileItems()
-        var cols = forkColumns
-        var y = 0
-        for (var r = 0; r * cols < list.length; r++) {
-            var h = 0
-            for (var c = 0; c < cols && r * cols + c < list.length; c++) {
-                var item = list[r * cols + c]
-                item.gx = c * (forkTileWidth + 20)
-                item.gy = y
-                item.column = c
-                h = Math.max(h, item.implicitHeight)
-            }
-            y += h + 26
+    // One app of the model by its row: {name, running, boxart, hidden, appid, directLaunch, appCollector, ...}.
+    // A ListModel (samples) gives its row; the C++ model its roles by number (AppModel::Roles).
+    function forkApp(row) {
+        forkDataRevision
+        var m = forkSample ? forkSampleModel : appModel
+        if (!m || row === undefined || row < 0) {
+            return ({})
         }
-        grid.height = Math.max(0, y - 26)
+        if (m.get) {
+            // A plain copy: the row's own object goes null when the row is removed
+            var item = m.get(row)
+            var copy = {}
+            if (item) {
+                for (var key in item) {
+                    copy[key] = item[key]
+                }
+            }
+            return copy
+        }
+        var ix = m.index(row, 0)
+        return { "name": m.data(ix, 256), "running": m.data(ix, 257), "boxart": m.data(ix, 258), "hidden": m.data(ix, 259),
+                 "appid": m.data(ix, 260), "directLaunch": m.data(ix, 261), "appCollector": m.data(ix, 262) }
     }
 
-    onForkColumnsChanged: forkQueueLayout()
-    onForkTileWidthChanged: forkQueueLayout()
-
-    function forkTileItems() {
+    // The model's rows the grid shows, in order: all of a PC's model (it holds the search and the
+    // hidden apps itself), those the search and the switch let through for a sample
+    readonly property var forkItems: {
+        forkDataRevision
+        var m = forkSample ? forkSampleModel : appModel
+        var n = !m ? 0 : (m.get ? m.count : m.rowCount())
         var list = []
-        for (var i = 0; i < tiles.count; i++) {
-            var item = tiles.itemAt(i)
-            if (item && item.visible) {
-                list.push(item)
+        for (var i = 0; i < n; i++) {
+            if (!forkSample) {
+                list.push(i)
+            }
+            else {
+                var app = m.get(i)
+                if (forkSampleMatches(app.name, !!app.hidden)) {
+                    list.push(i)
+                }
             }
         }
         return list
     }
+    readonly property int forkListCount: forkItems.length
+    readonly property int forkRowCount: Math.ceil(forkItems.length / forkColumns)
+    // The row of the grid that has the open menu (so it stacks above its neighbours), or -1
+    readonly property int forkMenuRow: {
+        if (forkMenuId < 0) {
+            return -1
+        }
+        for (var k = 0; k < forkItems.length; k++) {
+            if (forkApp(forkItems[k]).appid === forkMenuId) {
+                return Math.floor(k / forkColumns)
+            }
+        }
+        return -1
+    }
+    // Nothing to show: every app hidden, or a search nothing matches (the PC's model keeps its
+    // running app in a search, so a search is judged by its own count)
+    readonly property bool forkShowEmpty: forkQuery.trim() !== "" ? forkMatchCount === 0 : forkItems.length === 0
 
-    function forkSelect(item) {
-        currentIndex = item.tileIndex
-        var y = item.mapToItem(scroller.contentItem, 0, 0).y
-        if (y < scroller.contentY + 8) {
-            scroller.contentY = Math.max(0, y - 22)
-        }
-        else if (y + item.height > scroller.contentY + scroller.height - 8) {
-            scroller.contentY = Math.min(scroller.contentHeight - scroller.height, y + item.height - scroller.height + 26)
-        }
+    function forkSelect(k) {
+        currentIndex = k
+        listView.positionViewAtIndex(Math.floor(k / forkColumns), ListView.Contain)
     }
 
+    // Moves the pick; false when there's nowhere to go that way
     function forkMove(dx, dy) {
-        var list = forkTileItems()
-        if (list.length === 0) {
+        var n = forkItems.length
+        if (n === 0) {
             return false
         }
-        var pos = -1
-        for (var i = 0; i < list.length; i++) {
-            if (list[i].tileIndex === currentIndex) {
-                pos = i
-            }
-        }
-        if (pos < 0) {
-            forkSelect(list[0])
+        if (currentIndex < 0 || currentIndex >= n) {
+            forkSelect(0)
             return true
         }
-        var here = list[pos]
-        var target = null
+        var cols = forkColumns
+        var target = -1
         if (dx !== 0) {
-            target = list[pos + dx] || null
+            target = currentIndex + dx
+        }
+        else if (dy > 0) {
+            target = currentIndex + cols < n ? currentIndex + cols
+                   : Math.floor(currentIndex / cols) < Math.floor((n - 1) / cols) ? n - 1 : -1
         }
         else {
-            var cx = here.x
-            var best = 1e9
-            for (var j = 0; j < list.length; j++) {
-                var other = list[j]
-                var dist = (other.y - here.y) * dy
-                if (dist > 1 && (dist < best - 1 || (Math.abs(dist - best) <= 1 && target && Math.abs(other.x - cx) < Math.abs(target.x - cx)))) {
-                    best = dist
-                    target = other
-                }
-            }
+            target = currentIndex - cols
         }
-        if (target) {
-            forkSelect(target)
-            return true
+        if (target < 0 || target >= n) {
+            return false
         }
-        return false
+        forkSelect(target)
+        return true
     }
 
-    Keys.onLeftPressed: forkMove(-1, 0)
-    Keys.onRightPressed: forkMove(1, 0)
-    Keys.onDownPressed: forkMove(0, 1)
-    Keys.onUpPressed: {
+    Keys.onLeftPressed: function(event) { event.accepted = forkMove(-1, 0) }
+    Keys.onRightPressed: function(event) { event.accepted = forkMove(1, 0) }
+    Keys.onDownPressed: function(event) { event.accepted = forkMove(0, 1) }
+    Keys.onUpPressed: function(event) {
         if (!forkMove(0, -1)) {
             // At the top of the grid: on to the window's header, where Up used to go
             currentIndex = -1
@@ -721,45 +778,63 @@ FocusScope {
                 previous.forceActiveFocus(Qt.TabFocusReason)
             }
         }
+        event.accepted = true
     }
-    Keys.onReturnPressed: forkActivateCurrent()
-    Keys.onEnterPressed: forkActivateCurrent()
-    Keys.onMenuPressed: {
-        var item = forkCurrentTile()
-        if (item) {
-            forkMenuId = item.appId
+    Keys.onReturnPressed: function(event) { event.accepted = forkActivateCurrent() }
+    Keys.onEnterPressed: function(event) { event.accepted = forkActivateCurrent() }
+    // The Menu key (X on a gamepad) opens the picked app's menu; with nothing picked it's not ours
+    Keys.onMenuPressed: function(event) {
+        var app = forkCurrentApp()
+        if (app.appid !== undefined) {
+            forkMenuId = app.appid
             forkMenuCurrent = 0
+            event.accepted = true
+        }
+        else {
+            event.accepted = false
         }
     }
-    Keys.onEscapePressed: {
+    // Escape (B on a gamepad) closes an open menu; otherwise it goes on to the window (Back)
+    Keys.onEscapePressed: function(event) {
         if (forkMenuId >= 0) {
             forkMenuId = -1
+            event.accepted = true
+        }
+        else {
+            event.accepted = false
         }
     }
 
-    function forkCurrentTile() {
-        return currentIndex >= 0 ? tiles.itemAt(currentIndex) : null
+    // The window's header (the search field) hands the focus down: the picked tile, else the first
+    function forkFocusFromHeader() {
+        forceActiveFocus()
+        if (currentIndex < 0) {
+            forkMove(0, 1)
+        }
     }
 
+    function forkCurrentApp() {
+        return currentIndex >= 0 && currentIndex < forkItems.length ? forkApp(forkItems[currentIndex]) : ({})
+    }
+
+    // Return on the running app opens its menu (as before); on any other app it starts it
     function forkActivateCurrent() {
-        var item = forkCurrentTile()
-        if (!item) {
-            return
+        var app = forkCurrentApp()
+        if (app.appid === undefined) {
+            return false
         }
-        // Return opens the menu of the running app (as before); any other app starts
-        if (item.isRunning && !forkIsAsleep) {
-            forkMenuId = item.appId
+        if (app.running && !forkIsAsleep) {
+            forkMenuId = app.appid
             forkMenuCurrent = 0
         }
         else {
-            item.activated()
+            forkPick(forkItems[currentIndex], app.name, app.appid, !!app.running, app.boxart || "", forkSampleColorOf(app))
         }
+        return true
     }
 
-    onActiveFocusChanged: {
-        if (!activeFocus && forkMenuId < 0) {
-            // keeps the pick for when the focus comes back
-        }
+    function forkSampleColorOf(app) {
+        return forkSample ? (app.sampleColor || "") : ""
     }
 
     // ---- The page ----------------------------------------------------------------------------
@@ -916,7 +991,7 @@ FocusScope {
                 pcName: appGrid.objectName
                 apollo: appGrid.forkHostInfo.software === "Apollo"
                 hostLine: appGrid.forkHostLine
-                address: appGrid.forkHostInfo.address || ""
+                address: appGrid.forkAddress
                 ipNote: appGrid.forkIpNote
                 asleep: appGrid.forkIsAsleep
                 wakeReady: forkSample && appGrid.forkSampleHost.wakeReady !== undefined ? appGrid.forkSampleHost.wakeReady : appGrid.forkWakeReady
@@ -949,35 +1024,40 @@ FocusScope {
                 onClicked: appGrid.forkMenuId = -1
             }
 
-            // The title row, the grid and the footnote scroll; the band stays
-            Flickable {
-                id: scroller
+            // The title row, the grid and the footnote scroll; the band stays. One row of the grid
+            // per delegate, as tall as its tallest tile, so only the rows in view are built.
+            ListView {
+                id: listView
                 y: band.height
                 width: parent.width
                 height: parent.height - band.height
-                contentWidth: width
-                contentHeight: column.y + column.height + 26
                 clip: true
+                topMargin: 22
+                bottomMargin: 26
+                spacing: 26
+                cacheBuffer: 400
                 boundsBehavior: Flickable.OvershootBounds
+                model: appGrid.forkRowCount
                 ScrollBar.vertical: ScrollBar {}
 
                 // With a menu open, a click away from its tile closes it (the other tiles are off meanwhile)
                 MouseArea {
-                    width: scroller.contentWidth
-                    height: scroller.contentHeight
+                    z: -1
+                    y: -listView.topMargin
+                    width: listView.width
+                    height: listView.contentHeight + 200
                     enabled: appGrid.forkMenuId >= 0
                     onClicked: appGrid.forkMenuId = -1
                 }
 
-                Column {
-                    id: column
-                    x: 30
-                    y: 22
-                    width: scroller.width - 60
+                // "All apps", how many, and the switch for the hidden ones
+                header: Item {
+                    width: listView.width
+                    height: 32 + 18
 
-                    // "All apps", how many, and the switch for the hidden ones
                     ForkLibraryEnter {
-                        width: parent.width
+                        x: 30
+                        width: parent.width - 60
                         height: 32
                         entered: appGrid.forkOpen
                         settled: appGrid.forkSettled || ForkTheme.reduceMotion
@@ -1064,40 +1144,39 @@ FocusScope {
                             }
                         }
                     }
+                }
 
-                    Item { width: 1; height: 18 }
+                // A row of the grid: its tiles side by side, 20 apart (the row is as tall as the tallest)
+                delegate: Item {
+                    id: gridRow
+                    required property int index
+                    width: listView.width
+                    height: tilesRow.height
+                    z: appGrid.forkMenuRow === index ? 10 : 1
 
-                    // The grid: rows are as tall as their tallest tile
-                    Item {
-                        id: grid
-                        width: parent.width
-                        visible: appGrid.forkListCount > 0
+                    Row {
+                        id: tilesRow
+                        x: 30
+                        spacing: 20
 
                         Repeater {
-                            id: tiles
-                            model: appGrid.forkSample ? appGrid.forkSampleModel : appGrid.appModel
+                            model: Math.max(0, Math.min(appGrid.forkColumns, appGrid.forkItems.length - gridRow.index * appGrid.forkColumns))
 
                             delegate: ForkLibraryTile {
                                 id: tile
-                                required property var model
                                 required property int index
-                                readonly property int tileIndex: index
-                                readonly property int appId: model.appid
-                                readonly property bool isRunning: !!model.running
-                                readonly property string sampleColor: appGrid.forkSample ? (model.sampleColor || "") : ""
-                                readonly property bool isMenu: appGrid.forkMenuId === model.appid
+                                readonly property int shownIndex: gridRow.index * appGrid.forkColumns + index
+                                readonly property int tileIndex: appGrid.forkItems[shownIndex]
+                                readonly property var app: appGrid.forkApp(tileIndex)
+                                readonly property int appId: app.appid !== undefined ? app.appid : -2
+                                readonly property bool isRunning: !!app.running
+                                readonly property string sampleColor: appGrid.forkSampleColorOf(app)
+                                readonly property bool isMenu: appGrid.forkMenuId === appId
 
-                                visible: !appGrid.forkSample || appGrid.forkSampleMatches(model.name, !!model.hidden)
                                 enabled: appGrid.forkMenuId < 0 || isMenu
-                                property real gx: 0
-                                property real gy: 0
-                                x: gx
-                                y: gy
                                 width: appGrid.forkTileWidth
-                                column: index % appGrid.forkColumns
-                                onImplicitHeightChanged: appGrid.forkQueueLayout()
-                                onVisibleChanged: appGrid.forkQueueLayout()
-                                Component.onCompleted: appGrid.forkQueueLayout()
+                                column: index
+                                maskSource: coverMask
 
                                 pcFill: appGrid.forkFill
                                 pcOnFill: appGrid.forkOnFill
@@ -1106,37 +1185,38 @@ FocusScope {
                                 ph: appGrid.forkTick % 2
                                 settled: appGrid.forkSettled || ForkTheme.reduceMotion
                                 entered: appGrid.forkOpen
-                                enterDelay: 280 + 30 * index
+                                enterDelay: 280 + 30 * shownIndex
                                 chipColors: appGrid.forkChipColors
-                                highlighted: appGrid.activeFocus && appGrid.currentIndex === index
+                                highlighted: appGrid.activeFocus && appGrid.currentIndex === shownIndex
 
-                                appName: model.name
-                                boxart: model.boxart || ""
-                                appCollector: !!model.isAppCollectorGame
+                                appName: app.name || ""
+                                boxart: app.boxart || ""
+                                appCollector: !!(app.appCollector || app.appCollectorGame || app.isAppCollectorGame)
                                 colorKey: sampleColor
                                 running: isRunning && !appGrid.forkIsAsleep
-                                hidden: !!model.hidden
-                                chips: appGrid.forkChipsFor(model.name, !!model.directLaunch, !!model.hidden,
-                                                            appGrid.forkSample ? model.sampleProfile : "",
-                                                            appGrid.forkSample ? model.sampleExtras : "")
-                                clickLabel: appGrid.forkIsAsleep ? qsTr("Wake %1 and start %2").arg(appGrid.objectName).arg(model.name)
-                                          : isRunning ? qsTr("Resume %1").arg(model.name) : qsTr("Start %1").arg(model.name)
+                                hidden: !!app.hidden
+                                chips: appGrid.forkChipsFor(app.name || "", !!app.directLaunch, !!app.hidden,
+                                                            appGrid.forkSample ? app.sampleProfile : "",
+                                                            appGrid.forkSample ? app.sampleExtras : "")
+                                clickLabel: appGrid.forkIsAsleep ? qsTr("Wake %1 and start %2").arg(appGrid.objectName).arg(app.name)
+                                          : isRunning ? qsTr("Resume %1").arg(app.name) : qsTr("Start %1").arg(app.name)
 
                                 menuOpen: isMenu
                                 menuCurrent: appGrid.forkMenuCurrent
-                                menuItems: isMenu ? appGrid.forkMenuItemsFor(model.name, isRunning, !!model.hidden, !!model.directLaunch) : []
+                                menuItems: isMenu ? appGrid.forkMenuItemsFor(app.name, isRunning, !!app.hidden, !!app.directLaunch) : []
 
+                                // A click picks nothing (the pick is for the keyboard and gamepad)
                                 onActivated: {
                                     appGrid.currentIndex = -1
-                                    appGrid.forkPick(index, model.name, model.appid, isRunning, model.boxart || "", sampleColor)
+                                    appGrid.forkPick(tileIndex, app.name, app.appid, isRunning, app.boxart || "", sampleColor)
                                 }
                                 onMenuToggled: {
                                     appGrid.forkMenuCurrent = 0
-                                    appGrid.forkMenuId = isMenu ? -1 : model.appid
+                                    appGrid.forkMenuId = isMenu ? -1 : app.appid
                                 }
                                 onMenuRequested: {
                                     appGrid.forkMenuCurrent = 0
-                                    appGrid.forkMenuId = model.appid
+                                    appGrid.forkMenuId = app.appid
                                 }
                                 onMenuClosed: {
                                     appGrid.forkMenuId = -1
@@ -1144,77 +1224,101 @@ FocusScope {
                                 }
                                 onMenuTriggered: function(i) {
                                     var action = menuItems.filter(function(item) { return !item.sep })[i]
-                                    appGrid.forkMenuAction(action.id, index, model.name, model.appid, isRunning, !!model.hidden,
-                                                           !!model.directLaunch, model.boxart || "", sampleColor)
+                                    appGrid.forkMenuAction(action.id, tileIndex, app.name, app.appid, isRunning, !!app.hidden,
+                                                           !!app.directLaunch, app.boxart || "", sampleColor)
                                 }
                             }
                         }
                     }
+                }
 
-                    // Nothing to show: every app hidden, or a search that matches nothing
+                // Under the grid: what's missing when nothing shows, then how to start an app
+                footer: Item {
+                    width: listView.width
+                    height: footerColumn.height + 26
+
                     Column {
-                        visible: appGrid.forkListCount === 0
-                        width: parent.width
-                        topPadding: 72
-                        bottomPadding: 40
-                        spacing: 12
+                        id: footerColumn
+                        x: 30
+                        y: 26
+                        width: parent.width - 60
 
-                        ForkPathIcon {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            name: "search"
-                            size: 30
-                            strokeWidth: 1.8
-                            color: ForkTheme.cv.faint
+                        // Nothing to show: every app hidden, or a search that matches nothing
+                        Column {
+                            visible: appGrid.forkShowEmpty
+                            width: parent.width
+                            topPadding: appGrid.forkItems.length === 0 ? 72 : 46
+                            bottomPadding: 40
+                            spacing: 12
+
+                            ForkPathIcon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                name: "search"
+                                size: 30
+                                strokeWidth: 1.8
+                                color: ForkTheme.cv.faint
+                            }
+
+                            ForkCanvasText {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: Math.min(440, parent.width)
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.Wrap
+                                px: 15
+                                lineHeightPx: 21
+                                color: ForkTheme.cv.text2
+                                // [fork] Every app hidden, and a search that matches nothing, have their own words
+                                text: appGrid.forkQuery.trim() !== ""
+                                      ? qsTr("No apps on %1 match “%2”").arg(appGrid.objectName).arg(appGrid.forkQuery.trim())
+                                      : appGrid.forkAppTotal > 0 ? qsTr("Every app on %1 is hidden. Show hidden apps to see them.").arg(appGrid.objectName)
+                                                                 : qsTr("This computer doesn't seem to have any applications or some applications are hidden")
+                            }
+
+                            ForkLibraryButton {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                visible: appGrid.forkQuery.trim() !== ""
+                                height: 32
+                                radius: 9
+                                padLeft: 14
+                                padRight: 14
+                                fontSize: 13
+                                fontWeight: 550
+                                text: qsTr("Clear Search")
+                                fill: ForkTheme.cv.chip
+                                ink: ForkTheme.cv.text
+                                borderColor: ForkTheme.cv.line
+                                borderWidth: 1
+                                onClicked: appGrid.forkClearSearch()
+                            }
                         }
+
+                        Item { visible: appGrid.forkShowEmpty; width: 1; height: 26 }
 
                         ForkCanvasText {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: Math.min(440, parent.width)
-                            horizontalAlignment: Text.AlignHCenter
+                            width: Math.min(parent.width, 760)
                             wrapMode: Text.Wrap
-                            px: 15
-                            lineHeightPx: 21
-                            color: ForkTheme.cv.text2
-                            // [fork] Every app hidden, and a search that matches nothing, have their own words
-                            text: appGrid.forkQuery.trim() !== ""
-                                  ? qsTr("No apps on %1 match “%2”").arg(appGrid.objectName).arg(appGrid.forkQuery.trim())
-                                  : appGrid.forkAppTotal > 0 ? qsTr("Every app on %1 is hidden. Show hidden apps to see them.").arg(appGrid.objectName)
-                                                             : qsTr("This computer doesn't seem to have any applications or some applications are hidden")
+                            px: 12.5
+                            lineHeightPx: 18
+                            color: ForkTheme.cv.faint
+                            text: appGrid.forkIsAsleep
+                                  ? qsTr("%1 is asleep, so these are the apps LuzLunar saw on its last visit. Picking one wakes %1 first.").arg(appGrid.objectName)
+                                  : appGrid.forkHostInfo.software === "Apollo"
+                                    ? qsTr("Click an app to start it, or right-click it for its options. To add an app, open Apollo’s web page on %1 and go to Applications.").arg(appGrid.objectName)
+                                    : qsTr("Click an app to start it, or right-click it for its options.")
                         }
-
-                        ForkLibraryButton {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            visible: appGrid.forkQuery.trim() !== ""
-                            height: 32
-                            radius: 9
-                            padLeft: 14
-                            padRight: 14
-                            fontSize: 13
-                            fontWeight: 550
-                            text: qsTr("Clear Search")
-                            fill: ForkTheme.cv.chip
-                            ink: ForkTheme.cv.text
-                            borderColor: ForkTheme.cv.line
-                            borderWidth: 1
-                            onClicked: appGrid.forkClearSearch()
-                        }
-                    }
-
-                    Item { width: 1; height: 26 }
-
-                    ForkCanvasText {
-                        width: Math.min(parent.width, 760)
-                        wrapMode: Text.Wrap
-                        px: 12.5
-                        lineHeightPx: 18
-                        color: ForkTheme.cv.faint
-                        text: appGrid.forkIsAsleep
-                              ? qsTr("%1 is asleep, so these are the apps LuzLunar saw on its last visit. Picking one wakes %1 first.").arg(appGrid.objectName)
-                              : appGrid.forkHostInfo.software === "Apollo"
-                                ? qsTr("Click an app to start it, or right-click it for its options. To add an app, open Apollo’s web page on %1 and go to Applications.").arg(appGrid.objectName)
-                                : qsTr("Click an app to start it, or right-click it for its options.")
                     }
                 }
+            }
+
+            // The cover mask every tile shares (never drawn): one rounded rectangle of a tile's cover
+            Rectangle {
+                id: coverMask
+                width: appGrid.forkTileWidth
+                height: appGrid.forkTileWidth * 4 / 3
+                radius: 14
+                visible: false
+                layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
+                layer.smooth: true
             }
         }
 
@@ -1269,18 +1373,26 @@ FocusScope {
     // signals a change of running app before it has noted the new one.
     Connections {
         target: appGrid.forkSample ? appGrid.forkSampleModel : appGrid.appModel
+        // The grid reads its rows again whenever the model's rows or data change
         function onDataChanged() {
+            appGrid.forkDataRevision++
             Qt.callLater(appGrid.forkReadRunning)
             Qt.callLater(appGrid.forkCountHidden)
         }
         function onModelReset() {
+            appGrid.forkDataRevision++
             Qt.callLater(appGrid.forkReadRunning)
         }
         function onRowsInserted() {
+            appGrid.forkDataRevision++
             Qt.callLater(appGrid.forkReadRunning)
         }
         function onRowsRemoved() {
+            appGrid.forkDataRevision++
             Qt.callLater(appGrid.forkReadRunning)
+        }
+        function onLayoutChanged() {
+            appGrid.forkDataRevision++
         }
     }
 
@@ -1321,11 +1433,14 @@ FocusScope {
             // Check if there's a direct launch app
             var directLaunchAppIndex = appModel.getDirectLaunchAppIndex();
             if (directLaunchAppIndex >= 0) {
-                // Start the direct launch app if nothing else is running
-                var item = tiles.itemAt(directLaunchAppIndex)
-                if (item) {
-                    forkLaunchOrResume(directLaunchAppIndex, item.appName, item.appId, false, "", "")
-                }
+                // Start the direct launch app if nothing else is running, once this page's own push
+                // has finished (a push during one is refused)
+                var directApp = forkApp(directLaunchAppIndex)
+                Qt.callLater(function() {
+                    if (directApp.appid !== undefined && appGrid.activated) {
+                        appGrid.forkLaunchOrResume(directLaunchAppIndex, directApp.name, directApp.appid, false, "", "")
+                    }
+                })
 
                 // Set showGames so we will not loop when the stream ends
                 showGames = true
@@ -1355,7 +1470,7 @@ FocusScope {
         var model = Qt.createQmlObject('import AppModel; AppModel {}', parent, '')
         model.initialize(ComputerManager, computerIndex, showHidden)
         // [fork] The page stays while its PC sleeps: the apps of its last visit (see contract-library.md)
-        if (model.forkKeepWhenOffline) {
+        if (forkIsAsleep && model.forkKeepWhenOffline) {
             model.forkKeepWhenOffline(true)
         }
         return model

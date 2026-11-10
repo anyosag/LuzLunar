@@ -36,6 +36,12 @@ Popup {
     enter: Transition {}
     exit: Transition {}
 
+    // The confirming button has the focus when it opens (Return, Space or A on a gamepad confirm), the
+    // arrow keys move between the two buttons, and Escape (B) cancels
+    onOpened: confirmButton.forceActiveFocus()
+    Keys.onReturnPressed: function(event) { confirmButton.clicked(); event.accepted = true }
+    Keys.onEnterPressed: function(event) { confirmButton.clicked(); event.accepted = true }
+
     background: Item {
         RectangularShadow {
             anchors.fill: parent
@@ -140,6 +146,11 @@ Popup {
         }
 
         ForkLibraryButton {
+            id: confirmButton
+            KeyNavigation.up: cancelButton
+            KeyNavigation.down: cancelButton
+            KeyNavigation.left: cancelButton
+            KeyNavigation.right: cancelButton
             width: 268
             implicitHeight: 34
             height: 34
@@ -157,6 +168,11 @@ Popup {
         }
 
         ForkLibraryButton {
+            id: cancelButton
+            KeyNavigation.up: confirmButton
+            KeyNavigation.down: confirmButton
+            KeyNavigation.left: confirmButton
+            KeyNavigation.right: confirmButton
             width: 268
             height: 34
             stretch: true

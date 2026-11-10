@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Effects
 
 import ForkTheme 1.0
@@ -7,7 +8,8 @@ import ForkTheme 1.0
 // the blue default, the rest plain; disabled rows are faded and do nothing. Up and Down move the
 // blue row for the keyboard, Return does it and Escape closes the menu.
 //
-// items: [{label, icon, filled (bool), hi, key, check, checked, disabled, danger} | {sep: true}]
+// items: [{label, icon, filled (bool), hi, key, check, checked, disabled, danger, tip} | {sep: true}]
+// (tip: a tooltip after a second of hovering)
 FocusScope {
     id: menu
 
@@ -45,12 +47,15 @@ FocusScope {
     Keys.onUpPressed: move(-1)
     Keys.onDownPressed: move(1)
     Keys.onEscapePressed: closeRequested()
-    Keys.onReturnPressed: {
+    function runCurrent() {
         if (actions[current] && !actions[current].disabled) {
             triggered(current)
         }
     }
-    Keys.onEnterPressed: Keys.returnPressed(event)
+    Keys.onReturnPressed: function(event) { runCurrent(); event.accepted = true }
+    Keys.onEnterPressed: function(event) { runCurrent(); event.accepted = true }
+    // The menu has the keys while it's open: nothing else gets them
+    Keys.onPressed: function(event) { event.accepted = true }
 
     // The shadow, then the panel
     RectangularShadow {
@@ -150,6 +155,12 @@ FocusScope {
                             color: row.ink
                             px: 12
                         }
+
+                        HoverHandler { id: rowHover }
+                        ToolTip.text: row.modelData.tip || ""
+                        ToolTip.delay: 1000
+                        ToolTip.timeout: 5000
+                        ToolTip.visible: rowHover.hovered && !!row.modelData.tip
 
                         Accessible.role: row.modelData.check ? Accessible.CheckBox : Accessible.MenuItem
                         Accessible.name: row.modelData.label || ""

@@ -9,14 +9,14 @@ import ComputerManager
 // start(); only one wake-launch runs per object, and a new start() replaces the old one.
 //
 //   ForkWakeLaunch { id: wakeLaunch }
-//   wakeLaunch.start(computerModel, row, appId, appName)
+//   wakeLaunch.start(computerModel, row, appId, appName[, summaryFor])
 //
 // computerModel is the ComputerModel (wakeComputer(row), forkIndexOf(uuid), createSessionForApp(row,
 // appId)). The helper reads the PC's name, uuid, online and paired through the model's role numbers
 // (Qt::UserRole + 0, 1, 2, 9) or, for a ListModel stand-in, get(row). With Wake it when I pick an app
-// off, it doesn't wake: it toasts and stops. Once the PC answers it finds the app again by NAME in the
-// refreshed app list (Apollo can change an app's id), for up to 6 s, and falls back to the id it was
-// given. After 3 minutes it gives up with "<PC> didn't wake up".
+// off, it doesn't wake: it toasts and stops. Once the PC answers it waits for its app list to be read again
+// (up to 2.5 s: it reports online before it re-reads the apps) and finds the app again by NAME in it
+// (Apollo can change an app's id), falling back to the id it was given. After 3 minutes it gives up with "<PC> didn't wake up".
 QtObject {
     id: launch
 
@@ -31,7 +31,10 @@ QtObject {
     property string forkPcName: ""
     property int forkAppId: 0
     property string forkAppName: ""
-    property int forkTries: 0
+    property var forkApps: null // the PC's apps, read again once it is online
+    property var forkSummaryFn: null
+    property bool forkOnline: false
+    property bool forkListChanged: false
 
     function say(text) {
         if (typeof window !== "undefined" && window && window.forkToast) {
@@ -66,33 +69,22 @@ QtObject {
         return -1
     }
 
-    // The id the PC gives this app now (0 when its list doesn't have it, or can't be read)
-    function idByName(row, name) {
-        var id = 0
-        var apps = null
-        try {
-            apps = Qt.createQmlObject('import AppModel; AppModel {}', launch, "")
-            apps.initialize(ComputerManager, row, true)
-            var count = apps.rowCount()
-            for (var i = 0; i < count && id === 0; i++) {
-                var item = apps.get ? apps.get(i) : null
-                var rowName = item ? item.name : apps.data(apps.index(i, 0), 256) // AppModel.NameRole
-                if (rowName === name) {
-                    id = item ? item.appid : apps.data(apps.index(i, 0), 260) // AppModel.AppIdRole
-                }
+    // The id this app has in `apps` (0 when its list doesn't have it, or can't be read)
+    function idByName(apps, name) {
+        var count = apps.get ? apps.count : apps.rowCount()
+        for (var i = 0; i < count; i++) {
+            var item = apps.get ? apps.get(i) : null
+            var rowName = item ? item.name : apps.data(apps.index(i, 0), 256) // AppModel.NameRole
+            if (rowName === name) {
+                return item ? item.appid : apps.data(apps.index(i, 0), 260) // AppModel.AppIdRole
             }
         }
-        catch (e) {
-            id = 0
-        }
-        if (apps) {
-            apps.destroy()
-        }
-        return id
+        return 0
     }
 
-    function start(computerModel, row, appId, appName) {
+    function start(computerModel, row, appId, appName, summaryFn) {
         stop()
+        forkSummaryFn = summaryFn || null
         if (!computerModel || row < 0) {
             return
         }
@@ -110,7 +102,8 @@ QtObject {
         forkPcName = name
         forkAppId = appId
         forkAppName = appName
-        forkTries = 0
+        forkOnline = false
+        forkListChanged = false
         forkWatching = true
         say(qsTr("Waking %1, then starting %2…").arg(name).arg(appName))
         computerModel.wakeComputer(row)
@@ -120,8 +113,14 @@ QtObject {
 
     function stop() {
         forkWatching = false
+        forkOnline = false
         giveUp.stop()
         poll.stop()
+        grace.stop()
+        if (forkApps) {
+            forkApps.destroy()
+            forkApps = null
+        }
     }
 
     // Looks at the PC's row; once it is online and paired, starts the app
@@ -136,19 +135,44 @@ QtObject {
         if (!field(forkModel, row, 257, "online") || !field(forkModel, row, 258, "paired")) {
             return
         }
-        // Its apps are read again as it wakes: find this one by name, for a few polls, else use the old id
-        var found = idByName(row, forkAppName)
-        if (found === 0 && forkTries < 6) {
-            forkTries++
+        if (!forkOnline) {
+            // Online: its apps are read again now. Wait for that (rows coming or going, or the
+            // grace time if nothing changed), then find the app by name.
+            forkOnline = true
+            poll.stop()
+            forkApps = Qt.createQmlObject('import AppModel; AppModel {}', launch, "")
+            forkApps.initialize(ComputerManager, row, true)
+            watchApps.target = forkApps
+            grace.restart()
+        }
+    }
+
+    // The app list changed after the PC came online: look for the app by name
+    function listChanged() {
+        if (forkWatching && forkOnline) {
+            forkListChanged = true
+            if (idByName(forkApps, forkAppName) !== 0) {
+                Qt.callLater(launchNow)
+            }
+        }
+    }
+
+    // Starts the app (the id it has by now, else the one it was given)
+    function launchNow() {
+        if (!forkWatching || !forkOnline) {
             return
         }
+        var row = rowOfPc()
+        var found = forkApps ? idByName(forkApps, forkAppName) : 0
         var model = forkModel
         var appId = found !== 0 ? found : forkAppId
         var appName = forkAppName
         var pcName = forkPcName
+        var summaryFn = forkSummaryFn || summaryFor
         stop()
-        var session = model.createSessionForApp(row, appId)
+        var session = row >= 0 ? model.createSessionForApp(row, appId) : null
         if (!session) {
+            say(qsTr("Couldn’t start %1 on %2").arg(appName).arg(pcName))
             return
         }
         var component = Qt.createComponent("StreamSegue.qml")
@@ -157,9 +181,21 @@ QtObject {
                                                "session": session,
                                                "isResume": false,
                                                "hostName": pcName,
-                                               "summary": launch.summaryFor(appName)
+                                               "summary": summaryFn(appName)
                                            })
         stackView.push(segue)
+    }
+
+    property Timer grace: Timer {
+        interval: 2500
+        onTriggered: launch.launchNow()
+    }
+
+    property Connections watchApps: Connections {
+        ignoreUnknownSignals: true
+        function onRowsInserted() { launch.listChanged() }
+        function onRowsRemoved() { launch.listChanged() }
+        function onModelReset() { launch.listChanged() }
     }
 
     property Timer giveUp: Timer {

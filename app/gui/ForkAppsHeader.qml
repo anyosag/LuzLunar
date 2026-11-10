@@ -155,6 +155,7 @@ Item {
             y: 72 - zp * 12
             visible: x < statusBox.x
             text: "z"
+            Accessible.ignored: true
             color: Qt.rgba(1, 1, 1, 0.8)
             px: 11
             weight: 800
@@ -497,6 +498,7 @@ Item {
                 visible: band.live && band.hasRunning
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Resume")
+                accessibleName: qsTr("Resume %1").arg(band.runningName)
                 iconName: "play"
                 iconSize: 15
                 iconStrokeWidth: 1.6
@@ -512,6 +514,7 @@ Item {
                 visible: band.live && band.hasRunning
                 anchors.verticalCenter: parent.verticalCenter
                 text: qsTr("Quit")
+                accessibleName: qsTr("Quit %1").arg(band.runningName)
                 iconName: "stop"
                 iconSize: 14
                 iconFilled: 1

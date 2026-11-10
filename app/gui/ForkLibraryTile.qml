@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Effects
 
 import ForkTheme 1.0
@@ -35,6 +36,8 @@ Item {
     property var menuItems: []
     property int menuCurrent: 0
     property string clickLabel: ""
+    // The rounded cover shape the cover is cut to: one item the page shares between its tiles
+    property Item maskSource: null
 
     signal activated()
     signal menuToggled()
@@ -46,7 +49,11 @@ Item {
     readonly property bool lifted: hov && !menuOpen && settled && !ForkTheme.reduceMotion
     readonly property real coverH: width * 4 / 3
     readonly property bool fx: GraphicsInfo.api !== GraphicsInfo.Software
+    readonly property bool masked: fx && maskSource !== null
     readonly property bool hasArt: art.status === Image.Ready && !art.isPlaceholder
+    function escapeMarkup(text) {
+        return text && text.indexOf("<") >= 0 ? text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : text
+    }
     readonly property color runBlue: ForkTheme.dark ? "#409CFF" : "#0A6CDB"
 
     implicitHeight: coverH + 10 + 18 + (chipFlow.height > 0 ? 6 + chipFlow.height : 0)
@@ -111,7 +118,7 @@ Item {
             RectangularShadow {
                 id: glow
                 visible: tile.running
-                property real p: tile.ph
+                property real p: tile.running ? tile.ph : 0
                 Behavior on p {
                     enabled: !ForkTheme.reduceMotion
                     NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.42, 0, 0.58, 1, 1, 1] }
@@ -138,11 +145,11 @@ Item {
                 Item {
                     id: clipItem
                     anchors.fill: parent
-                    layer.enabled: tile.fx
+                    layer.enabled: tile.masked
                     layer.smooth: true
                     layer.effect: MultiEffect {
                         maskEnabled: true
-                        maskSource: coverMask
+                        maskSource: tile.maskSource
                         maskThresholdMin: 0.5
                         maskSpreadAtMin: 1.0
                     }
@@ -205,7 +212,7 @@ Item {
 
                             Rectangle {
                                 id: runDot
-                                property real p: tile.ph
+                                property real p: tile.running ? tile.ph : 0
                                 Behavior on p {
                                     enabled: !ForkTheme.reduceMotion
                                     NumberAnimation { duration: 1100; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.42, 0, 0.58, 1, 1, 1] }
@@ -219,6 +226,7 @@ Item {
                             }
 
                             ForkCanvasText {
+                                Accessible.ignored: true
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: qsTr("Running")
                                 color: "#FFFFFF"
@@ -294,17 +302,6 @@ Item {
                 }
             }
 
-            // The mask the cover is cut to (never drawn)
-            Rectangle {
-                id: coverMask
-                width: cover.width
-                height: cover.height
-                radius: 14
-                visible: false
-                layer.enabled: true
-                layer.smooth: true
-            }
-
             // The ring: the running app's blue, else the PC's color while pointed at
             Rectangle {
                 anchors.fill: parent
@@ -326,6 +323,11 @@ Item {
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
             text: tile.appName
+            // The full name when it's cut off (upstream's tooltip; the host picks names, so markup in one is escaped)
+            ToolTip.text: tile.escapeMarkup(tile.appName)
+            ToolTip.delay: 1000
+            ToolTip.timeout: 5000
+            ToolTip.visible: tile.hov && nameLabel.truncated && !tile.menuOpen
             color: tile.hidden ? ForkTheme.cv.muted : ForkTheme.cv.text
             px: 14
             weight: 600
@@ -392,6 +394,8 @@ Item {
             Accessible.name: tile.clickLabel
             Accessible.description: tile.chips.map(function(chip) { return chip.text }).join(", ")
             Accessible.onPressAction: tile.activated()
+            // A long press opens the menu (upstream's press and hold)
+            onPressAndHold: tile.menuRequested()
             onClicked: function(mouse) {
                 if (mouse.button === Qt.RightButton) {
                     tile.menuRequested()

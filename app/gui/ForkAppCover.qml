@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
 import ForkPcPrefs // [fork] screenshot runs use the geometry renderer (a hidden grab drops curve shapes)
-import QtQuick.Effects
 
 import ForkTheme 1.0
 
@@ -109,34 +108,74 @@ Item {
             PathSvg { path: "M26.8 60a0.8 0.8 0 1 0 -1.6 0a0.8 0.8 0 1 0 1.6 0Z" } }
     }
 
-    // The letter: 66 px at 24 % of a 173.333 wide tile (800 weight, -0.04em, a soft shadow)
-    ForkCanvasText {
-        id: letter
-        readonly property real size: cover.kind === "tile" ? 66 * cover.width / 173.333 : (cover.kind === "thumb" ? 36 : 28)
-        anchors.left: parent.left
-        anchors.right: parent.right
-        y: cover.height * (cover.kind === "dialog" ? 0.30 : 0.24) - 0.09 * size
-        horizontalAlignment: Text.AlignHCenter
-        text: cover.initial(cover.name)
-        color: "#F5EBD3"
-        px: size
-        weight: 800
-        tracking: -0.04 * size
-        lineHeightPx: size
-        height: size
-        layer.enabled: cover.fx
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: Qt.rgba(0, 0, 0, 0.28)
-            shadowVerticalOffset: 6
-            shadowBlur: 1.0
-            blurMax: 24
+    // The letter: 66 px at 24 % of a 173.333 wide tile (800 weight, -0.04em, a soft shadow made of
+    // a few dark copies below it, which is cheaper than a blur and close to the design's
+    // 0 6px 24px at 0.28)
+    readonly property real letterSize: Math.max(1, kind === "tile" ? 66 * width / 173.333 : (kind === "thumb" ? 36 : 28))
+    readonly property real letterY: height * (kind === "dialog" ? 0.30 : 0.24) - 0.09 * letterSize
+
+    Repeater {
+        model: cover.kind === "tile" ? [[10, 0.05], [7, 0.07], [4, 0.09]] : [[7, 0.06], [4, 0.09]]
+
+        delegate: ForkCanvasText {
+            required property var modelData
+            Accessible.ignored: true
+            anchors.left: parent.left
+            anchors.right: parent.right
+            y: cover.letterY + modelData[0] * cover.letterSize / 66
+            horizontalAlignment: Text.AlignHCenter
+            text: cover.initial(cover.name)
+            color: Qt.rgba(0, 0, 0, modelData[1])
+            px: cover.letterSize
+            weight: 800
+            tracking: -0.04 * cover.letterSize
+            lineHeightPx: cover.letterSize
+            height: cover.letterSize
         }
     }
 
-    // The name, centered along the bottom
+    ForkCanvasText {
+        id: letter
+        Accessible.ignored: true
+        anchors.left: parent.left
+        anchors.right: parent.right
+        y: cover.letterY
+        horizontalAlignment: Text.AlignHCenter
+        text: cover.initial(cover.name)
+        color: "#F5EBD3"
+        px: cover.letterSize
+        weight: 800
+        tracking: -0.04 * cover.letterSize
+        lineHeightPx: cover.letterSize
+        height: cover.letterSize
+    }
+
+    // The name, centered along the bottom (a one point shadow copy under it)
+    Repeater {
+        model: cover.showName ? [[1.5, 0.18], [0.5, 0.30]] : []
+
+        delegate: ForkCanvasText {
+            required property var modelData
+            Accessible.ignored: true
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 12 * cover.width / 173.333
+            anchors.rightMargin: 12 * cover.width / 173.333
+            anchors.bottomMargin: 16 * cover.width / 173.333 - modelData[0]
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            text: cover.name
+            color: Qt.rgba(0, 0, 0, modelData[1])
+            px: Math.max(1, 14 * cover.width / 173.333)
+            weight: 650
+            lineHeightPx: Math.max(1, 17 * cover.width / 173.333)
+        }
+    }
+
     ForkCanvasText {
         visible: cover.showName
+        Accessible.ignored: true
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -147,16 +186,10 @@ Item {
         wrapMode: Text.Wrap
         text: cover.name
         color: "#FFFFFF"
-        px: 14 * cover.width / 173.333
+        px: Math.max(1, 14 * cover.width / 173.333)
         weight: 650
-        lineHeightPx: 17 * cover.width / 173.333
-        layer.enabled: cover.fx && visible
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: Qt.rgba(0, 0, 0, 0.35)
-            shadowVerticalOffset: 1
-            shadowBlur: 0.4
-            blurMax: 8
-        }
+        lineHeightPx: Math.max(1, 17 * cover.width / 173.333)
     }
+
+    Accessible.ignored: true
 }

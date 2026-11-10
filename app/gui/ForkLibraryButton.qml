@@ -26,13 +26,14 @@ FocusScope {
     property real gap: 7
     property alias fullWidth: button.stretch
     property bool stretch: false
+    property string accessibleName: text
     signal clicked()
 
     implicitHeight: 40
     implicitWidth: padLeft + (iconName !== "" ? iconSize + gap : 0) + label.implicitWidth + padRight
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
-    Accessible.name: text
+    Accessible.name: accessibleName
     Accessible.onPressAction: button.clicked()
 
     Rectangle {
