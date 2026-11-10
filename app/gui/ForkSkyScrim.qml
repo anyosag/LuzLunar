@@ -61,7 +61,6 @@ Item {
             blurMax: 64
             blur: 0.93
             saturation: 0.1
-            autoPaddingEnabled: false
         }
         Rectangle {
             anchors.fill: parent

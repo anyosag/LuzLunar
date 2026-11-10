@@ -8,7 +8,6 @@ import ForkHostUpdates // [fork]
 import ForkHostPower // [fork]
 import ForkPcPrefs // [fork]
 
-import ComputerModel
 import ComputerManager
 import StreamingPreferences
 import SdlGamepadKeyNavigation
@@ -348,7 +347,8 @@ Item {
     }
     readonly property bool canLaunch: !forkSample && computerModel !== null && typeof computerModel.createSessionForApp === "function"
     readonly property bool canQuit: !forkSample && computerModel !== null && typeof computerModel.quitRunningApp === "function"
-    readonly property bool canWakeThenStream: typeof ForkWakeLaunch !== "undefined" && !forkSample && computerModel !== null
+    readonly property bool canWakeThenStream: !forkSample && computerModel !== null
+    ForkWakeLaunch { id: wakeLaunch }
 
     function forkWake(i) {
         var m = rowOf(i)
@@ -416,14 +416,17 @@ Item {
         var m = rowOf(i)
         if (!m || forkSample || !computerModel) { forkToast(qsTr("Opens all of %1's apps").arg(m ? m.name : "")); return }
         var component = Qt.createComponent("AppView.qml")
+        var online = m.online === true
         var props = {"computerIndex": i, "objectName": m.name, "showHiddenGames": true,
-                     "forkHostStatus": m.hostSoftware !== "" && m.hostSoftware !== undefined ? qsTr("%1 · online").arg(m.hostSoftware) : qsTr("Online")}
+                     "forkHostStatus": online ? (m.hostSoftware !== "" && m.hostSoftware !== undefined ? qsTr("%1 · online").arg(m.hostSoftware) : qsTr("Online")) : qsTr("Asleep"),
+                     "forkAsleep": !online, "forkColorKey": hueOf(m), "forkComputerModel": computerModel,
+                     "forkLatencyMs": m.latencyMs !== undefined ? m.latencyMs : -1, "forkWakeReady": m.wakeFromOff === "ready"}
+        if (origin) {
+            props["forkOriginX"] = origin.x
+            props["forkOriginY"] = origin.y
+        }
         var appView = component.createObject(stackView, props)
         if (appView === null) { forkToast(component.errorString()); return }
-        if (appView.forkOriginX !== undefined && origin) {
-            appView.forkOriginX = origin.x
-            appView.forkOriginY = origin.y
-        }
         appsOpen = true
         stackView.push(appView)
     }
@@ -455,7 +458,7 @@ Item {
     // An app picked on a sleeping or shut-down PC: wake it, wait, then start the app (ForkWakeLaunch,
     // which respects "Wake it when I pick an app"); without that helper it just wakes the PC
     function wakeThenLaunch(i, appId, label) {
-        if (canWakeThenStream && appId) ForkWakeLaunch.start(computerModel, i, appId, label)
+        if (canWakeThenStream && appId) wakeLaunch.start(computerModel, i, appId, label)
         else forkWake(i)
     }
     function quitRunning(i) {
@@ -639,7 +642,7 @@ Item {
         states: State {
             name: "away"
             when: pcPage.appsOpen
-            PropertyChanges { target: board; opacity: 0; scale: 0.95; fxBlur: 6 }
+            PropertyChanges { board.opacity: 0; board.scale: 0.95; board.fxBlur: 6 }
         }
         transitions: [
             Transition {

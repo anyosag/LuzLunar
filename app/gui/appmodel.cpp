@@ -104,6 +104,17 @@ QVariantMap AppModel::forkHostInfo()
                                           : m_Computer->isNvidiaServerSoftware ? QStringLiteral("GeForce Experience")
                                           : QStringLiteral("Sunshine"));
     info.insert(QStringLiteral("uuid"), m_Computer->uuid);
+    // [fork] An asleep PC's page: whether it answers now, and the address it had (activeAddress is
+    // empty after a restart)
+    info.insert(QStringLiteral("online"), m_Computer->state == NvComputer::CS_ONLINE);
+    QString last;
+    for (const NvAddress& a : { m_Computer->localAddress, m_Computer->manualAddress, m_Computer->remoteAddress, m_Computer->ipv6Address }) {
+        if (!a.isNull()) {
+            last = a.address();
+            break;
+        }
+    }
+    info.insert(QStringLiteral("lastAddress"), last);
     return info;
 }
 
@@ -366,7 +377,7 @@ void AppModel::handleComputerStateChanged(NvComputer* computer)
     }
 
     // [fork] Away and kept: the list stays as of the last visit, and what ran there no longer does
-    if (m_Computer->state != NvComputer::CS_ONLINE) {
+    if (m_ForkKeepOffline && m_Computer->state != NvComputer::CS_ONLINE) {
         if (m_CurrentGameId != 0) {
             const int was = forkIndexOfApp(m_CurrentGameId);
             m_CurrentGameId = 0;
@@ -378,7 +389,7 @@ void AppModel::handleComputerStateChanged(NvComputer* computer)
         updateAppList(m_AllApps);
         return;
     }
-    if (m_ForkWasOffline) {
+    if (m_ForkKeepOffline && m_ForkWasOffline) {
         // Back: art that wasn't cached can be fetched now
         m_ForkWasOffline = false;
         if (!m_VisibleApps.isEmpty()) {

@@ -33,7 +33,6 @@ Item {
         blurEnabled: true
         blurMax: 64
         blur: dawn.sigmaToBlur(28 * dawn.layerScale)
-        autoPaddingEnabled: false
     }
 
     Item {

@@ -52,7 +52,8 @@ public:
 
     // [fork] The PC for the apps page's header: "address" (the one LuzLunar uses now), "local" or
     // "remote" (whether that's its address on this network or the one from outside), "software"
-    // ("Apollo", "Sunshine" or "GeForce Experience") and "uuid"
+    // ("Apollo", "Sunshine" or "GeForce Experience"), "uuid", "online" and "lastAddress" (the PC's
+    // LAN, typed, outside or IPv6 address, for a PC that's away)
     Q_INVOKABLE QVariantMap forkHostInfo();
 
     // [fork] The app that runs, for the apps page's header, whether or not the grid shows its tile:
