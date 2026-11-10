@@ -24,7 +24,9 @@ Text {
     color: ForkTheme.cv.text
     textFormat: Text.PlainText
     font.family: ForkTheme.uiFamily
-    font.pointSize: px * 72 / _dpi
+    // At least 1: a size derived from a width (covers, tiles) is 0 until the item is laid out, and
+    // a point size of 0 or less makes QFont complain
+    font.pointSize: Math.max(1, px) * 72 / _dpi
     font.weight: weight
     font.letterSpacing: tracking
     font.capitalization: upper ? Font.AllUppercase : Font.MixedCase
