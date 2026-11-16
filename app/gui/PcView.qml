@@ -497,11 +497,15 @@ Item {
     }
 
     // Starts a stream of one of the PC's apps (or resumes the running one); without the model's
-    // launch support the PC's apps page opens instead
+    // launch support the PC's apps page opens instead. With another app running, it asks to quit
+    // that one first, as All apps does: a stream started while the PC runs an app resumes that app
+    // (Session's "resume"), whichever app it was for
     function launchApp(i, appId, appLabel, resume) {
         var m = rowOf(i)
         if (!m) return
         if (!canLaunch || !appId) { openApps(i, geoOrigin(i)); return }
+        var runningId = m.runningAppId || 0
+        if (runningId !== 0 && runningId !== appId) { askSwitch(i, appId, appLabel); return }
         var session = computerModel.createSessionForApp(i, appId)
         if (!session) { openApps(i, geoOrigin(i)); return }
         var component = Qt.createComponent("StreamSegue.qml")
@@ -533,6 +537,21 @@ Item {
         quitDialog.appName = runningAppOf(m)
         quitDialog.pcName = m.name
         quitDialog.pcUuid = m.uuid
+        quitDialog.nextAppId = 0
+        quitDialog.nextAppName = ""
+        quitDialog.open()
+    }
+    // An app picked while the PC runs another: quit the running one, then start the picked one
+    function askSwitch(i, appId, appLabel) {
+        var m = rowOf(i)
+        if (!m) return
+        if (!canQuit) { openApps(i, geoOrigin(i)); return }
+        quitDialog.pcIndex = i
+        quitDialog.appName = runningAppOf(m)
+        quitDialog.pcName = m.name
+        quitDialog.pcUuid = m.uuid
+        quitDialog.nextAppId = appId
+        quitDialog.nextAppName = appLabel
         quitDialog.open()
     }
     function copyAddress(text) {
@@ -1157,22 +1176,42 @@ Item {
         onSaved: stage.itemsRevision++
     }
 
-    // [fork] Quit the running app (the card's Quit button and the menu's), in the All apps alert
+    // [fork] Quit the running app (the card's Quit button and the menu's), in the All apps alert;
+    // with a next app (askSwitch()), quit it and then start that one, as All apps' switch does
     ForkLibraryDialog {
         id: quitDialog
         property int pcIndex: -1
         property string pcName: ""
         property string pcUuid: ""
-        title: qsTr("Quit %1?").arg(appName)
-        body: qsTr("It closes on %1. Anything you haven’t saved is lost.").arg(pcName)
-        confirmText: qsTr("Quit")
-        confirmFill: "#D93A33"
+        property int nextAppId: 0
+        property string nextAppName: ""
+        readonly property bool switching: nextAppId !== 0
+        title: switching ? qsTr("%1 is running").arg(appName) : qsTr("Quit %1?").arg(appName)
+        body: switching
+              ? qsTr("%1 runs one app at a time. Quitting %2 loses anything you haven’t saved in it.").arg(pcName).arg(appName)
+              : qsTr("It closes on %1. Anything you haven’t saved is lost.").arg(pcName)
+        confirmText: switching ? qsTr("Quit it and start %1").arg(nextAppName) : qsTr("Quit")
+        confirmFill: switching ? "#0A6CDB" : "#D93A33"
         colorKey: pcPage.hueOf(pcPage.rowOf(pcIndex))
         onConfirmed: {
             var component = Qt.createComponent("QuitSegue.qml")
             var index = pcIndex
             var name = appName
             var host = pcName
+            if (switching) {
+                // The next app's stream, made now, starts once the quit is done (QuitSegue)
+                var session = pcPage.computerModel.createSessionForApp(index, nextAppId)
+                if (!session) { pcPage.openApps(index, pcPage.geoOrigin(index)); return }
+                stackView.push(component.createObject(stackView, {
+                                                          "appName": name,
+                                                          "quitRunningAppFn": function () { pcPage.computerModel.quitRunningApp(index) },
+                                                          "nextAppName": nextAppName,
+                                                          "nextSession": session,
+                                                          "nextHostName": host,
+                                                          "nextSummary": Launch.streamSummary(pcUuid, nextAppName)
+                                                      }))
+                return
+            }
             var quitDone = function (error) {
                 ComputerManager.quitAppCompleted.disconnect(quitDone)
                 if (error === undefined) {
