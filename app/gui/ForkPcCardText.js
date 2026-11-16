@@ -50,6 +50,14 @@ function allAppsNote(state, p) {
 
 function capitalize(t) { return t.charAt(0).toUpperCase() + t.slice(1) }
 
+// The quiet buttons of a sleeping or waking PC: upstream's network test, or, for a Wake PC sent from
+// outside the PC's home network, the steps that take (ForkWakeOutsideDialog)
+var TEST_NETWORK = { id: "testNetwork", label: "Test Network", icon: "wifi", colorKey: "text2" }
+var WAKE_OUTSIDE = { id: "wakeOutside", label: "Wake from Outside…", icon: "info", colorKey: "text2" }
+
+// A Wake PC that went (or would have gone) outside the PC's home network
+function awayWake(p) { return p.wakeRoute === "outside" || p.wakeRoute === "none" }
+
 function latencyText(ms) { return (ms !== undefined && ms !== null && ms >= 0) ? ms + " ms" : "" }
 
 // p: { state, name, version, network, latencyMs, address, runningApp, defaultApp, streamWidth,
@@ -114,18 +122,22 @@ function describe(p) {
         out.primary = { id: "resume", label: "Resume " + app, icon: "play", fill: true }
         break
     case "waking":
-        out.title = "Waking up…"; out.sub = "Wake PC was sent. The card turns ready when it answers"
+        // Away from the PC's home network the model says where Wake PC went (p.wakeRoute
+        // "outside" or "none", p.wakeChip, p.wakeLine: wakeoutsiderules.h)
+        out.title = "Waking up…"; out.sub = p.wakeLine || "Wake PC was sent. The card turns ready when it answers"
         out.showApps = true; out.sleepy = true; out.tilesTitle = "Wake and stream"; out.allNote = "From its last visit"
-        out.chips.push({ label: "Sent from this Mac", icon: "wifi", colorKey: "text2" })
-        out.quiet = [{ id: "testNetwork", label: "Test Network", icon: "wifi", colorKey: "text2" }]
+        out.chips.push(awayWake(p) ? { label: p.wakeChip || "Away from home", icon: "laptop", colorKey: "text2" }
+                                   : { label: "Sent from this Mac", icon: "wifi", colorKey: "text2" })
+        out.quiet = [awayWake(p) ? WAKE_OUTSIDE : TEST_NETWORK]
         out.primary = { id: "", label: "Waking…", icon: "spinner", fill: false, disabled: true }
         break
     case "asleep":
-        out.title = "Asleep"; out.sub = "Picking an app wakes it first"
+        // A Wake PC from outside that got no answer says so, and how to set it up
+        out.title = "Asleep"; out.sub = p.wakeMissed && p.wakeLine ? p.wakeLine : "Picking an app wakes it first"
         out.showApps = true; out.sleepy = true; out.tilesTitle = "Wake and stream"; out.allNote = "From its last visit"
         if (wakeChip) out.chips.push(wakeChip)
         if (updateChip && !p.updateAvailable) out.chips.push(updateChip)
-        out.quiet = [{ id: "testNetwork", label: "Test Network", icon: "wifi", colorKey: "text2" }]
+        out.quiet = [p.wakeMissed ? WAKE_OUTSIDE : TEST_NETWORK]
         out.primary = { id: "wake", label: "Wake PC", icon: "power", fill: false }
         break
     case "offCanWake":
@@ -202,12 +214,13 @@ function describeSmall(p) {
         o.action = { id: "resume", label: "Resume " + (p.runningApp || "Desktop"), icon: "play", fill: true }
         break
     case "waking":
-        o.headline = "Waking up…"; o.sub = "Wake PC was sent. The card turns ready when it answers."
-        o.chip = { label: "Sent from this Mac", icon: "wifi", colorKey: "text2" }
+        o.headline = "Waking up…"; o.sub = p.wakeLine ? p.wakeLine + "." : "Wake PC was sent. The card turns ready when it answers."
+        o.chip = awayWake(p) ? { label: p.wakeChip || "Away from home", icon: "laptop", colorKey: "text2" }
+                             : { label: "Sent from this Mac", icon: "wifi", colorKey: "text2" }
         o.action = { id: "", label: "Waking…", icon: "spinner", fill: false, disabled: true }
         break
     case "asleep":
-        o.headline = "Asleep"; o.sub = "Picking an app wakes it first."
+        o.headline = "Asleep"; o.sub = p.wakeMissed && p.wakeLine ? p.wakeLine + "." : "Picking an app wakes it first."
         o.chip = { label: "Wake from off ready", icon: "check", colorKey: "green" }
         o.action = { id: "wake", label: "Wake PC", icon: "power", fill: false }
         break

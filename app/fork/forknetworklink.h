@@ -45,4 +45,15 @@ namespace ForkNetworkLink
     // network this PC was streamed over the LAN on (ForkLinkRules::lanAddressFirst()), so a Mac back
     // home moves to the LAN at its next poll rather than when Bonjour finds the PC.
     QVector<NvAddress> pollOrder(NvComputer* computer);
+
+    // Whether this Mac is on the PC's home network now, for Wake PC (WakeOutsideRules::route()):
+    // the PC's LAN address (NvComputer::localAddress, "" unknown) is on the link that reaches it
+    // (not a VPN), and whether that network, or any, carried a LAN stream of the PC. Any thread;
+    // looks the route up, sends nothing.
+    struct Home {
+        bool onLink = false;
+        bool networkRemembered = false;
+        bool anyRemembered = false;
+    };
+    Home homeFor(const QString& uuid, const QString& lanAddress);
 }

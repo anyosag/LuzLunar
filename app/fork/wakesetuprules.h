@@ -85,16 +85,7 @@ namespace WakeSetupRules
                     "and turn off ErP Ready (or Deep Sleep, or EuP). Network boot (PXE) isn't needed.", pcName);
     }
 
-    // Turning the PC on from outside the home network, which nothing on the PC can fix
-    inline std::string awayText(const std::string& pcName, const std::string& ip, const std::string& mac)
-    {
-        std::string address = ip.empty() ? std::string("its address") : ip;
-        std::string hardware = mac.empty() ? std::string("its MAC address") : mac;
-        return fill("When %1 is off, nothing answers your router for it, so a Wake PC from outside your home network "
-                    "doesn't get there. In your router, bind " + address + " to " + hardware + " (IP & MAC binding, "
-                    "or a static ARP entry). LuzLunar already sends Wake PC to the ports you forward for streaming. "
-                    "Or wake %1 from a device at home that's always on.", pcName);
-    }
+    // (Waking the PC from outside the home network, asleep or off, is wakeoutsiderules.h's.)
 
     inline Row row(const Check& check, const Status& status, const std::string& pcName)
     {
@@ -262,6 +253,20 @@ namespace WakeSetupRules
             text += " %1 is changing its settings now.";
         }
         return fill(text, pcName);
+    }
+
+    // The line above the rows when nothing was asked this run and the PC doesn't answer (asleep or
+    // off), from its last answer (ready, fixable, blocked, unknown, unsupported, or "" never)
+    inline std::string asleepSummary(const std::string& lastFromOff, const std::string& pcName)
+    {
+        if (lastFromOff == "ready") {
+            return fill("%1 isn't answering now. When it last did, it was ready to turn on from off.", pcName);
+        }
+        if (lastFromOff == "fixable" || lastFromOff == "blocked") {
+            return fill("%1 isn't answering now. When it last did, it needed changes to turn on from off: "
+                        "open this again once it's awake.", pcName);
+        }
+        return fill("%1 isn't answering now. Its wake settings show here once it's awake.", pcName);
     }
 
     // What Fix on PC asks before it runs

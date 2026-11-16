@@ -60,9 +60,11 @@ public:
     // Set Up Wake from Off, by the PC's uuid:
     //   known: Apollo answered; supported: its Apollo has /actions/wake; permitted: this Mac may ask;
     //   busy: a request is in flight; fromOff: "ready", "fixable", "blocked" or "unknown";
-    //   summary, rows [{id, kind ("ok", "warn", "info"), title, detail}], bios, away (the router
-    //   step, with the PC's LAN address and MAC), fixConfirmation, shutDownWarning;
-    //   canFix, canUndo, applying, reason ("none", "streaming", "updating", "applying")
+    //   summary, rows [{id, kind ("ok", "warn", "info"), title, detail}], bios, fixConfirmation,
+    //   shutDownWarning; canFix, canUndo, applying, reason ("none", "streaming", "updating",
+    //   "applying"); adapter (the network card) and link; asleep: nothing known this run and the
+    //   PC doesn't answer, so the summary says what it said last. Waking it from outside the home
+    //   network is ForkWakeOutside's.
     Q_INVOKABLE QVariantMap wakeStatus(const QString& uuid) const;
     Q_INVOKABLE void refreshWake(const QString& uuid);
 
@@ -115,11 +117,12 @@ private:
         QString networkError;
     };
 
-    // A PC's name, LAN address and MAC, for the texts
+    // A PC's name, LAN address and MAC, for the texts, and whether it answers now
     struct Names {
         QString name;
         QString ip;
         QString mac;
+        bool online = false;
     };
 
     explicit ForkHostPower(QObject* parent = nullptr);

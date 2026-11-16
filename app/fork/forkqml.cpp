@@ -14,6 +14,7 @@
 #include "forkpcprefs.h"
 #include "forkpreferences.h"
 #include "forkupdater.h"
+#include "forkwakeoutside.h"
 #include "sfsymbols.h"
 #include "streamprofiles.h"
 #include "windowchrome.h"
@@ -91,6 +92,14 @@ namespace
             ForkHostPower* power = ForkHostPower::get();
             QQmlEngine::setObjectOwnership(power, QQmlEngine::CppOwnership);
             return power;
+        });
+        // Wake PC from outside the home network: where it goes, the check from home, the steps
+        // (FORK.md, "Wake from outside")
+        qmlRegisterSingletonType<ForkWakeOutside>("ForkWakeOutside", 1, 0, "ForkWakeOutside",
+                                                  [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkWakeOutside* outside = ForkWakeOutside::get();
+            QQmlEngine::setObjectOwnership(outside, QQmlEngine::CppOwnership);
+            return outside;
         });
         // Multi-display streams: the launch screen's displays and the iMac's route check
         qmlRegisterSingletonType<ForkGroupLaunch>("ForkGroupLaunch", 1, 0, "ForkGroupLaunch",

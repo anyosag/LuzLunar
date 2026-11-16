@@ -2,6 +2,7 @@
 #include "forkpcprefs.h"
 #include "forkhostpower.h"
 #include "forkhostupdates.h"
+#include "forkwakeoutside.h"
 #include "pccardrules.h"
 #include "backend/computermanager.h"
 #include "streaming/session.h"
@@ -32,6 +33,7 @@ void ForkPcProbe::attach(ComputerManager* manager)
         return;
     }
     m_Manager = manager;
+    ForkWakeOutside::get()->setComputerManager(manager);
     connect(manager, &ComputerManager::computerStateChanged, this, &ForkPcProbe::handleComputerStateChanged);
     connect(qApp, &QGuiApplication::applicationStateChanged, this, &ForkPcProbe::handleApplicationState);
     connect(qApp, &QCoreApplication::aboutToQuit, this, &ForkPcProbe::writeLastSeen);
@@ -98,6 +100,10 @@ void ForkPcProbe::note(NvComputer* computer)
             if (knownPaired) {
                 ForkHostUpdates::get()->refresh(uuid);
                 ForkHostPower::get()->refresh(uuid);
+            }
+            // At home, whether Wake PC can reach it from outside (twice a day at most)
+            if (!qEnvironmentVariableIsSet("LUZLUNAR_SCREENSHOTS")) {
+                ForkWakeOutside::get()->checkIfDue(uuid);
             }
         }
 

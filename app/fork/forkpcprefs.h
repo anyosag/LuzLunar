@@ -111,6 +111,12 @@ public:
     QString wakeFromOff(const QString& uuid) const;
     void noteWakeFromOff(const QString& uuid, const QString& fromOff);
 
+    // From the same answer: the network card LuzLunar reaches the PC through (as Device Manager names
+    // it) and how it's connected (ethernet, wifi, virtual, other, none); "" never told
+    QString wakeAdapter(const QString& uuid) const;
+    QString wakeLink(const QString& uuid) const;
+    void noteWakeAdapter(const QString& uuid, const QString& adapter, const QString& link);
+
     // A stream of an app started here: its format, and the app moves to the front of the PC's
     // recent apps (names, newest first, at most 8)
     void noteStream(const QString& uuid, int appId, const QString& appName, int width, int height,
@@ -127,6 +133,21 @@ public:
     void clearWakeSent(const QString& uuid);
     qint64 wakeSentSecs(const QString& uuid) const;        // 0 none
     bool isWakeTimedOut(const QString& uuid) const;
+
+    // Where that Wake PC went (ForkWakeOutside, wakeoutsiderules.h): "home", "outside" or "none", and
+    // the address the card names. Set right after noteWakeSent(); kept past a timeout, so the card
+    // can say one sent away from home got no answer, until the PC answers, Wake PC is sent again or
+    // WakeOutsideRules::k_MissedKeepSecs pass. An outside one is "quiet" once it has had no answer
+    // for WakeOutsideRules::hintSecs(wasOff).
+    void noteWakeRoute(const QString& uuid, const QString& route, const QString& address, bool wasOff);
+    QString wakeRoute(const QString& uuid) const;
+    QString wakeAddress(const QString& uuid) const;
+    bool isWakeQuiet(const QString& uuid) const;
+
+    // What Wake PC's check from home last found (ForkWakeOutside): { at (seconds), address, reached,
+    // forwardedTo, lanAddress }, or {} when it never ran
+    QVariantMap outsideCheck(const QString& uuid) const;
+    void noteOutsideCheck(const QString& uuid, const QVariantMap& check);
 
 signals:
     void pcsViewChanged();
@@ -156,6 +177,10 @@ private:
     QString m_PcsView;      // loaded on first use
     QHash<QString, qint64> m_WakeSent;
     QSet<QString> m_WakeTimedOut;
+    QHash<QString, QString> m_WakeRoute;
+    QHash<QString, QString> m_WakeAddress;
+    QSet<QString> m_WakeQuiet;
+    QHash<QString, qint64> m_WakeMissedAt;     // the timed-out Wake PC whose route the card still shows
     QSet<QString> m_Forgotten;
 
     // Every value read once, written through (QSettings on macOS is a CFPreferences call per read)

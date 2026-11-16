@@ -529,6 +529,10 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/wakesetuprules_test.cpp -o "$RUNNER_TEMP/wakesetuprules_test"
           "$RUNNER_TEMP/wakesetuprules_test"
+          # Wake PC from outside the home network: where it goes, the card's words, the check from home, the steps
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/wakeoutsiderules_test.cpp -o "$RUNNER_TEMP/wakeoutsiderules_test"
+          "$RUNNER_TEMP/wakeoutsiderules_test"
           # The PC card in Your PCs: its state from what the poll and this Mac know, where a PC is reached,
           # the address note, the apps on the card, the PC's color
           clang++ -std=c++17 -Wall -Wextra -Iapp \

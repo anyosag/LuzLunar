@@ -9,6 +9,7 @@ used from a private temporary file and never printed.
   luz-debug.py luz status                     LuzLunar's state and log file
   luz-debug.py luz log [-n 200] [-g TEXT] [-f] its log: the last lines, those containing TEXT, or follow it
   luz-debug.py luz level debug [-m 30]        more detail for a while (info, debug, verbose)
+  luz-debug.py luz wake                       what Wake PC uses for each paired PC, and the log's Wake lines
   luz-debug.py apollo status                  Apollo's version, state and log level
   luz-debug.py apollo log [-n] [-g] [-f]      Apollo's log, the same way
   luz-debug.py apollo level debug [-m 30]     (verbose, debug, info, warning, error, fatal, none; configured)
@@ -111,6 +112,49 @@ def luz_log(args):
         offset += whole
         for line in matching(chunk[:whole].decode("utf-8", "replace").splitlines(), args.grep):
             print(line, flush=True)
+
+
+def when(seconds):
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(int(seconds))) if seconds else "never"
+
+
+def luz_wake(args):
+    """What Wake PC uses for each paired PC (FORK.md, "Wake from outside"), from LuzLunar's settings,
+    and the current log's Wake lines. Prints no key or certificate."""
+    values = settings()
+    for index in range(1, int(values.get("hosts.size", 0)) + 1):
+        prefix = f"hosts.{index}."
+        host = {key[len(prefix):]: value for key, value in values.items() if key.startswith(prefix)}
+        if not host.get("srvcert") or (args.host and host.get("hostname", "").lower() != args.host.lower()):
+            continue
+        uuid = host.get("uuid", "")
+        pc = {key[len(f"fork.pcs.{uuid}."):]: value for key, value in values.items() if key.startswith(f"fork.pcs.{uuid}.")}
+        print(f"{host.get('hostname')} ({uuid})")
+        for kind in ("local", "remote", "manual", "ipv6"):
+            if host.get(f"{kind}address"):
+                print(f"  {kind} address: {host[kind + 'address']} (port {host.get(kind + 'port') or 47989})")
+        mac = host.get("mac") or b""
+        print(f"  MAC in Wake PC's packet: {':'.join(f'{b:02x}' for b in mac) if isinstance(mac, bytes) and mac else '(none)'}")
+        print(f"  card: {pc.get('wakeAdapter') or '?'} ({pc.get('wakeLink') or '?'}); wake from off: {pc.get('wakeFromOff') or '?'}")
+        print(f"  last seen {when(pc.get('lastSeen'))} via {pc.get('lastSeenVia') or '?'}; "
+              f"answered at its outside address {when(pc.get('remoteWorked'))}")
+        print(f"  networks it was streamed over the LAN on: {len(values.get(f'fork.lanNetworks.{uuid}') or [])}")
+        if pc.get("outsideCheck.at"):
+            reached = pc.get("outsideCheck.reached")
+            print(f"  checked from home {when(pc.get('outsideCheck.at'))}: {pc.get('outsideCheck.address')} "
+                  + (f"reaches it at {pc.get('outsideCheck.forwardedTo')}" if reached else "doesn't reach it")
+                  + f" (its LAN address then {pc.get('outsideCheck.lanAddress') or '?'})")
+        else:
+            print("  not checked from home yet")
+    try:
+        path = luz_log_file(args)
+    except Failure:
+        return
+    print(f"# {path}", file=sys.stderr)
+    with open(path, "rb") as log:
+        lines = log.read().decode("utf-8", "replace").splitlines()
+    for line in matching(lines, "[fork] Wake")[-args.lines:]:
+        print(line)
 
 
 def show(state, keys):
@@ -270,6 +314,8 @@ def run(args):
         elif args.command == "mark":
             luz_request({"op": "mark", "text": args.text})
             print("marked LuzLunar's log")
+        elif args.command == "wake":
+            luz_wake(args)
         return
 
     if args.app == "mark":
@@ -324,6 +370,9 @@ def main():
 
     luz = apps.add_parser("luz", help="LuzLunar on this Mac").add_subparsers(dest="command", required=True)
     common(luz, ["info", "debug", "verbose"]).add_argument("--file", help="a log file instead of the current one")
+    wake = luz.add_parser("wake")
+    wake.add_argument("-n", "--lines", type=int, default=40, help="the log's last Wake lines")
+    wake.add_argument("--file", help="a log file instead of the current one")
 
     apollo = apps.add_parser("apollo", help="Apollo on the PC").add_subparsers(dest="command", required=True)
     common(apollo, ["verbose", "debug", "info", "warning", "error", "fatal", "none", "configured"])

@@ -261,4 +261,18 @@ QVector<NvAddress> pollOrder(NvComputer* computer)
     }
     return addresses;
 }
+
+Home homeFor(const QString& uuid, const QString& lanAddress)
+{
+    Home home;
+    const std::vector<std::string> remembered = loadRemembered(uuid);
+    home.anyRemembered = !remembered.empty();
+    if (lanAddress.isEmpty()) {
+        return home;
+    }
+    MacNetworkLink::Probe probe = MacNetworkLink::probe(MacNetworkLink::numericAddress(lanAddress.toStdString()));
+    home.onLink = probe.onLink && probe.link.kind != ForkLinkRules::Kind::Vpn;
+    home.networkRemembered = home.onLink && ForkLinkRules::remembered(remembered, hashed(probe.networkId));
+    return home;
+}
 }

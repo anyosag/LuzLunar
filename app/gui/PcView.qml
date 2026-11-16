@@ -7,6 +7,7 @@ import ForkTheme // [fork]
 import ForkHostUpdates // [fork]
 import ForkHostPower // [fork]
 import ForkPcPrefs // [fork]
+import ForkWakeOutside // [fork]
 
 import "ForkLibraryLaunch.js" as Launch // [fork] the launch screen's summary chips
 import "ForkStoryLines.js" as StoryLines // [fork] the story line's sentences, one per state
@@ -571,6 +572,7 @@ Item {
             wakeThenLaunch(i, m.mainAppId, appName(m))
             break
         case "setupWake": wakeSetupDialog.openFor(m.uuid, m.name); break
+        case "wakeOutside": wakeOutsideDialog.openFor(m.uuid, m.name); break
         case "pair": pairPc(i); break
         case "testNetwork":
             if (m.online === true && m.paired === true && m.serverSupported === false) {
@@ -668,6 +670,10 @@ Item {
         var upd = []
         if (online && flag(m.hostUpdate)) upd.push(item("update", qsTr("Update Apollo"), "update", { badge: qsTr("Update"), warm: true }))
         if ((flag(m.canSetUpWake) || st === "asleep") && st !== "offNoWake") upd.push(item("setupWake", qsTr("Set Up Wake from Off…"), "check"))
+        // [fork] What waking it from outside the home network takes, and the check from home
+        var outsideItem = flag(m.knownPaired) && flag(m.wakeable) && st !== "pair" && st !== "lost"
+                          ? item("wakeOutside", qsTr("Wake from Outside…"), "info") : null
+        if (outsideItem) upd.push(outsideItem)
 
         var tail = [item("customize", qsTr("Customize…"), "palette", { badge: qsTr("New") }),
                     item("details", qsTr("View Details"), "info")]
@@ -678,6 +684,9 @@ Item {
             sec.push(upd.concat(tail))
         } else if (st === "asleep" || st === "off") {
             sec.push(net.concat(upd))
+            sec.push(tail)
+        } else if (st === "waking") {
+            sec.push(net.concat(outsideItem ? [outsideItem] : []))
             sec.push(tail)
         } else {
             sec.push(net.concat(tail))
@@ -900,6 +909,10 @@ Item {
             streamHdr: m ? m.streamHdr === true : false
             wakeFromOff: m ? (m.wakeFromOff === "ready" ? "ready" : (m.wakeFromOff === "" || m.wakeFromOff === undefined ? "unknown" : "notSetUp")) : "unknown"
             updateAvailable: m ? m.hostUpdate === true : false
+            wakeRoute: m && m.wakeRoute !== undefined ? m.wakeRoute : ""
+            wakeChip: m && m.wakeChip !== undefined ? m.wakeChip : ""
+            wakeLine: m && m.wakeLine !== undefined ? m.wakeLine : ""
+            wakeMissed: m ? m.wakeMissed === true : false
             apps: m ? pcPage.appsOf(m).map(function (a) { return { name: a.name, cover: a.boxart, running: a.running === true } }) : []
 
             focused: slot ? slot.focused : false
@@ -1313,6 +1326,8 @@ Item {
         readonly property bool off: mode === "off"
         readonly property var info: ForkHostPower.revision >= 0 && pcUuid !== "" ? ForkHostPower.status(pcUuid) : ({})
         readonly property var wake: ForkHostPower.revision >= 0 && pcUuid !== "" ? ForkHostPower.wakeStatus(pcUuid) : ({})
+        // Away from the PC's home network, a PC that's off can't be turned on from here (ForkWakeOutside)
+        property string awayWarning: ""
         readonly property string runningApp: info.reason === "app_running" ? info.app : ""
         title: off ? qsTr("Shut down %1?").arg(pcName) : qsTr("Put %1 to sleep?").arg(pcName)
         text: {
@@ -1325,6 +1340,9 @@ Item {
             if (wake.shutDownWarning) {
                 text += "\n\n" + wake.shutDownWarning
             }
+            if (awayWarning !== "") {
+                text += "\n\n" + awayWarning
+            }
             return text
         }
         destructive: off || runningApp !== ""
@@ -1332,6 +1350,7 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
 
         onAboutToShow: {
+            awayWarning = off && !pcPage.forkSample ? ForkWakeOutside.shutDownWarning(pcUuid) : ""
             ForkHostPower.refresh(pcUuid)
             if (standardButton(Dialog.Yes)) {
                 standardButton(Dialog.Yes).text = off ? qsTr("Shut Down") : qsTr("Sleep")
@@ -1354,6 +1373,11 @@ Item {
     // [fork] Set Up Wake from Off
     ForkWakeSetupDialog {
         id: wakeSetupDialog
+    }
+
+    // [fork] Wake from Outside: what waking it from outside the home network takes, and the check from home
+    ForkWakeOutsideDialog {
+        id: wakeOutsideDialog
     }
 
     NavigableMessageDialog {
