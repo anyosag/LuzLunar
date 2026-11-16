@@ -52,7 +52,7 @@ import QtQuick
 QtObject {
     id: self
     readonly property var sample: ({
-        base: {"online":false,"paired":true,"busy":false,"wakeable":true,"statusUnknown":false,"serverSupported":true,"details":"","hostSoftware":"Apollo","knownPaired":true,"keepFirst":false,"wakeOnPick":true,"hasRemoteAddress":false,"remoteWorked":false,"foundAutomatically":true,"lastSeenSecs":1760000000,"lastSeenVia":"home","runningAppId":0,"runningApp":"","streamStartedHere":false,"streamWidth":0,"streamHeight":0,"streamFps":0,"streamHdr":false,"streamCodec":"","hostUpdate":false,"apolloUpToDate":true,"apolloUpdating":false,"wakeFromOff":"ready","waking":false,"wakeTimedOut":false,"powerAction":"","canSleep":false,"canShutDown":false,"canSetUpWake":true,"appsCached":true,"hiddenAppCount":0,"network":"","latencyMs":-1,"addressNote":"lastAddress","apolloVersion":"0.4.8","mainAppId":1,"mainApp":"Desktop"},
+        base: {"online":false,"paired":true,"busy":false,"wakeable":true,"statusUnknown":false,"serverSupported":true,"details":"","hostSoftware":"Apollo","knownPaired":true,"keepFirst":false,"wakeOnPick":true,"hasRemoteAddress":false,"remoteWorked":false,"foundAutomatically":true,"lastSeenSecs":1760000000,"lastSeenVia":"home","runningAppId":0,"runningApp":"","streamStartedHere":false,"streamWidth":0,"streamHeight":0,"streamFps":0,"streamHdr":false,"streamCodec":"","hostUpdate":false,"apolloUpToDate":true,"apolloUpdating":false,"wakeFromOff":"ready","waking":false,"wakeTimedOut":false,"wakeRoute":"","wakeChip":"","wakeLine":"","wakeMissed":false,"powerAction":"","canSleep":false,"canShutDown":false,"canSetUpWake":true,"appsCached":true,"hiddenAppCount":0,"network":"","latencyMs":-1,"addressNote":"lastAddress","apolloVersion":"0.4.8","mainAppId":1,"mainApp":"Desktop"},
         pcs: {
             gonzalo: {"online":true,"hostUpdate":true,"apolloUpToDate":false,"busy":true,"hasRemoteAddress":true,"remoteWorked":true,"runningAppId":1,"runningApp":"Desktop","streamStartedHere":true,"streamWidth":3024,"streamHeight":1890,"streamFps":120,"streamHdr":true,"streamCodec":"HEVC","canSleep":true,"canShutDown":true,"appsCached":false,"hiddenAppCount":1,"network":"home","latencyMs":2,"addressNote":"reachableOutside","name":"GonzaloPC","uuid":"sample-gonzalo","state":"streaming","colorKey":"indigo","address":"10.0.0.77","appCount":7,"previewApps":[{"appid":1,"name":"Desktop","boxart":"qrc:/res/samples/desktop.png","running":true},{"appid":2,"name":"Desktop (multiple displays)","boxart":"qrc:/res/samples/desktop_multi.png","running":false},{"appid":3,"name":"Steam Big Picture","boxart":"qrc:/res/samples/steam.png","running":false}]},
             living: {"lastSeenSecs":1759990000,"name":"Living Room","uuid":"sample-living-room","state":"asleep","colorKey":"teal","address":"10.0.0.42","appCount":6,"previewApps":[{"appid":3,"name":"Steam Big Picture","boxart":"qrc:/res/samples/steam.png","running":false},{"appid":1,"name":"Desktop","boxart":"qrc:/res/samples/desktop.png","running":false},{"appid":2,"name":"Desktop (multiple displays)","boxart":"qrc:/res/samples/desktop_multi.png","running":false}]},
@@ -65,6 +65,10 @@ QtObject {
     readonly property var variants: ({
         ready: { from: "gonzalo", set: { state: "ready", busy: false, runningAppId: 0, runningApp: "", streamStartedHere: false, streamWidth: 0, streamHeight: 0, streamFps: 0, streamHdr: false, streamCodec: "" } },
         waking: { from: "studio", set: { state: "waking", waking: true, powerAction: "" } },
+        // Wake PC away from the PC's home network (wakeoutsiderules.h's words): sent, no answer yet, no answer at all
+        wakingOutside: { from: "living", set: { state: "waking", waking: true, wakeRoute: "outside", wakeChip: "Away from home", wakeLine: "Sent to 203.0.113.20, for your router to pass on" } },
+        wakingQuiet: { from: "living", set: { state: "waking", waking: true, wakeRoute: "outside", wakeChip: "Away from home", wakeLine: "No answer yet. Your router has to pass Wake PC on" } },
+        wakeMissed: { from: "living", set: { state: "asleep", wakeTimedOut: true, wakeRoute: "outside", wakeMissed: true, wakeLine: "Wake PC from outside got no answer" } },
         offNoWake: { from: "studio", set: { state: "offNoWake", wakeFromOff: "", canSetUpWake: false, wakeable: false } },
         checking: { from: "studio", set: { state: "checking", powerAction: "" } }
     })
@@ -164,6 +168,9 @@ QtObject {
         // The other card states on the focused card (streaming, asleep and not paired are above)
         { "1b-pcs-state-ready", P "setRow(p.forkSampleModel, 0, 'ready')", 1000, "harnessSamples" },
         { "1b-pcs-state-waking", P "setRow(p.forkSampleModel, 0, 'waking')", 1000, "harnessSamples" },
+        { "1b-pcs-state-waking-outside", P "setRow(p.forkSampleModel, 0, 'wakingOutside')", 1000, "harnessSamples" },
+        { "1b-pcs-state-waking-quiet", P "setRow(p.forkSampleModel, 0, 'wakingQuiet')", 1000, "harnessSamples" },
+        { "1b-pcs-state-wake-missed", P "setRow(p.forkSampleModel, 0, 'wakeMissed')", 1000, "harnessSamples" },
         { "1b-pcs-state-off", P "setRow(p.forkSampleModel, 0, 'studio')", 1000, "harnessSamples" },
         { "1b-pcs-state-offnowake", P "setRow(p.forkSampleModel, 0, 'offNoWake')", 1000, "harnessSamples" },
         { "1b-pcs-state-lost", P "setRow(p.forkSampleModel, 0, 'basement')", 1000, "harnessSamples" },

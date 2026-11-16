@@ -37,6 +37,8 @@
         <file alias="ForkGroupLaunchCard.qml">../gui/ForkGroupLaunchCard.qml</file>
         <file alias="ForkFpsDialog.qml">../gui/ForkFpsDialog.qml</file>
         <file alias="ForkWakeSetupDialog.qml">../gui/ForkWakeSetupDialog.qml</file>
+        <file alias="ForkWakeOutsideDialog.qml">../gui/ForkWakeOutsideDialog.qml</file>
+        <file alias="ForkWakeRows.qml">../gui/ForkWakeRows.qml</file>
         <file alias="ForkSettingsView.qml">../gui/ForkSettingsView.qml</file>
         <file alias="ForkSettingsDisplay.qml">../gui/ForkSettingsDisplay.qml</file>
         <file alias="ForkSettingsVideo.qml">../gui/ForkSettingsVideo.qml</file>

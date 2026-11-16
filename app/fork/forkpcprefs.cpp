@@ -1,6 +1,7 @@
 #include "forkpcprefs.h"
 #include "pccardrules.h"
 #include "pcorderrules.h"
+#include "wakeoutsiderules.h"
 
 #include <QTimer>
 
@@ -374,6 +375,10 @@ void ForkPcPrefs::forget(const QString& uuid)
     m_Cache.remove(uuid);
     m_WakeSent.remove(uuid);
     m_WakeTimedOut.remove(uuid);
+    m_WakeRoute.remove(uuid);
+    m_WakeAddress.remove(uuid);
+    m_WakeQuiet.remove(uuid);
+    m_WakeMissedAt.remove(uuid);
     m_Forgotten.insert(uuid);
     const bool wasFirst = loadFirstPc() == uuid;
     if (wasFirst) {
@@ -483,6 +488,25 @@ void ForkPcPrefs::noteWakeFromOff(const QString& uuid, const QString& fromOff)
     write(uuid, QStringLiteral("wakeFromOff"), fromOff);
 }
 
+QString ForkPcPrefs::wakeAdapter(const QString& uuid) const
+{
+    return read(uuid, QStringLiteral("wakeAdapter")).toString();
+}
+
+QString ForkPcPrefs::wakeLink(const QString& uuid) const
+{
+    return read(uuid, QStringLiteral("wakeLink")).toString();
+}
+
+void ForkPcPrefs::noteWakeAdapter(const QString& uuid, const QString& adapter, const QString& link)
+{
+    if (adapter == wakeAdapter(uuid) && link == wakeLink(uuid)) {
+        return;
+    }
+    write(uuid, QStringLiteral("wakeAdapter"), adapter, false);
+    write(uuid, QStringLiteral("wakeLink"), link);
+}
+
 void ForkPcPrefs::noteStream(const QString& uuid, int appId, const QString& appName, int width, int height,
                              int fps, bool hdr, const QString& codec)
 {
@@ -540,7 +564,73 @@ void ForkPcPrefs::noteWakeSent(const QString& uuid)
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     m_WakeSent.insert(uuid, now);
     m_WakeTimedOut.remove(uuid);
+    m_WakeRoute.remove(uuid);
+    m_WakeAddress.remove(uuid);
+    m_WakeQuiet.remove(uuid);
+    m_WakeMissedAt.remove(uuid);
     QTimer::singleShot((PcCardRules::k_WakeWaitSecs + 1) * 1000, this, [this, uuid, now]() { onWakeDeadline(uuid, now); });
+    bump(uuid);
+}
+
+void ForkPcPrefs::noteWakeRoute(const QString& uuid, const QString& route, const QString& address, bool wasOff)
+{
+    const qint64 sentAt = m_WakeSent.value(uuid, 0);
+    if (!validUuid(uuid) || sentAt == 0) {
+        return;
+    }
+    m_WakeRoute.insert(uuid, route);
+    m_WakeAddress.insert(uuid, address);
+    if (route == QLatin1String("outside")) {
+        // No answer by then: the card says why from outside
+        QTimer::singleShot(WakeOutsideRules::hintSecs(wasOff) * 1000, this, [this, uuid, sentAt]() {
+            if (m_WakeSent.value(uuid, 0) == sentAt) {
+                m_WakeQuiet.insert(uuid);
+                bump(uuid);
+            }
+        });
+    }
+    bump(uuid);
+}
+
+QString ForkPcPrefs::wakeRoute(const QString& uuid) const
+{
+    return m_WakeRoute.value(uuid);
+}
+
+QString ForkPcPrefs::wakeAddress(const QString& uuid) const
+{
+    return m_WakeAddress.value(uuid);
+}
+
+bool ForkPcPrefs::isWakeQuiet(const QString& uuid) const
+{
+    return m_WakeQuiet.contains(uuid);
+}
+
+QVariantMap ForkPcPrefs::outsideCheck(const QString& uuid) const
+{
+    QVariantMap check;
+    const qint64 at = read(uuid, QStringLiteral("outsideCheck/at")).toLongLong();
+    if (at <= 0) {
+        return check;
+    }
+    check.insert(QStringLiteral("at"), at);
+    check.insert(QStringLiteral("address"), read(uuid, QStringLiteral("outsideCheck/address")).toString());
+    check.insert(QStringLiteral("reached"), read(uuid, QStringLiteral("outsideCheck/reached")).toBool());
+    check.insert(QStringLiteral("forwardedTo"), read(uuid, QStringLiteral("outsideCheck/forwardedTo")).toString());
+    check.insert(QStringLiteral("lanAddress"), read(uuid, QStringLiteral("outsideCheck/lanAddress")).toString());
+    return check;
+}
+
+void ForkPcPrefs::noteOutsideCheck(const QString& uuid, const QVariantMap& check)
+{
+    if (!validUuid(uuid)) {
+        return;
+    }
+    for (const QString& name : { QStringLiteral("at"), QStringLiteral("address"), QStringLiteral("reached"),
+                                 QStringLiteral("forwardedTo"), QStringLiteral("lanAddress") }) {
+        write(uuid, QStringLiteral("outsideCheck/") + name, check.value(name), false);
+    }
     bump(uuid);
 }
 
@@ -553,6 +643,17 @@ void ForkPcPrefs::onWakeDeadline(const QString& uuid, qint64 sentAt)
     }
     m_WakeSent.remove(uuid);
     m_WakeTimedOut.insert(uuid);
+    // Where it went stays a while, so the card can say a Wake PC away from home got no answer
+    m_WakeMissedAt.insert(uuid, sentAt);
+    QTimer::singleShot(WakeOutsideRules::k_MissedKeepSecs * 1000, this, [this, uuid, sentAt]() {
+        if (m_WakeMissedAt.value(uuid, 0) == sentAt && !m_WakeSent.contains(uuid)) {
+            m_WakeMissedAt.remove(uuid);
+            m_WakeRoute.remove(uuid);
+            m_WakeAddress.remove(uuid);
+            m_WakeQuiet.remove(uuid);
+            bump(uuid);
+        }
+    });
     bump(uuid);
     emit wakeTimedOut(uuid);
 }
@@ -561,7 +662,11 @@ void ForkPcPrefs::clearWakeSent(const QString& uuid)
 {
     const bool had = m_WakeSent.remove(uuid) > 0;
     const bool timedOut = m_WakeTimedOut.remove(uuid);
-    if (had || timedOut) {
+    const bool routed = m_WakeRoute.remove(uuid) > 0;
+    m_WakeAddress.remove(uuid);
+    m_WakeQuiet.remove(uuid);
+    m_WakeMissedAt.remove(uuid);
+    if (had || timedOut || routed) {
         bump(uuid);
     }
 }

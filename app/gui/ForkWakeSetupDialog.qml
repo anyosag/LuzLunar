@@ -3,12 +3,15 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 import ForkHostPower 1.0
+import ForkPcPrefs
 import ForkTheme 1.0
+import ForkWakeOutside
 
 // [fork] Set Up Wake from Off: what stops Wake PC from turning a PC on once it's off, from its
 // Apollo's /actions/wake (ForkHostPower.wakeStatus(), words from wakesetuprules.h), with Fix on PC
-// and Undo Changes, the BIOS settings only someone at the PC can check, and what turning it on
-// from outside the home network needs. Open it with openFor().
+// and Undo Changes, the BIOS settings only someone at the PC can check, and what waking it from
+// outside the home network takes (ForkWakeOutside.status(), wakeoutsiderules.h). Open it with
+// openFor().
 NavigableDialog {
     id: wakeDialog
 
@@ -16,6 +19,9 @@ NavigableDialog {
     property string pcName: ""
 
     readonly property var info: ForkHostPower.revision >= 0 && pcUuid !== "" ? ForkHostPower.wakeStatus(pcUuid) : ({})
+    // Only while open: status() looks the route to the PC up
+    readonly property var outside: visible && ForkWakeOutside.revision >= 0 && ForkPcPrefs.revision >= 0 && pcUuid !== ""
+                                   ? ForkWakeOutside.status(pcUuid) : ({})
     readonly property bool busy: !!info.busy || !!info.applying
     readonly property var rows: info.rows || []
 
@@ -30,6 +36,9 @@ NavigableDialog {
 
     onAboutToShow: {
         ForkHostPower.refreshWake(pcUuid)
+        if (ForkWakeOutside.status(pcUuid).blocker === "") {
+            ForkWakeOutside.check(pcUuid)
+        }
         if (standardButton(Dialog.Close)) {
             standardButton(Dialog.Close).text = qsTr("Done")
         }
@@ -51,8 +60,9 @@ NavigableDialog {
                 Layout.fillWidth: true
                 spacing: 10
 
+                // A PC that doesn't answer isn't asked: no spinner, its last answer instead
                 ForkBusyIndicator {
-                    visible: wakeDialog.busy || !wakeDialog.info.known
+                    visible: wakeDialog.busy || (!wakeDialog.info.known && !wakeDialog.info.asleep)
                     running: visible
                     Layout.alignment: Qt.AlignTop
                 }
@@ -68,45 +78,10 @@ NavigableDialog {
             }
 
             // A row per check: a checkmark, a warning or an info sign, the line and what it means
-            Repeater {
-                model: wakeDialog.rows
-
-                delegate: RowLayout {
-                    required property var modelData
-
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    ForkSymbol {
-                        Layout.alignment: Qt.AlignTop
-                        Layout.topMargin: 2
-                        symbol: modelData.kind === "ok" ? "checkmark" : modelData.kind === "warn" ? "exclamationmark.triangle.fill" : "info.circle"
-                        fallback: modelData.kind === "ok" ? "qrc:/res/baseline-check_circle_outline-24px.svg"
-                                : modelData.kind === "warn" ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg"
-                                : "qrc:/res/baseline-help_outline-24px.svg"
-                        size: 15
-                        color: modelData.kind === "ok" ? ForkTheme.ok : modelData.kind === "warn" ? ForkTheme.warnIcon : ForkTheme.muted
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        ForkText {
-                            Layout.fillWidth: true
-                            kind: "label"
-                            wrapMode: Text.Wrap
-                            text: modelData.title
-                        }
-
-                        ForkText {
-                            Layout.fillWidth: true
-                            kind: "help"
-                            visible: text !== ""
-                            text: modelData.detail
-                        }
-                    }
-                }
+            ForkWakeRows {
+                Layout.fillWidth: true
+                visible: wakeDialog.rows.length > 0
+                rows: wakeDialog.rows
             }
 
             RowLayout {
@@ -134,6 +109,7 @@ NavigableDialog {
                 }
             }
 
+            // Waking it from outside the home network: the same steps as Wake from Outside…
             ForkText {
                 Layout.fillWidth: true
                 Layout.topMargin: 6
@@ -144,7 +120,12 @@ NavigableDialog {
             ForkText {
                 Layout.fillWidth: true
                 kind: "help"
-                text: wakeDialog.info.away || ""
+                text: wakeDialog.outside.intro || ""
+            }
+
+            ForkWakeRows {
+                Layout.fillWidth: true
+                rows: wakeDialog.outside.rows || []
             }
         }
     }

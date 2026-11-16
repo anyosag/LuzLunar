@@ -45,6 +45,13 @@ Item {
     property string lastSeenVia: "home"
     // The host is too old for this build: the lost look, "Needs a newer host"; the primary still emits
     property bool unsupported: false
+    // Where the last Wake PC went: "home", "outside" (away from the PC's home network), "none" or "";
+    // the waking card's chip and line for it, and whether one from outside got no answer
+    // (ComputerModel's wakeRoute, wakeChip, wakeLine and wakeMissed; wakeoutsiderules.h)
+    property string wakeRoute: ""
+    property string wakeChip: ""
+    property string wakeLine: ""
+    property bool wakeMissed: false
     // The first three apps: [{ name, cover (url), running (bool) }]
     property var apps: []
     property url logoSource: "qrc:/res/apollo.png"
@@ -98,7 +105,8 @@ Item {
         streamHeight: streamHeight, streamFps: streamFps, streamHdr: streamHdr, wakeFromOff: wakeFromOff,
         updateAvailable: updateAvailable, canSleep: canSleep, apolloUpToDate: apolloUpToDate,
         appsCached: appsCached, hiddenAppCount: hiddenAppCount, online: online, lastSeenVia: lastSeenVia, unsupported: unsupported, reachableOutside: reachableOutside, onLanNow: onLanNow,
-        dark: dark, ipNote: ipNote !== "" ? ipNote : undefined
+        dark: dark, ipNote: ipNote !== "" ? ipNote : undefined,
+        wakeRoute: wakeRoute, wakeChip: wakeChip, wakeLine: wakeLine, wakeMissed: wakeMissed
     })
 
     function stateInk(key) {

@@ -18,6 +18,7 @@ import ForkUpdater 1.0 // [fork]
 import ForkHostUpdates 1.0 // [fork]
 import ForkHostPower 1.0 // [fork]
 import ForkPcPrefs 1.0 // [fork]
+import ForkWakeOutside 1.0 // [fork]
 import WindowChrome 1.0 // [fork]
 
 ApplicationWindow {
@@ -386,6 +387,10 @@ ApplicationWindow {
             })
             ForkHostPower.poweredOn.connect(function(uuid, text) {
                 window.forkToast(text)
+            })
+            // [fork] A Wake PC from outside the PC's home network that got no answer (ForkWakeOutside)
+            ForkWakeOutside.missed.connect(function(uuid, text) {
+                window.forkToast(text, 5000)
             })
         }
     }

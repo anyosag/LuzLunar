@@ -68,6 +68,7 @@ SOURCES += \
     $$PWD/forkupdater.cpp \
     $$PWD/forkupdaterules.cpp \
     $$PWD/forkvideoscaling.cpp \
+    $$PWD/forkwakeoutside.cpp \
     $$PWD/forkpower.cpp \
     $$PWD/forkreconnect.cpp \
     $$PWD/streamsettings.cpp \
@@ -158,6 +159,8 @@ HEADERS += \
     $$PWD/forkreconnect.h \
     $$PWD/powerrules.h \
     $$PWD/wakesetuprules.h \
+    $$PWD/wakeoutsiderules.h \
+    $$PWD/forkwakeoutside.h \
     $$PWD/reconnectrules.h \
     $$PWD/streamsettings.h \
     $$PWD/streamsettingsrules.h \

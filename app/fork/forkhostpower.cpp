@@ -117,6 +117,7 @@ ForkHostPower::Names ForkHostPower::names(const QString& uuid) const
             out.name = computer->name;
             out.ip = computer->localAddress.isNull() ? QString() : computer->localAddress.address();
             out.mac = computer->macAddress.isEmpty() ? QString() : QString::fromLatin1(computer->macAddress.toHex(':'));
+            out.online = computer->state == NvComputer::CS_ONLINE;
             break;
         }
     }
@@ -130,15 +131,21 @@ QVariantMap ForkHostPower::wakeStatus(const QString& uuid) const
     const Names pc = names(uuid);
     const std::string pcName = text(pc.name);
     map.insert(QStringLiteral("bios"), text(WakeSetupRules::biosText(pcName)));
-    map.insert(QStringLiteral("away"), text(WakeSetupRules::awayText(pcName, text(pc.ip), text(pc.mac))));
-    if (it == m_Hosts.constEnd()) {
+    if (it == m_Hosts.constEnd() || !it->wakeKnown) {
+        // Nothing asked this run: a PC that doesn't answer won't be asked, so say what it said last
+        const bool asleep = !pc.online;
         map.insert(QStringLiteral("known"), false);
-        map.insert(QStringLiteral("busy"), false);
-        map.insert(QStringLiteral("summary"), text(WakeSetupRules::summary({}, pcName)));
+        map.insert(QStringLiteral("busy"), it != m_Hosts.constEnd() && it->wakeInFlight > 0);
+        map.insert(QStringLiteral("asleep"), asleep);
+        map.insert(QStringLiteral("summary"), text(asleep ? WakeSetupRules::asleepSummary(text(ForkPcPrefs::get()->wakeFromOff(uuid)), pcName)
+                                                          : WakeSetupRules::summary({}, pcName)));
         return map;
     }
     const Host& host = *it;
     const WakeSetupRules::Status& wake = host.wake;
+    map.insert(QStringLiteral("asleep"), false);
+    map.insert(QStringLiteral("adapter"), text(WakeSetupRules::orElse(wake.adapterDescription, wake.adapterName)));
+    map.insert(QStringLiteral("link"), text(wake.link));
     map.insert(QStringLiteral("known"), host.wakeKnown);
     map.insert(QStringLiteral("supported"), host.wakeSupported);
     map.insert(QStringLiteral("permitted"), host.wakePermitted);

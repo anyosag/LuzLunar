@@ -4,8 +4,10 @@
 #include "fork/forkmultidisplay.h" // [fork]
 #include "fork/forkpcprefs.h" // [fork]
 #include "fork/forkpcprobe.h" // [fork]
+#include "fork/forkwakeoutside.h" // [fork]
 #include "fork/clienthardware.h" // [fork]
 #include "fork/pccardrules.h" // [fork]
+#include "fork/wakeoutsiderules.h" // [fork]
 #include "fork/streamprofiles.h" // [fork]
 
 #include <QCoreApplication> // [fork]
@@ -196,6 +198,10 @@ QHash<int, QByteArray> ComputerModel::roleNames() const
     names[WakeFromOffRole] = "wakeFromOff";
     names[WakingRole] = "waking";
     names[WakeTimedOutRole] = "wakeTimedOut";
+    names[WakeRouteRole] = "wakeRoute";
+    names[WakeChipRole] = "wakeChip";
+    names[WakeLineRole] = "wakeLine";
+    names[WakeMissedRole] = "wakeMissed";
     names[PowerActionRole] = "powerAction";
     names[CanSleepRole] = "canSleep";
     names[CanShutDownRole] = "canShutDown";
@@ -279,7 +285,8 @@ void ComputerModel::wakeComputer(int computerIndex)
     QThreadPool::globalInstance()->start(wakeTask);
 
     // [fork] The card says "Waking…" until the PC answers or 180 s pass. A PC that answers has
-    // nothing to wake, so it gets no mark.
+    // nothing to wake, so it gets no mark. Away from the PC's home network it says where Wake PC
+    // went, and why there may be no answer (ForkWakeOutside).
     NvComputer* computer = m_Computers[computerIndex];
     bool online;
     {
@@ -288,6 +295,7 @@ void ComputerModel::wakeComputer(int computerIndex)
     }
     if (!online) {
         ForkPcPrefs::get()->noteWakeSent(computer->uuid);
+        ForkWakeOutside::get()->noteWake(computer);
     }
 }
 
@@ -629,6 +637,20 @@ QVariant ComputerModel::forkData(NvComputer* computer, int role) const
         return waking;
     case WakeTimedOutRole:
         return wakeTimedOut;
+    // Where the last Wake PC went (ForkWakeOutside), while it waits or once it timed out
+    case WakeRouteRole:
+        return waking || wakeTimedOut ? prefs->wakeRoute(uuid) : QString();
+    case WakeChipRole:
+        return waking ? QString::fromStdString(WakeOutsideRules::wakingChip(prefs->wakeRoute(uuid).toStdString())) : QString();
+    case WakeLineRole:
+        if (waking) {
+            return QString::fromStdString(WakeOutsideRules::wakingLine(prefs->wakeRoute(uuid).toStdString(),
+                                                                        prefs->wakeAddress(uuid).toStdString(),
+                                                                        prefs->isWakeQuiet(uuid)));
+        }
+        return wakeTimedOut ? QString::fromStdString(WakeOutsideRules::missedLine(prefs->wakeRoute(uuid).toStdString())) : QString();
+    case WakeMissedRole:
+        return wakeTimedOut && WakeOutsideRules::missable(prefs->wakeRoute(uuid).toStdString());
     case PowerActionRole:
         return prefs->powerAction(uuid);
     case CanSleepRole:
@@ -830,6 +852,12 @@ void ComputerModel::forkHandleHostInfoChanged()
             ForkPcPrefs::get()->noteWakeFromOff(uuid, wake.value(QStringLiteral("supported")).toBool()
                                                       ? wake.value(QStringLiteral("fromOff")).toString()
                                                       : QStringLiteral("unsupported"));
+            // The network card and how it's connected, for Wake from Outside's steps while the PC sleeps
+            if (wake.value(QStringLiteral("supported")).toBool() && wake.value(QStringLiteral("permitted")).toBool() &&
+                    !wake.value(QStringLiteral("link")).toString().isEmpty()) {
+                ForkPcPrefs::get()->noteWakeAdapter(uuid, wake.value(QStringLiteral("adapter")).toString(),
+                                                    wake.value(QStringLiteral("link")).toString());
+            }
         }
     }
     forkRefreshAll();

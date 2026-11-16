@@ -249,10 +249,8 @@ static void testResults()
 
 static void testTexts()
 {
-    auto away = awayText("PC", "192.168.1.20", "aa:bb:cc:dd:ee:ff");
-    CHECK(has(away, "When PC is off") && has(away, "bind 192.168.1.20 to aa:bb:cc:dd:ee:ff") && has(away, "static ARP"));
-    away = awayText("PC", "", "");
-    CHECK(has(away, "bind its address to its MAC address"));
+    // (Waking from outside the home network is wakeoutsiderules_test.cpp's.)
+    CHECK(has(biosText("PC"), "PC's BIOS"));
     // Every %1 is the PC's name, even one that looks like a mark itself
     CHECK(fill("%1 and %1", "A%1") == "A%1 and A%1");
 }
