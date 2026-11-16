@@ -40,7 +40,6 @@ Item {
         Label {
             id: stageLabel
             height: Math.max(stageSpinner.height, implicitHeight) // [fork] was stageSpinner.height
-            text: stageText
             font.pointSize: 20
             verticalAlignment: Text.AlignVCenter
 

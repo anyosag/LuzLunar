@@ -113,11 +113,16 @@ SDL_Color OverlayManager::getOverlayColor(OverlayType type)
 
 void OverlayManager::setOverlayRenderer(IOverlayRenderer* renderer)
 {
-    m_Renderer = renderer;
+    // [fork] The write lock covers only the swap: notifyOverlayUpdated() below takes the lock for
+    // reading, and QReadWriteLock isn't recursive, so holding it there would hang this thread
+    {
+        QWriteLocker lock(&m_OverlayRendererLock);
+        m_Renderer = renderer;
+    }
 
     // [fork] A new renderer, like the one after a fullscreen toggle, draws the overlays that are
     // already on (such as a poor connection warning), not only those that change from now on
-    if (m_Renderer != nullptr) {
+    if (renderer != nullptr) {
         for (int i = 0; i < OverlayType::OverlayMax; i++) {
             if (m_Overlays[i].enabled) {
                 notifyOverlayUpdated((OverlayType)i);
@@ -128,6 +133,8 @@ void OverlayManager::setOverlayRenderer(IOverlayRenderer* renderer)
 
 void OverlayManager::notifyOverlayUpdated(OverlayType type)
 {
+    QReadLocker lock(&m_OverlayRendererLock);
+
     if (m_Renderer == nullptr) {
         return;
     }
