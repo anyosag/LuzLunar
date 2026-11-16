@@ -701,6 +701,7 @@ public:
 
 signals:
     void quitAppFailed(QString error);
+    void computerStateChanged(NvComputer* computer); // [fork]
 
 private:
     void run()
@@ -708,9 +709,25 @@ private:
         NvHTTP http(m_Computer);
 
         try {
-            if (m_Computer->currentGameId != 0) {
+            // [fork] Ask the PC what it runs now when the last poll saw nothing: Apollo can quit an app
+            // itself when its last client leaves, so the app may already be gone, or another one running
+            if (m_Computer->currentGameId != 0 ||
+                    NvHTTP::getCurrentGame(http.getServerInfo(NvHTTP::NVLL_ERROR)) != 0) {
                 http.quitApp();
             }
+            else {
+                qInfo() << "[fork] Quit:" << m_Computer->name << "runs no app, so there is nothing to quit";
+            }
+
+            // [fork] Nothing runs on the PC now (quitApp() checks that too), so the quit is done, and
+            // handleComputerStateChanged() finishes it. Before, only a poll that saw the running app
+            // change did, and none came when the PC had quit the app already: "Quitting <app>..." stayed
+            // up until something else about the PC changed.
+            {
+                QWriteLocker lock(&m_Computer->lock);
+                m_Computer->currentGameId = 0;
+            }
+            emit computerStateChanged(m_Computer);
         } catch (const GfeHttpResponseException& e) {
             {
                 QWriteLocker lock(&m_Computer->lock);
@@ -742,6 +759,8 @@ void ComputerManager::quitRunningApp(NvComputer* computer)
     computer->pendingQuit = true;
 
     PendingQuitTask* quit = new PendingQuitTask(this, computer);
+    // [fork] The task says when the PC has no app running, which finishes the quit on this thread
+    connect(quit, &PendingQuitTask::computerStateChanged, this, &ComputerManager::handleComputerStateChanged);
     QThreadPool::globalInstance()->start(quit);
 }
 
