@@ -4,13 +4,15 @@ $Organization = "moonlight-stream"
 $PrebuiltRepo = "moonlight-qt-deps"
 $TargetDir = Join-Path $PSScriptRoot "libs\windows"
 $Assets = @("windows-x64.zip", "windows-ARM64.zip")
-$Tag = "v19"
+$Tag = "v20.1"
 
 # SHA-256 of each prebuilt archive. Release assets can be replaced after they're published, so a
 # download that doesn't match isn't used. Add the hashes here when changing $Tag.
 $Sha256 = @{
     "v19/windows-x64.zip" = "65ff1bd439222e1e2750054f960dcd6fac46190027da16db7403e345c295f10f"
     "v19/windows-ARM64.zip" = "ac606be421c8bf14e94128ea2116d3257a425c3d6fa102cd92bbd017f56647e2"
+    "v20.1/windows-x64.zip" = "5fc9f15fc61d8346ec44981127a39f3fe546afec1d7bc7858218eba2e3b0c646"
+    "v20.1/windows-ARM64.zip" = "0bf846fb960052b3f4ae4a0a71436cbc24c8b90a2dca28cc3212798792568fe4"
 }
 
 if (Test-Path $TargetDir) {

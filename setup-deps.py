@@ -8,13 +8,15 @@ import shutil
 
 ORGANIZATION = "moonlight-stream"
 PREBUILT_REPO = "moonlight-qt-deps"
-TAG = "v19"
+TAG = "v20.1"
 
 # SHA-256 of each prebuilt archive. Release assets can be replaced after they're published, so a
 # download that doesn't match isn't used. Add the hashes here when changing TAG.
 SHA256 = {
     ("v19", "macos-universal.zip"): "39fab7c95f5d513a6eb3bb19c66f1ae66bbf41dfe4118f82fabe3b46cc502d17",
     ("v19", "steamlink.zip"): "b8f6f1d3efe936bcf0bea779da4e143394d166285821e0483b6f6f2fb4dd2de8",
+    ("v20.1", "macos-universal.zip"): "f2fa71f9efeee3a9e5358ad4b9aac34f294a1626ad0ec288a421ba7dc98028de",
+    ("v20.1", "steamlink.zip"): "95887ef5cff13c0082cb2c0bd84ccbc3f11648a6e46ee49f118b164c94e3e8f6",
 }
 
 def get_platform_config():

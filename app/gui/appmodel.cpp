@@ -60,7 +60,7 @@ QString AppModel::getRunningAppName()
 
 Session* AppModel::createSessionForApp(int appIndex)
 {
-    Q_ASSERT(appIndex < m_VisibleApps.count());
+    Q_ASSERT(appIndex >= 0 && appIndex < m_VisibleApps.count());
     NvApp app = m_VisibleApps.at(appIndex);
 
     return StreamProfiles::createSession(m_Computer, app); // [fork]
@@ -165,7 +165,7 @@ QVariant AppModel::data(const QModelIndex &index, int role) const
     if (!index.isValid())
         return QVariant();
 
-    Q_ASSERT(index.row() < m_VisibleApps.count());
+    Q_ASSERT(index.row() >= 0 && index.row() < m_VisibleApps.count());
     NvApp app = m_VisibleApps.at(index.row());
 
     switch (role)
@@ -317,7 +317,7 @@ void AppModel::updateAppList(QVector<NvApp> newList)
 
 void AppModel::setAppHidden(int appIndex, bool hidden)
 {
-    Q_ASSERT(appIndex < m_VisibleApps.count());
+    Q_ASSERT(appIndex >= 0 && appIndex < m_VisibleApps.count());
     int appId = m_VisibleApps.at(appIndex).id;
 
     {
@@ -336,7 +336,7 @@ void AppModel::setAppHidden(int appIndex, bool hidden)
 
 void AppModel::setAppDirectLaunch(int appIndex, bool directLaunch)
 {
-    Q_ASSERT(appIndex < m_VisibleApps.count());
+    Q_ASSERT(appIndex >= 0 && appIndex < m_VisibleApps.count());
     int appId = m_VisibleApps.at(appIndex).id;
 
     {

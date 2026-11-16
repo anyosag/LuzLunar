@@ -17,7 +17,7 @@ ToolButton {
     Accessible.ignored: WindowChrome.active
 
     // [fork] Toolbar-sized, tinted icons for the native macOS style
-    // (upstream sizes the icon to the Material background for TV readability)
+    // (upstream sizes the icon to half the button's height, for TV readability)
     icon.source: SfSymbols.available && symbolName !== "" ? SfSymbols.url(symbolName) : iconSource
     icon.width: 20
     icon.height: 20
