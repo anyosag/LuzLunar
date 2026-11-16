@@ -378,19 +378,30 @@ Item {
                             Behavior on scale { enabled: card.ph === 1; NumberAnimation { duration: 1100; easing.type: Easing.OutQuad } }
                             Behavior on opacity { enabled: card.ph === 1; NumberAnimation { duration: 1100; easing.type: Easing.OutQuad } }
                         }
-                        ForkPathIcon {
-                            id: glyph
+                        // The spinner turns this, not the glyph: an animator stopped mid-turn leaves the
+                        // angle where it was, so it goes back to 0 here. Before, Waking's or Checking's
+                        // spinner left Ready's tick tilted (2026-11-16)
+                        Item {
+                            id: glyphSpin
                             anchors.centerIn: parent
-                            name: card.glyphName
-                            size: 18
-                            color: card.style.ink
-                            filled: card.style.glyphFilled
-                            strokeWidth: 1.9
-                            rotation: card.stateId === "asleep" ? (card.ph ? -12 : 8) : 0
-                            Behavior on rotation { enabled: card.stateId === "asleep"; NumberAnimation { duration: 1100; easing.type: Easing.InOutQuad } }
+                            width: glyph.width
+                            height: glyph.height
                             RotationAnimator on rotation {
                                 running: (card.stateId === "waking" || card.stateId === "checking") && card.animating
                                 from: 0; to: 360; duration: 1000; loops: Animation.Infinite
+                                onStopped: glyphSpin.rotation = 0
+                            }
+
+                            ForkPathIcon {
+                                id: glyph
+                                anchors.centerIn: parent
+                                name: card.glyphName
+                                size: 18
+                                color: card.style.ink
+                                filled: card.style.glyphFilled
+                                strokeWidth: 1.9
+                                rotation: card.stateId === "asleep" ? (card.ph ? -12 : 8) : 0
+                                Behavior on rotation { enabled: card.stateId === "asleep"; NumberAnimation { duration: 1100; easing.type: Easing.InOutQuad } }
                             }
                         }
                     }
