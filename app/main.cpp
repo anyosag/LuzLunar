@@ -506,6 +506,12 @@ int main(int argc, char *argv[])
         QString logName = forkHelperSlot >= 0 ? QString("Moonlight-%1-slot%2-%3.log").arg(QDateTime::currentSecsSinceEpoch())
                                                     .arg(forkHelperSlot).arg(QCoreApplication::applicationPid())
                                               : QString("Moonlight-%1.log").arg(QDateTime::currentSecsSinceEpoch());
+        // [fork] Another launch in the same second has this name: after an update, the swap script's
+        // --version check of the new build runs just before it relaunches. NewOnly below would refuse
+        // the name, and this launch's log would go to stderr, which is /dev/null for an opened app
+        if (forkHelperSlot < 0 && tempDir.exists(logName)) {
+            logName = QString("Moonlight-%1-%2.log").arg(QDateTime::currentSecsSinceEpoch()).arg(QCoreApplication::applicationPid());
+        }
         s_LoggerFile = new QFile(tempDir.filePath(logName));
 
         // The log directory may be shared with other users (/tmp on macOS), so
