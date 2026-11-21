@@ -22,8 +22,11 @@ namespace SelfUpdateMac
     bool signedWithCertificate();
 
     // Whether the bundle at appPath is validly signed and meets this app's designated requirement:
-    // the same bundle ID and signing certificate, so macOS keeps its permissions (Accessibility)
-    bool meetsOwnRequirement(const QString& appPath, QString* error);
+    // the same bundle ID and signing certificate, so macOS keeps its permissions (Accessibility).
+    // With teamId (this build's LUZLUNAR_TEAM_ID), a build of the same bundle ID signed by that
+    // Apple team is accepted too (SigningRules::teamRequirement()), for the move to an
+    // Apple-issued certificate.
+    bool meetsOwnRequirement(const QString& appPath, const QString& teamId, QString* error);
 
     // Start the swap helper. It waits for this process to exit, checks the new build starts, moves
     // it into the running app's place (keeping the previous one in updatesDir/previous), and puts
@@ -35,7 +38,7 @@ namespace SelfUpdateMac
 #else
     inline QString bundlePath() { return QString(); }
     inline bool signedWithCertificate() { return false; }
-    inline bool meetsOwnRequirement(const QString&, QString* error) { *error = QStringLiteral("updates are only for macOS"); return false; }
+    inline bool meetsOwnRequirement(const QString&, const QString&, QString* error) { *error = QStringLiteral("updates are only for macOS"); return false; }
     inline bool startSwap(const QString&, const QString&, qint64, Relaunch, QString* error) { *error = QStringLiteral("updates are only for macOS"); return false; }
     inline void openAppManagementSettings() {}
 #endif

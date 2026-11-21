@@ -2,6 +2,7 @@
 #include "forkpcprefs.h"
 #include "forkhostpower.h"
 #include "forkhostupdates.h"
+#include "forklocalnetwork.h"
 #include "forkwakeoutside.h"
 #include "pccardrules.h"
 #include "backend/computermanager.h"
@@ -34,6 +35,7 @@ void ForkPcProbe::attach(ComputerManager* manager)
     }
     m_Manager = manager;
     ForkWakeOutside::get()->setComputerManager(manager);
+    ForkLocalNetwork::get()->attach(manager);
     connect(manager, &ComputerManager::computerStateChanged, this, &ForkPcProbe::handleComputerStateChanged);
     connect(qApp, &QGuiApplication::applicationStateChanged, this, &ForkPcProbe::handleApplicationState);
     connect(qApp, &QCoreApplication::aboutToQuit, this, &ForkPcProbe::writeLastSeen);

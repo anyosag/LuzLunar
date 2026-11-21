@@ -1,6 +1,7 @@
 #include "networklink.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstring>
 #include <vector>
 
@@ -63,15 +64,22 @@ namespace
     }
 
     // The local address the system would send to peer from: connecting a UDP socket picks a route
-    // without sending anything
-    bool localAddressTo(const sockaddr* peer, socklen_t peerLength, sockaddr_storage& local)
+    // without sending anything. *error is connect()'s errno when it fails, else 0.
+    bool localAddressTo(const sockaddr* peer, socklen_t peerLength, sockaddr_storage& local, int* error = nullptr)
     {
+        if (error != nullptr) {
+            *error = 0;
+        }
         int fd = socket(peer->sa_family, SOCK_DGRAM, IPPROTO_UDP);
         if (fd < 0) {
             return false;
         }
+        bool ok = connect(fd, peer, peerLength) == 0;
+        if (!ok && error != nullptr) {
+            *error = errno;
+        }
         socklen_t length = sizeof(local);
-        bool ok = connect(fd, peer, peerLength) == 0 && getsockname(fd, reinterpret_cast<sockaddr*>(&local), &length) == 0;
+        ok = ok && getsockname(fd, reinterpret_cast<sockaddr*>(&local), &length) == 0;
         close(fd);
         return ok;
     }
@@ -123,6 +131,54 @@ namespace
             }
         }
         return true;
+    }
+
+    bool isMulticast(const sockaddr* address)
+    {
+        if (address->sa_family == AF_INET) {
+            return (ntohl(reinterpret_cast<const sockaddr_in*>(address)->sin_addr.s_addr) >> 28) == 0xE;
+        }
+        if (address->sa_family == AF_INET6) {
+            return reinterpret_cast<const sockaddr_in6*>(address)->sin6_addr.s6_addr[0] == 0xFF;
+        }
+        return false;
+    }
+
+    // An interface that makes peer a local network address, as TN3179 defines one: up, broadcast
+    // capable, not loopback or a tunnel, with peer in its subnet (any such interface for a multicast
+    // group). Empty if there's none, as when the Mac is offline.
+    std::string localInterfaceFor(const sockaddr* peer)
+    {
+        std::string name;
+        // An IPv6 link-local address without a scope has no route on any interface anyway, so a
+        // refusal says nothing about the permission
+        if (peer->sa_family == AF_INET6) {
+            const sockaddr_in6* v6 = reinterpret_cast<const sockaddr_in6*>(peer);
+            if (IN6_IS_ADDR_LINKLOCAL(&v6->sin6_addr) && v6->sin6_scope_id == 0) {
+                return name;
+            }
+        }
+        ifaddrs* list = nullptr;
+        if (getifaddrs(&list) != 0) {
+            return name;
+        }
+        const bool multicast = isMulticast(peer);
+        for (ifaddrs* it = list; it != nullptr; it = it->ifa_next) {
+            if (it->ifa_addr == nullptr || it->ifa_addr->sa_family != peer->sa_family) {
+                continue;
+            }
+            const unsigned int flags = it->ifa_flags;
+            if (!(flags & IFF_UP) || !(flags & IFF_RUNNING) || (flags & IFF_LOOPBACK) || (flags & IFF_POINTOPOINT) ||
+                    !(flags & IFF_BROADCAST) || tunnelName(it->ifa_name)) {
+                continue;
+            }
+            if (multicast || inSubnet(it->ifa_addr, it->ifa_netmask, peer)) {
+                name = it->ifa_name;
+                break;
+            }
+        }
+        freeifaddrs(list);
+        return name;
     }
 
     struct Interface {
@@ -349,11 +405,18 @@ MacNetworkLink::Probe MacNetworkLink::probe(const std::string& address)
 
         sockaddr_storage local;
         bool pointToPoint = false;
-        if (localAddressTo(info->ai_addr, info->ai_addrlen, local)) {
+        int error = 0;
+        if (localAddressTo(info->ai_addr, info->ai_addrlen, local, &error)) {
             Interface interface = interfaceWith(reinterpret_cast<const sockaddr*>(&local), info->ai_addr);
             result.interfaceName = interface.name;
             result.onLink = interface.onLink;
             pointToPoint = interface.pointToPoint;
+        }
+        else if (error != 0 && !localInterfaceFor(info->ai_addr).empty()) {
+            // A route to an address in one of this Mac's own subnets can't be missing: macOS refused
+            // it (Local Network). onLink stays false, since nothing gets there.
+            result.localNetworkBlocked = true;
+            result.error = error;
         }
         freeaddrinfo(info);
         if (result.interfaceName.empty()) {
@@ -381,6 +444,29 @@ MacNetworkLink::Probe MacNetworkLink::probe(const std::string& address)
         }
         CFRelease(store);
     }
+    return result;
+}
+
+MacNetworkLink::LocalCheck MacNetworkLink::checkLocal(const std::string& address)
+{
+    LocalCheck result;
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_flags = AI_NUMERICHOST;
+    hints.ai_socktype = SOCK_DGRAM;
+    addrinfo* info = nullptr;
+    // Bonjour's port; any port gives the same route
+    if (address.empty() || getaddrinfo(address.c_str(), "5353", &hints, &info) != 0 || info == nullptr) {
+        return result;
+    }
+    result.local = !localInterfaceFor(info->ai_addr).empty();
+    if (result.local) {
+        sockaddr_storage local;
+        int error = 0;
+        result.connected = localAddressTo(info->ai_addr, info->ai_addrlen, local, &error);
+        result.error = error;
+    }
+    freeaddrinfo(info);
     return result;
 }
 

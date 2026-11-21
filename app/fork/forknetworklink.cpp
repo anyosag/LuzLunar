@@ -143,7 +143,8 @@ namespace
                                     : rememberedNow ? "the network is remembered from now on"
                                                     : "this PC wasn't streamed over the LAN on this network before";
                 SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Stream link: %s%s%s%s, %s; %s; %s",
-                            link.empty() ? "no route found" : link.c_str(),
+                            link.empty() ? (probe.localNetworkBlocked ? "no route: macOS refused it (Local Network)" : "no route found")
+                                         : link.c_str(),
                             probe.interfaceName.empty() ? "" : " (",
                             probe.interfaceName.c_str(),
                             probe.interfaceName.empty() ? "" : ")",

@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 import ComputerManager 1.0
 import ComputerModel 1.0
+import ForkLocalNetwork 1.0
 import ForkTheme 1.0
 import StreamingPreferences 1.0
 
@@ -113,6 +114,26 @@ Column {
                 help: qsTr("Recommended. Warns when a network's firewall is stopping the stream.")
                 checked: StreamingPreferences.detectNetworkBlocking
                 onToggled: (on) => StreamingPreferences.detectNetworkBlocking = on
+            }
+        }
+
+        // macOS's Local Network permission, which an update can leave off (ForkLocalNetwork)
+        ForkWarnBox {
+            warnings: ForkLocalNetwork.blocked
+                      ? [qsTr("macOS is blocking LuzLunar from your local network, so it can't find PCs here, and streams to a PC at home go through your router, which adds latency. In System Settings › Privacy & Security › Local Network, turn LuzLunar on. If it's listed more than once (macOS can add one for each update), turn them all on. If this stays after that, quit and reopen LuzLunar.")]
+                      : []
+        }
+
+        Item {
+            width: parent.width
+            visible: ForkLocalNetwork.blocked
+            implicitHeight: visible ? localNetworkButton.implicitHeight : 0
+
+            ForkButton {
+                id: localNetworkButton
+                anchors.right: parent.right
+                text: qsTr("Open Local Network Settings")
+                onClicked: ForkLocalNetwork.openSettings()
             }
         }
     }

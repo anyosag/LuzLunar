@@ -8,6 +8,7 @@ import ForkHostUpdates // [fork]
 import ForkHostPower // [fork]
 import ForkPcPrefs // [fork]
 import ForkWakeOutside // [fork]
+import ForkLocalNetwork // [fork]
 
 import "ForkLibraryLaunch.js" as Launch // [fork] the launch screen's summary chips
 import "ForkStoryLines.js" as StoryLines // [fork] the story line's sentences, one per state
@@ -831,7 +832,11 @@ Item {
                     anchors.right: parent.right
                     y: moon.height + 10
                     active: !!StreamingPreferences.enableMdns
-                    text: !!StreamingPreferences.enableMdns ? qsTr("Looking for PCs on your network") : qsTr("Automatic PC discovery is off")
+                    // macOS blocking LuzLunar's Local Network access, which streams through the router
+                    warn: ForkLocalNetwork.blocked
+                    text: ForkLocalNetwork.blocked ? qsTr("Local Network access is off · Turn On…")
+                          : !!StreamingPreferences.enableMdns ? qsTr("Looking for PCs on your network") : qsTr("Automatic PC discovery is off")
+                    onClicked: ForkLocalNetwork.openSettings()
                 }
             }
         }
