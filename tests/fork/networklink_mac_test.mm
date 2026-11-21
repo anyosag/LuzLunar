@@ -144,6 +144,27 @@ int main()
     CHECK(MacNetworkLink::probe("not an address").interfaceName.empty());
     CHECK(MacNetworkLink::probe("example.com").interfaceName.empty());     // names go through numericAddress() first
 
+    // Local Network checks (checkLocal()): loopback and the internet aren't the local network, so
+    // they're never reported blocked, whatever macOS decided for this program
+    CHECK(!internet.localNetworkBlocked);
+    CHECK(!loopback.localNetworkBlocked);
+    CHECK(!MacNetworkLink::checkLocal("127.0.0.1").local);
+    CHECK(!MacNetworkLink::checkLocal("1.1.1.1").local);
+    CHECK(!MacNetworkLink::checkLocal("").local);
+    CHECK(!MacNetworkLink::checkLocal("not an address").local);
+    // Bonjour's group is local whenever a broadcast-capable interface is up. Whether macOS lets this
+    // test connect to it depends on how CI runs it (Terminal and SSH are allowed, TN3179), so it's
+    // only printed.
+    MacNetworkLink::LocalCheck bonjour = MacNetworkLink::checkLocal("224.0.0.251");
+    std::printf("224.0.0.251: %s\n", !bonjour.local ? "no local network on this Mac"
+                                     : bonjour.connected ? "local, and macOS lets this program reach it"
+                                                         : ("local, and macOS refused it (errno " + std::to_string(bonjour.error) + ")").c_str());
+    CHECK(bonjour.local || !bonjour.connected);
+    if (!route.interfaceName.empty() && route.read) {
+        // Online over Wi-Fi or Ethernet, there is a local network
+        CHECK(internet.link.kind == Kind::Vpn || internet.link.kind == Kind::Other || bonjour.local);
+    }
+
     if (s_Failures == 0) {
         std::printf("networklink_mac: all tests passed\n");
         return 0;

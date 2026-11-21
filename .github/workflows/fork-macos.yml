@@ -328,7 +328,11 @@ jobs:
           # This run's hits and misses only (build-mac.sh prints them after the build)
           CCACHE_DIR="$dir" ccache --zero-stats
 
+      # With the repository variable LUZLUNAR_TEAM_ID (an Apple Team ID), updates also accept builds
+      # signed by that team through Apple, for the move to an Apple-issued certificate (FORK.md, "Updates")
       - name: Build (arm64)
+        env:
+          LUZLUNAR_TEAM_ID: ${{ vars.LUZLUNAR_TEAM_ID }}
         run: bash scripts/fork/build-mac.sh Release
 
       - name: Remove the signing keychain
@@ -480,6 +484,14 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/forklinkrules_test.cpp app/fork/forklinkrules.cpp -o "$RUNNER_TEMP/forklinkrules_test"
           "$RUNNER_TEMP/forklinkrules_test"
+          # macOS's Local Network permission: blocked or allowed from the checks, the toasts, moving back to the LAN
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/localnetworkrules_test.cpp app/fork/localnetworkrules.cpp -o "$RUNNER_TEMP/localnetworkrules_test"
+          "$RUNNER_TEMP/localnetworkrules_test"
+          # Which signatures an update may carry: the Apple team requirement for an Apple-issued certificate
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/signingrules_test.cpp -o "$RUNNER_TEMP/signingrules_test"
+          "$RUNNER_TEMP/signingrules_test"
           # The fork's SDL event types are never SDL_USEREVENT, which Moonlight's session uses as is
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/forkevents_test.cpp -o "$RUNNER_TEMP/forkevents_test"

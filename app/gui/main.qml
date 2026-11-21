@@ -19,6 +19,7 @@ import ForkHostUpdates 1.0 // [fork]
 import ForkHostPower 1.0 // [fork]
 import ForkPcPrefs 1.0 // [fork]
 import ForkWakeOutside 1.0 // [fork]
+import ForkLocalNetwork 1.0 // [fork]
 import WindowChrome 1.0 // [fork]
 
 ApplicationWindow {
@@ -391,6 +392,10 @@ ApplicationWindow {
             // [fork] A Wake PC from outside the PC's home network that got no answer (ForkWakeOutside)
             ForkWakeOutside.missed.connect(function(uuid, text) {
                 window.forkToast(text, 5000)
+            })
+            // [fork] macOS blocking LuzLunar's Local Network access, and its return (ForkLocalNetwork)
+            ForkLocalNetwork.notice.connect(function(text) {
+                window.forkToast(text, 6000)
             })
         }
     }

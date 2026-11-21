@@ -16,6 +16,8 @@
 #   LUZLUNAR_INSTALL=1   replace /Applications/LuzLunar.app with this build; the old copy goes to the Trash
 #   LUZLUNAR_SIGN_IDENTITY=<SHA-1>  sign with this certificate (CI sets it from the LUZLUNAR_SIGNING_P12
 #                        secret); LUZLUNAR_SIGN_KEYCHAIN names the keychain that holds it, if not the default
+#   LUZLUNAR_TEAM_ID=<Team ID>  updates also accept builds signed by this Apple team (CI sets it from
+#                        the repository variable; FORK.md, "Moving to an Apple-issued certificate")
 BUILD_CONFIG=$1
 
 fail()
@@ -78,6 +80,13 @@ fi
 UPDATE_ARGS=()
 if [[ "$FORK_BUILD_RUN" =~ ^[0-9]+$ ]]; then UPDATE_ARGS+=(FORK_BUILD_RUN="$FORK_BUILD_RUN"); fi
 if [[ "$FORK_BUILD_CHANNEL" =~ ^[a-z]+$ ]]; then UPDATE_ARGS+=(FORK_BUILD_CHANNEL="$FORK_BUILD_CHANNEL"); fi
+# The Apple team whose builds updates also accept (FORK.md, "Updates": moving to an Apple-issued
+# certificate), from the repository variable LUZLUNAR_TEAM_ID
+if [ -n "$LUZLUNAR_TEAM_ID" ]; then
+  [[ "$LUZLUNAR_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || fail "LUZLUNAR_TEAM_ID must be a 10-character Apple Team ID (A-Z, 0-9)"
+  UPDATE_ARGS+=(FORK_SIGNING_TEAM_ID="$LUZLUNAR_TEAM_ID")
+  echo "Updates also accept builds signed by Apple team $LUZLUNAR_TEAM_ID"
+fi
 
 echo Configuring the project for arm64
 pushd "$BUILD_FOLDER"
@@ -192,6 +201,13 @@ if [ -n "$LUZLUNAR_SIGN_IDENTITY" ]; then
   REQUIREMENT=$(codesign -d -r- "$APP" 2>&1 | grep designated)
   echo "$REQUIREMENT"
   echo "$REQUIREMENT" | grep -q 'certificate leaf' || fail "The designated requirement doesn't name the signing certificate!"
+  # An Apple-issued certificate has a Team ID; the self-signed one has none. macOS's Local Network
+  # permission only keeps track of an app reliably with an Apple-issued one (TN3179).
+  SIGNING_TEAM=$(codesign -dv "$APP" 2>&1 | sed -n 's/^TeamIdentifier=//p')
+  echo "Signing team: ${SIGNING_TEAM:-none}"
+  if [ -n "$LUZLUNAR_TEAM_ID" ] && [ "$SIGNING_TEAM" != "not set" ] && [ -n "$SIGNING_TEAM" ] && [ "$SIGNING_TEAM" != "$LUZLUNAR_TEAM_ID" ]; then
+    fail "Signed by Apple team $SIGNING_TEAM, but LUZLUNAR_TEAM_ID is $LUZLUNAR_TEAM_ID: installed builds wouldn't accept this one as an update"
+  fi
 else
   echo Signing app bundle ad-hoc
   codesign --force --deep --sign - "$APP" || fail "Ad-hoc signing failed!"

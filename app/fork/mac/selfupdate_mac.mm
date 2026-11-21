@@ -1,4 +1,7 @@
 #include "fork/mac/selfupdate_mac.h"
+#include "fork/signingrules.h"
+
+#include <string>
 
 #include <QCoreApplication>
 #include <QDir>
@@ -126,7 +129,7 @@ namespace SelfUpdateMac
         return signedWithCertificate;
     }
 
-    bool meetsOwnRequirement(const QString& appPath, QString* error)
+    bool meetsOwnRequirement(const QString& appPath, const QString& teamId, QString* error)
     {
         SecStaticCodeRef self = copySelfStaticCode();
         if (self == nullptr) {
@@ -135,32 +138,68 @@ namespace SelfUpdateMac
         }
         SecRequirementRef requirement = nullptr;
         OSStatus status = SecCodeCopyDesignatedRequirement(self, kSecCSDefaultFlags, &requirement);
-        CFRelease(self);
         if (status != errSecSuccess || requirement == nullptr) {
+            CFRelease(self);
             *error = QStringLiteral("couldn't read LuzLunar's own signing requirement");
             return false;
         }
+
+        // [fork] The same bundle ID signed by this build's Apple team, for the move from the
+        // self-signed certificate to an Apple-issued one (signingrules.h)
+        SecRequirementRef teamRequirement = nullptr;
+        if (!teamId.isEmpty()) {
+            CFDictionaryRef info = nullptr;
+            if (SecCodeCopySigningInformation(self, kSecCSSigningInformation, &info) == errSecSuccess && info != nullptr) {
+                CFStringRef identifier = (CFStringRef)CFDictionaryGetValue(info, kSecCodeInfoIdentifier);
+                std::string text = SigningRules::teamRequirement(identifier != nullptr ? QString::fromCFString(identifier).toStdString() : std::string(),
+                                                                 teamId.toStdString());
+                if (!text.empty()) {
+                    SecRequirementCreateWithString((__bridge CFStringRef)[NSString stringWithUTF8String:text.c_str()],
+                                                   kSecCSDefaultFlags, &teamRequirement);
+                }
+                CFRelease(info);
+            }
+        }
+        CFRelease(self);
 
         NSURL* url = [NSURL fileURLWithPath:appPath.toNSString()];
         SecStaticCodeRef code = nullptr;
         status = SecStaticCodeCreateWithPath((__bridge CFURLRef)url, kSecCSDefaultFlags, &code);
         if (status != errSecSuccess || code == nullptr) {
             CFRelease(requirement);
+            if (teamRequirement != nullptr) {
+                CFRelease(teamRequirement);
+            }
             *error = QStringLiteral("the download isn't an app");
             return false;
         }
 
+        const SecCSFlags flags = kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode;
         CFErrorRef cfError = nullptr;
-        status = SecStaticCodeCheckValidityWithErrors(code, kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode,
-                                                      requirement, &cfError);
-        CFRelease(code);
+        status = SecStaticCodeCheckValidityWithErrors(code, flags, requirement, &cfError);
         CFRelease(requirement);
+        if (status != errSecSuccess && teamRequirement != nullptr) {
+            CFErrorRef teamError = nullptr;
+            if (SecStaticCodeCheckValidityWithErrors(code, flags, teamRequirement, &teamError) == errSecSuccess) {
+                status = errSecSuccess;
+            }
+            else if (teamError != nullptr) {
+                CFRelease(teamError);
+            }
+        }
+        if (teamRequirement != nullptr) {
+            CFRelease(teamRequirement);
+        }
+        CFRelease(code);
         if (status != errSecSuccess) {
             *error = QStringLiteral("the new build isn't signed like this one: %1").arg(describe(cfError));
             if (cfError != nullptr) {
                 CFRelease(cfError);
             }
             return false;
+        }
+        if (cfError != nullptr) {
+            CFRelease(cfError);
         }
         return true;
     }

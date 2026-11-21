@@ -11,6 +11,7 @@
 #include "forkgrouplaunch.h"
 #include "forkhostupdates.h"
 #include "forkimacsetup.h"
+#include "forklocalnetwork.h"
 #include "forkpcprefs.h"
 #include "forkpreferences.h"
 #include "forkupdater.h"
@@ -100,6 +101,14 @@ namespace
             ForkWakeOutside* outside = ForkWakeOutside::get();
             QQmlEngine::setObjectOwnership(outside, QQmlEngine::CppOwnership);
             return outside;
+        });
+        // Whether macOS lets LuzLunar use the local network, and the way to System Settings
+        // (FORK.md, "Local Network access")
+        qmlRegisterSingletonType<ForkLocalNetwork>("ForkLocalNetwork", 1, 0, "ForkLocalNetwork",
+                                                   [](QQmlEngine*, QJSEngine*) -> QObject* {
+            ForkLocalNetwork* localNetwork = ForkLocalNetwork::get();
+            QQmlEngine::setObjectOwnership(localNetwork, QQmlEngine::CppOwnership);
+            return localNetwork;
         });
         // Multi-display streams: the launch screen's displays and the iMac's route check
         qmlRegisterSingletonType<ForkGroupLaunch>("ForkGroupLaunch", 1, 0, "ForkGroupLaunch",

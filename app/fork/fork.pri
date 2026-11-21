@@ -15,6 +15,8 @@ FORK_BUILD_INFO = "// This build's ID, run and channel, written by app/fork/fork
 !isEmpty(FORK_BUILD_ID): FORK_BUILD_INFO += "$${LITERAL_HASH}define FORK_BUILD_ID \"$$FORK_BUILD_ID\""
 !isEmpty(FORK_BUILD_RUN): FORK_BUILD_INFO += "$${LITERAL_HASH}define FORK_BUILD_RUN $$FORK_BUILD_RUN"
 !isEmpty(FORK_BUILD_CHANNEL): FORK_BUILD_INFO += "$${LITERAL_HASH}define FORK_BUILD_CHANNEL \"$$FORK_BUILD_CHANNEL\""
+# The Apple team an update may also be signed by (build-mac.sh, from LUZLUNAR_TEAM_ID)
+!isEmpty(FORK_SIGNING_TEAM_ID): FORK_BUILD_INFO += "$${LITERAL_HASH}define FORK_SIGNING_TEAM_ID \"$$FORK_SIGNING_TEAM_ID\""
 !write_file($$OUT_PWD/forkbuildinfo.h, FORK_BUILD_INFO) {
     error("Couldn't write forkbuildinfo.h")
 }
@@ -51,6 +53,8 @@ SOURCES += \
     $$PWD/forkkeymap.cpp \
     $$PWD/forklaunchargs.cpp \
     $$PWD/forklinkrules.cpp \
+    $$PWD/forklocalnetwork.cpp \
+    $$PWD/localnetworkrules.cpp \
     $$PWD/forkmacshortcuts.cpp \
     $$PWD/forkmultidisplay.cpp \
     $$PWD/forkmultitouch.cpp \
@@ -123,6 +127,9 @@ HEADERS += \
     $$PWD/forkkeymap.h \
     $$PWD/forklaunchargs.h \
     $$PWD/forklinkrules.h \
+    $$PWD/forklocalnetwork.h \
+    $$PWD/localnetworkrules.h \
+    $$PWD/signingrules.h \
     $$PWD/forkmacshortcuts.h \
     $$PWD/forkmultidisplay.h \
     $$PWD/forkmultitouch.h \

@@ -16,6 +16,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 
+#include "forklocalnetwork.h"
 #include "forkpreferences.h"
 #include "mac/selfupdate_mac.h"
 #include "streaming/session.h"
@@ -30,6 +31,11 @@
 #endif
 #ifndef FORK_BUILD_CHANNEL
 #define FORK_BUILD_CHANNEL "local"
+#endif
+// The Apple team whose builds an update may also be signed by (repository variable
+// LUZLUNAR_TEAM_ID; FORK.md, "Updates"), for the move to an Apple-issued certificate
+#ifndef FORK_SIGNING_TEAM_ID
+#define FORK_SIGNING_TEAM_ID ""
 #endif
 
 #define SER_AUTOUPDATE "fork/autoUpdate"
@@ -179,6 +185,8 @@ void ForkUpdater::readLastResult()
     switch (result->kind) {
     case ForkUpdateRules::SwapResult::Installed:
         m_LastResult = tr("Updated to %1").arg(buildId());
+        // macOS may ask for, or have turned off, Local Network access for the new build
+        ForkLocalNetwork::get()->noteJustUpdated();
         // Started fine, so the previous build isn't needed to go back to
         QDir(QDir(updatesDir()).filePath(QStringLiteral("previous"))).removeRecursively();
         QDir(QDir(updatesDir()).filePath(QStringLiteral("failed.app"))).removeRecursively();
@@ -410,9 +418,10 @@ void ForkUpdater::verifyExtracted()
         return;
     }
 
-    // Only a build signed like this one keeps LuzLunar's permissions; anything else is refused
+    // Only a build signed like this one keeps LuzLunar's permissions; anything else is refused,
+    // except one signed by this build's Apple team (the move to an Apple-issued certificate)
     QString error;
-    if (!SelfUpdateMac::meetsOwnRequirement(app, &error)) {
+    if (!SelfUpdateMac::meetsOwnRequirement(app, QString::fromLatin1(FORK_SIGNING_TEAM_ID), &error)) {
         QDir(runDir(m_Latest.run)).removeRecursively();
         setState(QStringLiteral("failed"), tr("The update was refused: %1").arg(error));
         return;
