@@ -206,6 +206,15 @@ namespace
     }
 
     // The stream's sound, downmixed to stereo, into the ring the engine plays from
+    // moonlight-common-c's FEC and out-of-order counts, beside the renderer's own
+    std::string rtpLine()
+    {
+        RTP_AUDIO_STATS stats = {};
+        LiGetRTPAudioStats(&stats);
+        return AudioHealth::Monitor::rtpLine(stats.packetCountAudio, stats.packetCountFec, stats.packetCountFecRecovered,
+                                             stats.packetCountFecFailed, stats.packetCountOOS);
+    }
+
     class MicEngineAudioRenderer : public IAudioRenderer
     {
     public:
@@ -221,8 +230,8 @@ namespace
             if (!summary.empty()) {
                 MicRules::PcmRing::Stats stats = m_Ring->stats();
                 SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                            "[fork] Audio (microphone engine), the whole stream: %s; the engine came up short %ld times, %ld frames left out when full",
-                            summary.c_str(), stats.shortPulls, stats.overflowFrames);
+                            "[fork] Audio (microphone engine), the whole stream: %s; the engine came up short %ld times, %ld frames left out when full; %s",
+                            summary.c_str(), stats.shortPulls, stats.overflowFrames, rtpLine().c_str());
             }
             if (m_Live) {
                 setRendererLive(false);
@@ -269,8 +278,8 @@ namespace
             if (!line.empty()) {
                 MicRules::PcmRing::Stats stats = m_Ring->stats();
                 SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                            "[fork] Audio (microphone engine), last 10 s: %s; so far the engine came up short %ld times, %ld frames left out when full",
-                            line.c_str(), stats.shortPulls, stats.overflowFrames);
+                            "[fork] Audio (microphone engine), last 10 s: %s; so far the engine came up short %ld times, %ld frames left out when full; %s",
+                            line.c_str(), stats.shortPulls, stats.overflowFrames, rtpLine().c_str());
             }
             return true;
         }

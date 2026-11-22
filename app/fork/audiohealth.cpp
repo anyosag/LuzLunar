@@ -88,6 +88,14 @@ std::string Monitor::report(double nowMs)
     return line;
 }
 
+std::string Monitor::rtpLine(unsigned audio, unsigned fec, unsigned recovered, unsigned failed, unsigned outOfOrder)
+{
+    char line[200];
+    std::snprintf(line, sizeof(line), "RTP so far: %u audio and %u FEC packets, %u rebuilt by FEC, %u couldn't be, %u out of order",
+                  audio, fec, recovered, failed, outOfOrder);
+    return line;
+}
+
 std::string Monitor::summary() const
 {
     if (m_FirstMs < 0) {

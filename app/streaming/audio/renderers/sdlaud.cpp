@@ -2,6 +2,15 @@
 
 #include <Limelight.h>
 
+// [fork] moonlight-common-c's FEC and out-of-order counts, beside ours
+static std::string forkRtpLine()
+{
+    RTP_AUDIO_STATS stats = {};
+    LiGetRTPAudioStats(&stats);
+    return AudioHealth::Monitor::rtpLine(stats.packetCountAudio, stats.packetCountFec, stats.packetCountFecRecovered,
+                                         stats.packetCountFecFailed, stats.packetCountOOS);
+}
+
 // [fork] A steady clock in ms, finer than SDL_GetTicks()
 static double forkNowMs()
 {
@@ -89,7 +98,7 @@ SdlAudioRenderer::~SdlAudioRenderer()
     if (m_ForkHealth) {
         std::string summary = m_ForkHealth->summary();
         if (!summary.empty()) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Audio (SDL), the whole stream: %s", summary.c_str());
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Audio (SDL), the whole stream: %s; %s", summary.c_str(), forkRtpLine().c_str());
         }
     }
 
@@ -166,7 +175,7 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
     if (m_ForkHealth) {
         std::string line = m_ForkHealth->report(forkNow);
         if (!line.empty()) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Audio (SDL), last 10 s: %s", line.c_str());
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Audio (SDL), last 10 s: %s; %s", line.c_str(), forkRtpLine().c_str());
         }
     }
 

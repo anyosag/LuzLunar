@@ -52,6 +52,11 @@ namespace AudioHealth
 
         const Counters& total() const { return m_Total; }
 
+        // moonlight-common-c's own counts (LiGetRTPAudioStats), for the same lines: FEC rebuilds a
+        // lost packet only once its block's FEC shards arrive, so a recovered packet held the ones
+        // after it back; out-of-order packets do too. Neither is logged in a release build
+        static std::string rtpLine(unsigned audio, unsigned fec, unsigned recovered, unsigned failed, unsigned outOfOrder);
+
     private:
         static std::string describe(const Counters& counters, double seconds);
 

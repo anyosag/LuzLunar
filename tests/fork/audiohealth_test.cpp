@@ -103,12 +103,19 @@ static void testPauses()
     CHECK(contains(monitor.summary(), "1 pauses"));
 }
 
+static void testRtpLine()
+{
+    std::string line = Monitor::rtpLine(40000, 20000, 12, 1, 7);
+    CHECK(line == "RTP so far: 40000 audio and 20000 FEC packets, 12 rebuilt by FEC, 1 couldn't be, 7 out of order");
+}
+
 int main()
 {
     testSteady();
     testLateAndDry();
     testReports();
     testPauses();
+    testRtpLine();
     if (s_Failures) {
         std::printf("%d check(s) failed\n", s_Failures);
         return 1;
