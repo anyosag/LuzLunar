@@ -17,6 +17,13 @@ namespace MicRules
     constexpr int k_BitrateBps = 28000;      // 24 to 32 kb/s; a frame never passes luzmic::k_max_opus
     constexpr int k_ExpectedLossPercent = 10;
     constexpr int k_RingFrames = 48000 * 60 / 1000; // 60 ms of the stream's sound waiting for the engine, at most
+    // The cushion the engine plays from: it starts once 20 ms wait, and starts over the same way
+    // after running dry, so a packet a little late (5 ms packets, a Wi-Fi hiccup) isn't a click
+    constexpr int k_RingPrimeFrames = 48000 * 20 / 1000;
+    // The PC's clock and the speakers' drift apart (around 100 ppm): away from the cushion (under
+    // half of it, over twice it), one frame in this many is played twice or left out, 1000 ppm,
+    // which isn't heard and keeps the ring from running dry or overflowing, each a click
+    constexpr int k_RingDriftEveryFrames = 1000;
 
     // luzMic's value for the launch: "1" when the setting is on, the PC's Apollo offers it
     // (<LuzMic>1) and this isn't a multi-display stream's other window; "" otherwise
@@ -100,12 +107,14 @@ namespace MicRules
     class PcmRing
     {
     public:
-        explicit PcmRing(int capacityFrames);
+        // primeFrames: the cushion (see k_RingPrimeFrames); 0 plays whatever is there, with no
+        // cushion and no drift correction
+        explicit PcmRing(int capacityFrames, int primeFrames = 0);
 
         void push(const float* stereo, int frames);
 
         // Fills left and right (non-interleaved) with frames frames; returns how many came from the
-        // ring, the rest being zeros
+        // ring, the rest being zeros. With a cushion: zeros until it's full, and after running dry
         int pull(float* left, float* right, int frames);
 
         int queued() const;
@@ -115,7 +124,10 @@ namespace MicRules
         mutable std::mutex m_Mutex;
         std::vector<float> m_Data;  // interleaved stereo
         int m_Capacity;
+        int m_Prime;
         int m_Read = 0;
         int m_Count = 0;
+        bool m_Primed = false;
+        int m_SinceDrift = 0;      // frames played since the last drift check
     };
 }

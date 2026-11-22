@@ -326,7 +326,7 @@ void connectionStarting()
         s_Active = asked;
         if (asked) {
             s_Output = ForkMicMac::currentOutput();
-            s_Ring = std::make_shared<MicRules::PcmRing>(MicRules::k_RingFrames);
+            s_Ring = std::make_shared<MicRules::PcmRing>(MicRules::k_RingFrames, MicRules::k_RingPrimeFrames);
             s_Engine = std::make_unique<ForkMicMac::Engine>(s_Ring, sendFrame);
         }
         s_WantRenderer = asked && MicRules::voiceProcessedPlayback(true, s_Output);

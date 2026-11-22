@@ -115,9 +115,10 @@ void downmixToStereo(const float* in, int channels, int frames, float* out)
     }
 }
 
-PcmRing::PcmRing(int capacityFrames)
+PcmRing::PcmRing(int capacityFrames, int primeFrames)
     : m_Data(static_cast<size_t>(std::max(capacityFrames, 1)) * 2),
-      m_Capacity(std::max(capacityFrames, 1))
+      m_Capacity(std::max(capacityFrames, 1)),
+      m_Prime(std::clamp(primeFrames, 0, std::max(capacityFrames, 1) / 2))
 {
 }
 
@@ -146,15 +147,48 @@ void PcmRing::push(const float* stereo, int frames)
 int PcmRing::pull(float* left, float* right, int frames)
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
-    int got = std::min(frames, m_Count);
-    for (int i = 0; i < got; i++) {
-        left[i] = m_Data[static_cast<size_t>(m_Read) * 2];
-        right[i] = m_Data[static_cast<size_t>(m_Read) * 2 + 1];
-        m_Read = (m_Read + 1) % m_Capacity;
+    frames = std::max(frames, 0);
+
+    if (m_Prime > 0 && !m_Primed) {
+        if (m_Count < m_Prime) {
+            // Filling the cushion
+            std::fill(left, left + frames, 0.0f);
+            std::fill(right, right + frames, 0.0f);
+            return 0;
+        }
+        m_Primed = true;
+        m_SinceDrift = 0;
     }
-    m_Count -= got;
-    std::fill(left + got, left + frames, 0.0f);
-    std::fill(right + got, right + frames, 0.0f);
+
+    int got = 0;
+    while (got < frames && m_Count > 0) {
+        left[got] = m_Data[static_cast<size_t>(m_Read) * 2];
+        right[got] = m_Data[static_cast<size_t>(m_Read) * 2 + 1];
+        got++;
+
+        int consume = 1;
+        if (m_Prime > 0 && ++m_SinceDrift >= k_RingDriftEveryFrames) {
+            m_SinceDrift = 0;
+            if (m_Count > 2 * m_Prime) {
+                consume = 2;    // the PC runs ahead: leave a frame out
+            }
+            else if (m_Count < m_Prime / 2) {
+                consume = 0;    // the speakers run ahead: play this frame twice
+            }
+        }
+        consume = std::min(consume, m_Count);
+        m_Read = (m_Read + consume) % m_Capacity;
+        m_Count -= consume;
+    }
+
+    if (got < frames) {
+        std::fill(left + got, left + frames, 0.0f);
+        std::fill(right + got, right + frames, 0.0f);
+        if (m_Prime > 0) {
+            // Dry: one gap, then play again from a full cushion, rather than a click every packet
+            m_Primed = false;
+        }
+    }
     return got;
 }
 
@@ -169,6 +203,8 @@ void PcmRing::clear()
     std::lock_guard<std::mutex> lock(m_Mutex);
     m_Read = 0;
     m_Count = 0;
+    m_Primed = false;
+    m_SinceDrift = 0;
 }
 
 }

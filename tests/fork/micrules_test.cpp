@@ -200,6 +200,90 @@ static void testRing()
     CHECK(ring.queued() == 0);
 }
 
+// Frames numbered from start, in the left channel; the right is their negative
+static void pushNumbered(PcmRing& ring, int start, int frames)
+{
+    std::vector<float> in(static_cast<size_t>(frames) * 2);
+    for (int i = 0; i < frames; i++) {
+        in[2 * static_cast<size_t>(i)] = static_cast<float>(start + i);
+        in[2 * static_cast<size_t>(i) + 1] = -static_cast<float>(start + i);
+    }
+    ring.push(in.data(), frames);
+}
+
+static void testRingCushion()
+{
+    float left[16];
+    float right[16];
+
+    // Nothing plays until the cushion is full
+    PcmRing ring(16, 4);
+    pushNumbered(ring, 0, 3);
+    CHECK(ring.pull(left, right, 2) == 0);
+    CHECK(left[0] == 0 && left[1] == 0 && ring.queued() == 3);
+    pushNumbered(ring, 3, 3);   // 6 waiting
+    CHECK(ring.pull(left, right, 4) == 4);
+    CHECK(left[0] == 0 && left[3] == 3 && right[3] == -3);
+
+    // Running dry: what's left, then silence, and the cushion fills again before it plays
+    CHECK(ring.pull(left, right, 4) == 2);
+    CHECK(left[0] == 4 && left[1] == 5 && left[2] == 0 && left[3] == 0);
+    pushNumbered(ring, 6, 2);
+    CHECK(ring.pull(left, right, 1) == 0);
+    pushNumbered(ring, 8, 2);   // 4 waiting
+    CHECK(ring.pull(left, right, 4) == 4);
+    CHECK(left[0] == 6 && left[3] == 9);
+
+    // clear() empties the cushion too
+    pushNumbered(ring, 0, 8);
+    ring.clear();
+    pushNumbered(ring, 0, 2);
+    CHECK(ring.pull(left, right, 2) == 0);
+
+    // The capacity caps the cushion at half of it
+    PcmRing small(8, 100);
+    pushNumbered(small, 0, 4);
+    CHECK(small.pull(left, right, 4) == 4);
+
+    // The real sizes: 20 ms of cushion within 60 ms
+    CHECK(k_RingPrimeFrames == 960 && k_RingFrames == 2880 && k_RingPrimeFrames * 2 <= k_RingFrames);
+}
+
+static void testRingDrift()
+{
+    std::vector<float> left(1000);
+    std::vector<float> right(1000);
+
+    // The PC runs ahead (over twice the cushion waiting): the 1000th frame played takes its next one along
+    PcmRing ahead(4000, 100);
+    pushNumbered(ahead, 0, 1500);
+    CHECK(ahead.pull(left.data(), right.data(), 1000) == 1000);
+    CHECK(left[0] == 0 && left[999] == 999);
+    CHECK(ahead.queued() == 1500 - 1001);
+    CHECK(ahead.pull(left.data(), right.data(), 1) == 1 && left[0] == 1001);
+
+    // The speakers run ahead (under half the cushion waiting): the 1000th frame plays twice
+    PcmRing behind(4000, 100);
+    pushNumbered(behind, 0, 1040);
+    CHECK(behind.pull(left.data(), right.data(), 1000) == 1000);
+    CHECK(left[998] == 998 && left[999] == 999);
+    CHECK(behind.queued() == 1040 - 999);
+    CHECK(behind.pull(left.data(), right.data(), 1) == 1 && left[0] == 999 && right[0] == -999);
+
+    // Near the cushion: nothing left out or repeated
+    PcmRing steady(4000, 100);
+    pushNumbered(steady, 0, 1150);
+    CHECK(steady.pull(left.data(), right.data(), 1000) == 1000);
+    CHECK(steady.queued() == 150);
+    CHECK(steady.pull(left.data(), right.data(), 1) == 1 && left[0] == 1000);
+
+    // Without a cushion (the tests above, and anything else): never
+    PcmRing plain(4000);
+    pushNumbered(plain, 0, 1500);
+    CHECK(plain.pull(left.data(), right.data(), 1000) == 1000);
+    CHECK(plain.queued() == 500);
+}
+
 int main()
 {
     testLaunch();
@@ -209,6 +293,8 @@ int main()
     testFrameClock();
     testDownmix();
     testRing();
+    testRingCushion();
+    testRingDrift();
     if (s_Failures) {
         std::printf("%d check(s) failed\n", s_Failures);
         return 1;
