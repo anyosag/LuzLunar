@@ -4,13 +4,17 @@ import ForkTheme 1.0
 
 // [fork] A button of a PC card. kind "primary" is the filled one in the PC's color (hue), "quiet" has
 // the line and chip look, "icon" is the square ⋯ button. `big` picks the big card's sizes (44 px
-// tall, radius 12) or the small card's (36 px, radius 10).
+// tall, radius 12) or the small card's (36 px, radius 10). With maxWidth (or an explicit width)
+// narrower than the label, the button says shortText instead when there is one, and ends what
+// still doesn't fit in "…", so a long app name never runs past the button.
 Item {
     id: btn
 
     property string kind: "quiet"          // primary | quiet | icon
     property bool big: true
     property string text: ""
+    property string shortText: ""
+    property real maxWidth: 0              // 0: as wide as the label
     property string iconName: ""
     property bool iconFilled: false
     property color iconColor: ForkTheme.cv.text2
@@ -30,9 +34,18 @@ Item {
     readonly property real iconSize: kind === "icon" ? (big ? 18 : 16) : (kind === "primary" ? (big ? 17 : 15) : (big ? 16 : 15))
     readonly property color ink: filledLook ? hue.onFill : (kind === "icon" ? ForkTheme.cv.text2 : ForkTheme.cv.text)
 
+    readonly property real padding: kind === "primary" && big ? 40 : (big ? 28 : 0)
+    readonly property real iconPart: iconName !== "" ? iconSize + row.spacing : 0
+    // The widths with the full label and with the short one; neither depends on the button's own
+    // width, so a row can share its room out by them without a binding loop
+    readonly property real naturalWidth: kind === "icon" ? implicitHeight : fullMeasure.implicitWidth + iconPart + padding
+    readonly property real minWidth: kind === "icon" || shortText === "" ? naturalWidth
+                                                                         : shortMeasure.implicitWidth + iconPart + padding
+    readonly property bool useShort: shortText !== "" && width < naturalWidth - 0.5
+
     implicitHeight: big ? 44 : 36
-    implicitWidth: kind === "icon" ? implicitHeight
-                                   : row.implicitWidth + (kind === "primary" && big ? 40 : (big ? 28 : 0))
+    // Too narrow for the label: as wide as the short label needs (no wider than maxWidth)
+    implicitWidth: maxWidth <= 0 || naturalWidth <= maxWidth ? naturalWidth : Math.min(minWidth, maxWidth)
     height: implicitHeight
     opacity: dimmed ? 0.6 : 1
     layer.enabled: dimmed
@@ -77,13 +90,32 @@ Item {
         }
 
         ForkCanvasText {
+            id: label
             visible: btn.kind !== "icon"
             anchors.verticalCenter: parent.verticalCenter
-            text: btn.text
+            text: btn.useShort ? btn.shortText : btn.text
+            width: Math.max(0, Math.min(implicitWidth, btn.width - btn.padding - btn.iconPart))
+            elide: Text.ElideRight
             color: btn.ink
             px: btn.kind === "primary" ? (btn.big ? 14.5 : 13) : (btn.big ? 13.5 : 13)
             weight: btn.kind === "primary" ? (btn.big ? 650 : 600) : (btn.big ? 500 : 600)
         }
+    }
+
+    // Measure the two labels, whichever one the button shows
+    ForkCanvasText {
+        id: fullMeasure
+        visible: false
+        text: btn.text
+        px: label.px
+        weight: label.weight
+    }
+    ForkCanvasText {
+        id: shortMeasure
+        visible: false
+        text: btn.shortText
+        px: label.px
+        weight: label.weight
     }
 
     HoverHandler {

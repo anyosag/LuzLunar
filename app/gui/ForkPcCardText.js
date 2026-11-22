@@ -117,7 +117,9 @@ function describe(p) {
         out.allNote = allAppsNote(state, p)
         if (wakeChip) out.chips.push(wakeChip)
         if (updateChip) out.chips.push(updateChip)
-        out.quiet = [{ id: "quit", label: "Quit " + app, icon: "stop", colorKey: "text2" }]
+        // short: what the button says when the full label doesn't fit beside the primary (the
+        // running app is already named in the status row above)
+        out.quiet = [{ id: "quit", label: "Quit " + app, short: "Quit", icon: "stop", colorKey: "text2" }]
         if (canSleep) out.quiet.push({ id: "sleep", label: "Sleep", icon: "moon", colorKey: "purple" })
         out.primary = { id: "resume", label: "Resume " + app, icon: "play", fill: true }
         break

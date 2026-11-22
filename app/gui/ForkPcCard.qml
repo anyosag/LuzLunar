@@ -594,26 +594,61 @@ Item {
             revealed: card.revealed
             delay: 480
             Item {
+                id: actions
                 width: 518; height: 44
 
+                // The room is shared out so the two rows never overlap (a long app name used to
+                // run the quiet buttons under ⋯ and the primary). The primary keeps its whole
+                // label while the quiet buttons fit at their shortest ("Quit" for "Quit <app>");
+                // the quiet buttons get what is left, each giving up its full label, then ending
+                // in "…", only as far as it has to.
+                readonly property real gap: 12
+                readonly property real quietSpacing: 8
+                readonly property int quietCount: quietRepeater.count
+                // Recomputed when a button's measured widths change (the Repeater's items aren't
+                // bindable on their own)
+                property real quietMinTotal: 0
+                function measureQuiet() {
+                    var mins = 0
+                    for (var i = 0; i < quietRepeater.count; i++) {
+                        var b = quietRepeater.itemAt(i)
+                        if (!b) continue
+                        mins += b.minWidth
+                    }
+                    quietMinTotal = quietRepeater.count > 0 ? mins + (quietRepeater.count - 1) * quietSpacing : 0
+                }
+                readonly property real rightRoom: width - (quietCount > 0 ? quietMinTotal + gap : 0)
+                readonly property real quietRoom: width - rightRow.width - gap
+
                 Row {
-                    spacing: 8
+                    spacing: actions.quietSpacing
                     Repeater {
+                        id: quietRepeater
                         model: card.info.quiet
+                        onCountChanged: actions.measureQuiet()
+                        onItemAdded: actions.measureQuiet()
+                        onItemRemoved: actions.measureQuiet()
                         delegate: ForkCardButton {
                             required property var modelData
+                            required property int index
                             kind: "quiet"
                             text: modelData.label
+                            shortText: modelData.short || ""
                             iconName: modelData.icon
                             iconColor: card.stateInk(modelData.colorKey)
+                            // Its share: the room left once the others take their shortest
+                            maxWidth: Math.max(minWidth, actions.quietRoom - (actions.quietMinTotal - minWidth))
+                            onMinWidthChanged: actions.measureQuiet()
                             onClicked: card.quietClicked(modelData.id)
                         }
                     }
                 }
                 Row {
+                    id: rightRow
                     anchors.right: parent.right
                     spacing: 8
                     ForkCardButton {
+                        id: moreButton
                         kind: "icon"
                         iconName: "more"
                         accessibleName: "More for " + card.pcName
@@ -621,6 +656,7 @@ Item {
                     }
                     ForkCardButton {
                         kind: "primary"
+                        maxWidth: actions.rightRoom - moreButton.width - rightRow.spacing
                         hue: card.hue
                         text: card.info.primary.label
                         iconName: card.info.primary.icon
