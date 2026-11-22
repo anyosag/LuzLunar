@@ -106,12 +106,20 @@ static void testEdges()
     CHECK(describe(longName, false, 0).name == std::string(62, 'a'));
 }
 
+static void testPrimary()
+{
+    // Apollo reads this name (vdisplay_primary_policy::k_arg) and only the value 1
+    CHECK(primaryArg(true) == "&luzPrimary=1");
+    CHECK(primaryArg(false).empty());
+}
+
 int main()
 {
     testMacBook();
     testOverride();
     testUnknownHdr();
     testEdges();
+    testPrimary();
 
     if (s_Failures) {
         std::printf("%d client display checks failed\n", s_Failures);

@@ -23,6 +23,7 @@
 #define SER_NOTCHBARSTATS "fork/notchBarStats"
 #define SER_NOTCHBARHINTS "fork/notchBarHints"
 #define SER_DESCRIBEDISPLAY "fork/describeDisplay"
+#define SER_HOSTPRIMARYDISPLAY "fork/hostPrimaryDisplay"
 #define SER_HDRPEAKOVERRIDE "fork/hdrPeakOverride"
 #define SER_IMACROUTE "fork/imacRoute"
 #define SER_IMACCODEC "fork/imacCodec"
@@ -97,6 +98,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
       m_NotchBarStats(true),
       m_NotchBarHints(0),
       m_DescribeDisplay(true),
+      m_HostPrimaryDisplay(false),
       m_HdrPeakOverride(0),
       m_ImacRoute(IR_AUTOMATIC),
       m_ImacCodec(IC_AUTOMATIC),
@@ -137,6 +139,7 @@ ForkPreferences::ForkPreferences(QObject* parent)
     m_NotchBarStats = settings.value(SER_NOTCHBARSTATS, m_NotchBarStats).toBool();
     m_NotchBarHints = settings.value(SER_NOTCHBARHINTS, m_NotchBarHints).toInt();
     m_DescribeDisplay = settings.value(SER_DESCRIBEDISPLAY, m_DescribeDisplay).toBool();
+    m_HostPrimaryDisplay = settings.value(SER_HOSTPRIMARYDISPLAY, m_HostPrimaryDisplay).toBool();
 
     int peak = settings.value(SER_HDRPEAKOVERRIDE, m_HdrPeakOverride).toInt();
     if (peak >= 0 && peak <= MAX_HDR_PEAK) {
@@ -283,6 +286,17 @@ void ForkPreferences::setDescribeDisplay(bool enabled)
     m_DescribeDisplay = enabled;
     QSettings().setValue(SER_DESCRIBEDISPLAY, enabled);
     emit describeDisplayChanged();
+}
+
+void ForkPreferences::setHostPrimaryDisplay(bool enabled)
+{
+    if (enabled == m_HostPrimaryDisplay) {
+        return;
+    }
+
+    m_HostPrimaryDisplay = enabled;
+    QSettings().setValue(SER_HOSTPRIMARYDISPLAY, enabled);
+    emit hostPrimaryDisplayChanged();
 }
 
 void ForkPreferences::setHdrPeakOverride(int nits)
