@@ -1315,6 +1315,18 @@ private:
         // [fork] A reconnect from the notch bar never quits the app, and the stream doesn't end for the UI
         bool forkReconnect = m_Session->m_ForkReconnect.has_value() && !m_Session->m_UnexpectedTermination;
 
+        // [fork] Desktop (multiple displays) keeps the PC's own monitors off until it quits, so it never
+        // outlives its stream: once the stream had connected, its end quits it, whatever Settings'
+        // "Quit app on host PC after ending stream" says and whether the stream ended or dropped. Not
+        // for a reconnect, "Quit <app> and Sleep PC" (which quits it itself), or a helper's slot.
+        bool forkSleepAfter = m_Session->m_ForkSleepHostAfter && !m_Session->m_UnexpectedTermination;
+        bool forkGroupQuit = m_Session->m_AsyncConnectionSuccess && !forkReconnect && !forkSleepAfter &&
+                             !ForkMultiDisplay::isHelper() &&
+                             ForkMultiDisplay::isGroupApp(m_Session->m_Computer, m_Session->m_App);
+        if (forkGroupQuit && !m_Session->m_UnexpectedTermination) {
+            shouldQuit = true;
+        }
+
         // Notify the UI
         if (shouldQuit) {
             emit m_Session->quitStarting();
@@ -1352,8 +1364,23 @@ private:
             emit m_Session->sessionFinished(m_Session->m_PortTestResults);
         }
 
+        // [fork] A multi-display stream that dropped: the UI has its error and the stream's end, and the
+        // PC gets its monitors back if it can still be reached (best effort, as above)
+        if (forkGroupQuit && m_Session->m_UnexpectedTermination) {
+            qInfo() << "[fork] The multi-display stream dropped: quitting" << m_Session->m_App.name << "so the PC's monitors come back";
+            NvHTTP http(m_Session->m_Computer);
+            try {
+                http.quitApp();
+            } catch (const GfeHttpResponseException&) {
+            } catch (const QtNetworkReplyException&) {
+            }
+        }
+        else if (forkGroupQuit && !m_Session->m_Preferences->quitAppAfter) {
+            qInfo() << "[fork] Quitting" << m_Session->m_App.name << "with its stream, so the PC's monitors come back";
+        }
+
         // [fork] "Quit <app> and Sleep PC": now that the stream is gone, the PC quits the app and sleeps
-        if (m_Session->m_ForkSleepHostAfter && !m_Session->m_UnexpectedTermination) {
+        if (forkSleepAfter) {
             QString uuid;
             {
                 QReadLocker lock(&m_Session->m_Computer->lock);
