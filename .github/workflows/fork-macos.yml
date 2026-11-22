@@ -589,6 +589,11 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/micrules_test.cpp app/fork/micrules.cpp -o "$RUNNER_TEMP/micrules_test"
           "$RUNNER_TEMP/micrules_test"
+          # The stream's sound on its way to the speakers, for the log: late packets, nothing
+          # queued, thrown away, pauses
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/audiohealth_test.cpp app/fork/audiohealth.cpp -o "$RUNNER_TEMP/audiohealth_test"
+          "$RUNNER_TEMP/audiohealth_test"
           # And where it is in Mac trackpad mode: the moves, the PC's corrections, when it shows, how big
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/cursorrules_test.cpp app/fork/cursorrules.cpp -o "$RUNNER_TEMP/cursorrules_test"

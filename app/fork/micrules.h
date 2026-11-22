@@ -120,6 +120,14 @@ namespace MicRules
         int queued() const;
         void clear();
 
+        // For the log: pulls that came up short while it was playing (the speakers got silence),
+        // and frames left out because it was full
+        struct Stats {
+            long shortPulls = 0;
+            long overflowFrames = 0;
+        };
+        Stats stats() const;
+
     private:
         mutable std::mutex m_Mutex;
         std::vector<float> m_Data;  // interleaved stereo
@@ -129,5 +137,7 @@ namespace MicRules
         int m_Count = 0;
         bool m_Primed = false;
         int m_SinceDrift = 0;      // frames played since the last drift check
+        bool m_Playing = false;    // the last pull gave sound
+        Stats m_Stats;
     };
 }

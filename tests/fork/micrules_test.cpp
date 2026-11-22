@@ -245,6 +245,19 @@ static void testRingCushion()
     pushNumbered(small, 0, 4);
     CHECK(small.pull(left, right, 4) == 4);
 
+    // Coming up short while playing is counted; waiting for the cushion isn't
+    PcmRing counted(16, 4);
+    pushNumbered(counted, 0, 3);
+    counted.pull(left, right, 4);           // filling the cushion
+    CHECK(counted.stats().shortPulls == 0);
+    pushNumbered(counted, 3, 3);            // 6 waiting
+    counted.pull(left, right, 4);           // plays 4
+    counted.pull(left, right, 4);           // 2, then silence: short
+    counted.pull(left, right, 4);           // nothing: filling again, not counted twice
+    CHECK(counted.stats().shortPulls == 1);
+    pushNumbered(counted, 0, 20);           // 4 more than fit
+    CHECK(counted.stats().overflowFrames == 4);
+
     // The real sizes: 20 ms of cushion within 60 ms
     CHECK(k_RingPrimeFrames == 960 && k_RingFrames == 2880 && k_RingPrimeFrames * 2 <= k_RingFrames);
 }

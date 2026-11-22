@@ -3,6 +3,10 @@
 #include "renderer.h"
 #include "SDL_compat.h"
 
+#include <memory>
+
+#include "fork/audiohealth.h" // [fork]
+
 class SdlAudioRenderer : public IAudioRenderer
 {
 public:
@@ -23,4 +27,6 @@ private:
     void* m_AudioBuffer;
     Uint32 m_FrameSize;
     Uint32 m_FrameDurationMs;
+    std::unique_ptr<AudioHealth::Monitor> m_ForkHealth; // [fork] late, dry and thrown-away packets, for the log
+    double m_ForkBytesPerMs = 0; // [fork]
 };

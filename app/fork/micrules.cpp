@@ -127,11 +127,13 @@ void PcmRing::push(const float* stereo, int frames)
     std::lock_guard<std::mutex> lock(m_Mutex);
     // More than fits: only the newest
     if (frames > m_Capacity) {
+        m_Stats.overflowFrames += frames - m_Capacity;
         stereo += static_cast<size_t>(frames - m_Capacity) * 2;
         frames = m_Capacity;
     }
     int over = m_Count + frames - m_Capacity;
     if (over > 0) {
+        m_Stats.overflowFrames += over;
         m_Read = (m_Read + over) % m_Capacity;
         m_Count -= over;
     }
@@ -154,6 +156,7 @@ int PcmRing::pull(float* left, float* right, int frames)
             // Filling the cushion
             std::fill(left, left + frames, 0.0f);
             std::fill(right, right + frames, 0.0f);
+            m_Playing = false;
             return 0;
         }
         m_Primed = true;
@@ -181,6 +184,10 @@ int PcmRing::pull(float* left, float* right, int frames)
         m_Count -= consume;
     }
 
+    if (got < frames && (got > 0 || m_Playing)) {
+        m_Stats.shortPulls++;
+    }
+    m_Playing = got > 0;
     if (got < frames) {
         std::fill(left + got, left + frames, 0.0f);
         std::fill(right + got, right + frames, 0.0f);
@@ -205,6 +212,13 @@ void PcmRing::clear()
     m_Count = 0;
     m_Primed = false;
     m_SinceDrift = 0;
+    m_Playing = false;
+}
+
+PcmRing::Stats PcmRing::stats() const
+{
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_Stats;
 }
 
 }

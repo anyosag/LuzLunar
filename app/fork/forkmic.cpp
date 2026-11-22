@@ -13,6 +13,7 @@
 #include <SDL.h>
 #include <opus.h>
 
+#include "audiohealth.h"
 #include "backend/nvcomputer.h"
 #include "forkevents.h"
 #include "forkhostmessages.h"
@@ -215,6 +216,14 @@ namespace
 
         ~MicEngineAudioRenderer() override
         {
+            // What the stream's sound went through, for telling a crackle's cause
+            std::string summary = m_Health.summary();
+            if (!summary.empty()) {
+                MicRules::PcmRing::Stats stats = m_Ring->stats();
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "[fork] Audio (microphone engine), the whole stream: %s; the engine came up short %ld times, %ld frames left out when full",
+                            summary.c_str(), stats.shortPulls, stats.overflowFrames);
+            }
             if (m_Live) {
                 setRendererLive(false);
                 m_Ring->clear();
@@ -253,7 +262,16 @@ namespace
                 m_Stereo.resize(static_cast<size_t>(frames) * 2);
             }
             MicRules::downmixToStereo(m_Buffer.data(), m_Channels, frames, m_Stereo.data());
+            double now = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+            m_Health.packet(now, m_Ring->queued() * 1000.0 / luzmic::k_sample_rate);
             m_Ring->push(m_Stereo.data(), frames);
+            std::string line = m_Health.report(now);
+            if (!line.empty()) {
+                MicRules::PcmRing::Stats stats = m_Ring->stats();
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "[fork] Audio (microphone engine), last 10 s: %s; so far the engine came up short %ld times, %ld frames left out when full",
+                            line.c_str(), stats.shortPulls, stats.overflowFrames);
+            }
             return true;
         }
 
@@ -268,6 +286,8 @@ namespace
         bool m_Live = false;
         std::vector<float> m_Buffer;
         std::vector<float> m_Stereo;
+        // Late packets and what waited, for the log; 15 ms, as SDL's device buffer, for comparison
+        AudioHealth::Monitor m_Health { 15.0 };
     };
 }
 

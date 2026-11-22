@@ -80,6 +80,7 @@ SOURCES += \
     $$PWD/bitrateclient.cpp \
     $$PWD/forkbarreach.cpp \
     $$PWD/bitraterules.cpp \
+    $$PWD/audiohealth.cpp \
     $$PWD/hostpacing.cpp \
     $$PWD/macdrive.cpp \
     $$PWD/macdriverules.cpp \
@@ -156,6 +157,7 @@ HEADERS += \
     $$PWD/barreach.h \
     $$PWD/forkbarreach.h \
     $$PWD/bitraterules.h \
+    $$PWD/audiohealth.h \
     $$PWD/bitratestate.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \

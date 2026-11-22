@@ -2,6 +2,12 @@
 
 #include <Limelight.h>
 
+// [fork] A steady clock in ms, finer than SDL_GetTicks()
+static double forkNowMs()
+{
+    return static_cast<double>(SDL_GetPerformanceCounter()) * 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
+}
+
 SdlAudioRenderer::SdlAudioRenderer()
     : m_AudioDevice(0),
       m_AudioBuffer(nullptr)
@@ -66,6 +72,11 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
                 "SDL audio driver: %s",
                 SDL_GetCurrentAudioDriver());
 
+    // [fork] A gap between packets longer than the device's buffer can leave the speakers with nothing
+    double deviceMs = have.freq > 0 ? have.samples * 1000.0 / have.freq : 15.0;
+    m_ForkHealth = std::make_unique<AudioHealth::Monitor>(deviceMs);
+    m_ForkBytesPerMs = m_FrameDurationMs > 0 ? static_cast<double>(m_FrameSize) / m_FrameDurationMs : 0;
+
     // Start playback
     SDL_PauseAudioDevice(m_AudioDevice, 0);
 
@@ -74,6 +85,14 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
 
 SdlAudioRenderer::~SdlAudioRenderer()
 {
+    // [fork] What the stream's sound went through, for telling a crackle's cause
+    if (m_ForkHealth) {
+        std::string summary = m_ForkHealth->summary();
+        if (!summary.empty()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Audio (SDL), the whole stream: %s", summary.c_str());
+        }
+    }
+
     if (m_AudioDevice != 0) {
         // Stop playback
         SDL_PauseAudioDevice(m_AudioDevice, 1);
@@ -100,9 +119,18 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
         return true;
     }
 
+    // [fork] The packet, with what's still waiting for the device
+    double forkNow = forkNowMs();
+    if (m_ForkHealth && m_ForkBytesPerMs > 0) {
+        m_ForkHealth->packet(forkNow, SDL_GetQueuedAudioSize(m_AudioDevice) / m_ForkBytesPerMs);
+    }
+
     // Don't queue if there's already more than 30 ms of audio data waiting
     // in Moonlight's audio queue.
     if (LiGetPendingAudioDuration() > 30) {
+        if (m_ForkHealth) {
+            m_ForkHealth->thrownAway(); // [fork]
+        }
         return true;
     }
 
@@ -121,6 +149,9 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
             break;
         }
 
+        if (i == 0 && m_ForkHealth) {
+            m_ForkHealth->waited(); // [fork]
+        }
         SDL_Delay(1);
     }
 
@@ -129,6 +160,14 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
                      "Failed to queue audio sample: %s",
                      SDL_GetError());
         return false;
+    }
+
+    // [fork] Every 10 s with anything to say
+    if (m_ForkHealth) {
+        std::string line = m_ForkHealth->report(forkNow);
+        if (!line.empty()) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Audio (SDL), last 10 s: %s", line.c_str());
+        }
     }
 
     return true;
