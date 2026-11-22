@@ -659,6 +659,7 @@ Item {
                         maxWidth: actions.rightRoom - moreButton.width - rightRow.spacing
                         hue: card.hue
                         text: card.info.primary.label
+                        accessibleName: card.info.primary.a11y || card.info.primary.label || ""
                         iconName: card.info.primary.icon
                         iconFilled: !!card.info.primary.fill
                         quietLook: !!card.info.primary.quietLook

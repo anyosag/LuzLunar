@@ -216,6 +216,7 @@ Item {
             width: 213
             hue: card.hue
             text: card.info.action.label
+            accessibleName: card.info.action.a11y || card.info.action.label || ""
             iconName: card.info.action.icon
             iconFilled: !!card.info.action.fill
             quietLook: !!card.info.action.quietLook

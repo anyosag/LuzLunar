@@ -121,7 +121,9 @@ function describe(p) {
         // running app is already named in the status row above)
         out.quiet = [{ id: "quit", label: "Quit " + app, short: "Quit", icon: "stop", colorKey: "text2" }]
         if (canSleep) out.quiet.push({ id: "sleep", label: "Sleep", icon: "moon", colorKey: "purple" })
-        out.primary = { id: "resume", label: "Resume " + app, icon: "play", fill: true }
+        // Just "Resume": the title above names the app, and the app's name beside Quit, Sleep and
+        // ⋯ didn't fit. a11y is what VoiceOver says
+        out.primary = { id: "resume", label: "Resume", a11y: "Resume " + app, icon: "play", fill: true }
         break
     case "waking":
         // Away from the PC's home network the model says where Wake PC went (p.wakeRoute
@@ -213,7 +215,7 @@ function describeSmall(p) {
         if (p.streamFps > 0) info.push(p.streamFps + " fps")
         o.headline = (p.runningApp || "Desktop") + " is running"; o.sub = info.join(" · ")
         o.chip = { label: join([p.network || "Home network", latencyText(p.latencyMs)]), icon: "cable", colorKey: "green" }
-        o.action = { id: "resume", label: "Resume " + (p.runningApp || "Desktop"), icon: "play", fill: true }
+        o.action = { id: "resume", label: "Resume", a11y: "Resume " + (p.runningApp || "Desktop"), icon: "play", fill: true }
         break
     case "waking":
         o.headline = "Waking up…"; o.sub = p.wakeLine ? p.wakeLine + "." : "Wake PC was sent. The card turns ready when it answers."
