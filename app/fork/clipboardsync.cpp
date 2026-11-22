@@ -47,6 +47,11 @@ namespace
 
     // File copies: progress about once a second, and the PC's copies kept in the cache for pasting
     const int k_ProgressIntervalMs = 1000;
+    // While the stream is in front: how often the Mac's clipboard is looked at (a local change
+    // count, nothing sent) and, every so many of those, the PC's asked about (a few bytes when
+    // unchanged)
+    const Uint32 k_LiveTickMs = 500;
+    const unsigned k_LiveFetchEveryTicks = 4;
     const size_t k_CopiesKept = 3;
     const long k_CopyMaxAgeSeconds = 24 * 60 * 60;
     const uint64_t k_FreeSpaceMargin = uint64_t(512) << 20;   // left free on the Mac's disk
@@ -54,6 +59,7 @@ namespace
     enum EventCode {
         ResultsReady = 1,
         HideToast = 2,
+        LiveTick = 3,
     };
 
     // Shown once per app run so automatic sync doesn't repeat it every stream
@@ -122,6 +128,9 @@ namespace
         long localChangeCount = -1; // the Mac pasteboard after our last upload or write
         uint64_t localEtag = 0;     // hash of that content
         std::string hostText;       // text sync: the host's text when we last synced
+        // Live checks: the PC's state when it held copied files, which those checks leave for the
+        // next ordinary fetch (token stays at the state before them, so that fetch gets them)
+        std::string liveToken;
     };
 
     HostState& hostState(const QString& hostUuid)
@@ -189,6 +198,7 @@ struct ClipboardSync::Shared
     std::atomic<bool> mayDownloadFiles { false };
     std::atomic<bool> ended { false };      // the stream ended: uploads and file copies in flight stop
     std::atomic<bool> quitting { false };   // the stream is ending: its last fetch leaves files out
+    std::atomic<int> pending { 0 };         // requests queued or running, so live checks never pile up
     std::mutex mutex;
     std::condition_variable resultReady;
     std::deque<Result> results;
@@ -727,24 +737,31 @@ namespace
     }
 
     // Rich sync, on the worker thread: fetches what changed on the host and writes the Mac pasteboard
-    void richDownload(ClipboardSync::Shared& shared, bool manual, ClipboardSync::Result& result)
+    void richDownload(ClipboardSync::Shared& shared, bool manual, ClipboardSync::Result& result, bool live = false)
     {
         HostState& state = hostState(shared.target.hostUuid);
         long startCount = MacPasteboard::changeCount();
         ApolloClient client(shared.target);
 
+        if (live && state.transport == Transport::Text) {
+            return;     // live checks are for clipbundles, which say cheaply that nothing changed
+        }
+        const std::string previousToken = state.token;
+        const bool usedLiveToken = live && !state.liveToken.empty();
+
         if (state.transport != Transport::Text) {
             // A manual fetch always gets the content; automatic ones skip what we already have
             QString arguments = QString("type=bundle&v=1&auto=%1").arg(manual ? 0 : 1);
-            bool askForFiles = shared.files && shared.hostTakesFiles && shared.mayDownloadFiles && !shared.quitting;
+            bool askForFiles = shared.files && shared.hostTakesFiles && shared.mayDownloadFiles && !shared.quitting && !live;
             if (askForFiles) {
                 arguments += "&files=1";
             }
             if (!manual) {
-                if (!state.token.empty()) {
-                    arguments += "&since=" + QString::fromStdString(state.token);
+                const std::string& since = usedLiveToken ? state.liveToken : state.token;
+                if (!since.empty()) {
+                    arguments += "&since=" + QString::fromStdString(since);
                 }
-                if (state.hostEtag != 0) {
+                if (state.hostEtag != 0 && !usedLiveToken) {
                     arguments += "&have=" + QString::fromStdString(clipbundle::etag_hex(state.hostEtag));
                 }
             }
@@ -775,6 +792,21 @@ namespace
                     return;
                 }
                 state.token = bundle.token;
+
+                // A live check that finds files copied on the PC leaves them, and the PC's state,
+                // to the fetch as the stream goes to the background (or the shortcut's), which
+                // brings them with their progress; until the PC's clipboard changes again, live
+                // checks ask from that state and hear that nothing changed
+                if (live && (bundle.flags & clipbundle::flag_files_skipped)) {
+                    state.liveToken = bundle.token;
+                    state.token = previousToken;
+                    return;
+                }
+                if (usedLiveToken && (bundle.flags & clipbundle::flag_unchanged)) {
+                    state.token = previousToken;
+                    return;
+                }
+                state.liveToken.clear();
 
                 if (bundle.flags & clipbundle::flag_unchanged) {
                     if (bundle.etag != 0) {
@@ -893,7 +925,11 @@ ClipboardSync::ClipboardSync(NvComputer* computer, bool automatic)
       m_HasFocus(true),
       m_BadgeShown(false),
       m_ToastGeneration(0),
-      m_ToastShowing(false)
+      m_ToastShowing(false),
+      m_LiveTimer(0),
+      m_LiveChangeCount(0),
+      m_LiveTicks(0),
+      m_LiveFailureLogged(false)
 {
     // Register the event type on this thread before any worker uses it
     eventType();
@@ -911,6 +947,15 @@ ClipboardSync::ClipboardSync(NvComputer* computer, bool automatic)
     if (m_Automatic) {
         upload(false);
     }
+
+    // Live checks while the stream is in front (liveTick() decides whether they run)
+    if (m_Rich) {
+        m_LiveChangeCount = MacPasteboard::changeCount();
+        m_LiveTimer = SDL_AddTimer(k_LiveTickMs, [](Uint32 interval, void*) -> Uint32 {
+            pushEvent(LiveTick);
+            return interval;
+        }, nullptr);
+    }
 }
 
 ClipboardSync::~ClipboardSync()
@@ -918,6 +963,9 @@ ClipboardSync::~ClipboardSync()
     // Uploads and file copies in flight stop (the PC won't take them after the stream), and
     // requests still queued or in flight drop their results. A download in flight still updates
     // the clipboard.
+    if (m_LiveTimer != 0) {
+        SDL_RemoveTimer(m_LiveTimer);
+    }
     m_Shared->ended = true;
     {
         std::lock_guard<std::mutex> lock(m_Shared->mutex);
@@ -936,6 +984,9 @@ void ClipboardSync::handleEvent(const SDL_Event& event)
         }
         else if (event.user.code == HideToast) {
             hideToast(static_cast<unsigned>(reinterpret_cast<uintptr_t>(event.user.data1)));
+        }
+        else if (event.user.code == LiveTick) {
+            liveTick();
         }
         return;
     }
@@ -961,6 +1012,9 @@ void ClipboardSync::handleEvent(const SDL_Event& event)
     case SDL_WINDOWEVENT:
         if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
             upload(false);
+            if (m_Rich) {
+                m_LiveChangeCount = MacPasteboard::changeCount();     // that upload covers it
+            }
         }
         else if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
             download(false);
@@ -1008,6 +1062,34 @@ void ClipboardSync::localClipboardChanged()
 {
     if (m_Automatic) {
         upload(false);
+    }
+}
+
+// Automatic sync while the stream is in front, for Universal Clipboard: a copy made on an iPhone or
+// iPad lands on the Mac's clipboard without the stream losing focus, and one made on the PC should
+// reach them without a trip to the Mac first. One request at a time, never a backlog.
+void ClipboardSync::liveTick()
+{
+    if (!m_Rich || !m_Automatic || !m_HasFocus || !m_HostSupportsSync || !m_PermissionsKnown) {
+        return;
+    }
+    if (m_Shared->pending.load() > 0) {
+        return;     // a sync is on its way; look again next tick
+    }
+
+    long count = MacPasteboard::changeCount();
+    if (count != m_LiveChangeCount) {
+        // Copied elsewhere (Universal Clipboard, a clipboard tool) or written by a fetch from the
+        // PC, which the upload sees is the PC's own and skips
+        m_LiveChangeCount = count;
+        if (m_CanSend) {
+            upload(false);
+        }
+        return;
+    }
+
+    if (m_CanReceive && ++m_LiveTicks % k_LiveFetchEveryTicks == 0) {
+        submit(Kind::Download, false, QString(), true);
     }
 }
 
@@ -1080,11 +1162,16 @@ void ClipboardSync::download(bool manual)
     submit(Kind::Download, manual);
 }
 
-void ClipboardSync::submit(Kind kind, bool manual, const QString& text)
+void ClipboardSync::submit(Kind kind, bool manual, const QString& text, bool live)
 {
     std::shared_ptr<Shared> shared = m_Shared;
 
-    workerPool()->start([shared, kind, manual, text]() {
+    shared->pending++;
+    workerPool()->start([shared, kind, manual, text, live]() {
+        struct Done {
+            Shared& shared;
+            ~Done() { shared.pending--; }
+        } done { *shared };
         {
             std::lock_guard<std::mutex> lock(shared->mutex);
             if (!shared->alive) {
@@ -1097,6 +1184,7 @@ void ClipboardSync::submit(Kind kind, bool manual, const QString& text)
         result.kind = kind;
         result.manual = manual;
         result.text = text;
+        result.live = live;
 
         switch (kind) {
         case Kind::Permissions: {
@@ -1128,7 +1216,7 @@ void ClipboardSync::submit(Kind kind, bool manual, const QString& text)
         case Kind::Download:
             if (shared->rich) {
                 result.rich = true;
-                richDownload(*shared, manual, result);
+                richDownload(*shared, manual, result, live);
             }
             else {
                 result.response = client.request("actions/clipboard", "type=text", nullptr, k_RequestTimeoutMs);
@@ -1168,6 +1256,9 @@ void ClipboardSync::apply(const Result& result)
         return;
     }
     if (result.rich) {
+        if (result.live && !result.failed) {
+            m_LiveFailureLogged = false;
+        }
         if (result.failed) {
             reportFailure(result);
         }
@@ -1295,6 +1386,16 @@ void ClipboardSync::reportFailure(const Result& result)
     default:
         message = CS_TR("Clipboard sync failed (HTTP %1)").arg(response.httpStatus);
         break;
+    }
+
+    if (result.live) {
+        // Every couple of seconds while the PC can't be reached: said once, until one works again
+        if (!m_LiveFailureLogged) {
+            m_LiveFailureLogged = true;
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[fork] Clipboard check failed: %s (said once until one works)",
+                        qPrintable(message));
+        }
+        return;
     }
 
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
