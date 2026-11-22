@@ -24,8 +24,12 @@ class NvComputer;
 // the PC land in LuzLunar's cache (clipfiles.h). Their progress shows on the Dock icon.
 //
 // Automatic mode sends the local clipboard when the stream starts or regains focus, and fetches
-// the host's clipboard when the stream loses focus or ends. Ctrl+Option+Shift+U / G send and
-// fetch manually in either mode.
+// the host's clipboard when the stream loses focus or ends. While the stream is in front it also
+// keeps both in step (rich sync only): a Mac clipboard that changes (Universal Clipboard bringing
+// an iPhone's or iPad's copy) is sent, and the PC's is checked every couple of seconds and put on
+// the Mac's, where Universal Clipboard offers it to the iPhone and iPad. Those checks leave file
+// copies for the stream's trip to the background. Ctrl+Option+Shift+U / G send and fetch
+// manually in either mode.
 class ClipboardSync
 {
 public:
@@ -71,6 +75,7 @@ public:
         bool whenBack = false;  // the toast waits until the stream has focus again
         bool setBadge = false;  // file copies: badge replaces the text on the Dock icon
         QString badge;
+        bool live = false;      // a check made while the stream is in front: failures stay in the log
     };
 
     struct Shared;
@@ -78,7 +83,8 @@ public:
 private:
     void upload(bool manual);
     void download(bool manual);
-    void submit(Kind kind, bool manual, const QString& text = QString());
+    void submit(Kind kind, bool manual, const QString& text = QString(), bool live = false);
+    void liveTick();
     void processResults();
     void apply(const Result& result);
     void reportFailure(const Result& result);
@@ -103,4 +109,8 @@ private:
     unsigned m_ToastGeneration;
     bool m_ToastShowing;
     std::function<bool(const QString&)> m_MessageSink;
+    SDL_TimerID m_LiveTimer;
+    long m_LiveChangeCount;     // the Mac pasteboard's change count the live checks last acted on
+    unsigned m_LiveTicks;
+    bool m_LiveFailureLogged;
 };
