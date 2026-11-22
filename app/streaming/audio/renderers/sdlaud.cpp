@@ -60,7 +60,9 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
         return false;
     }
 
-    m_AudioBuffer = SDL_malloc(m_FrameSize);
+    // [fork] Room for one more sample of every channel: the pacer may play a packet's last one twice
+    m_ForkFrameBytes = opusConfig->channelCount * getAudioBufferSampleSize();
+    m_AudioBuffer = SDL_malloc(m_FrameSize + m_ForkFrameBytes);
     if (m_AudioBuffer == nullptr) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                      "Failed to allocate audio buffer");
@@ -86,8 +88,10 @@ bool SdlAudioRenderer::prepareForPlayback(const OPUS_MULTISTREAM_CONFIGURATION* 
     m_ForkHealth = std::make_unique<AudioHealth::Monitor>(deviceMs);
     m_ForkBytesPerMs = m_FrameDurationMs > 0 ? static_cast<double>(m_FrameSize) / m_FrameDurationMs : 0;
 
-    // Start playback
-    SDL_PauseAudioDevice(m_AudioDevice, 0);
+    // [fork] Playback starts once the pacer has its reserve (submitAudio()), not now
+    m_ForkPacer = std::make_unique<AudioPacing::Pacer>(have.freq > 0 ? have.freq : opusConfig->sampleRate);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[fork] Audio (SDL): plays from a %.0f ms reserve, drift corrected, throws a packet away past %.0f ms",
+                AudioPacing::Settings().targetMs, AudioPacing::Settings().capMs);
 
     return true;
 }
@@ -130,8 +134,9 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
 
     // [fork] The packet, with what's still waiting for the device
     double forkNow = forkNowMs();
-    if (m_ForkHealth && m_ForkBytesPerMs > 0) {
-        m_ForkHealth->packet(forkNow, SDL_GetQueuedAudioSize(m_AudioDevice) / m_ForkBytesPerMs);
+    double forkQueuedMs = m_ForkBytesPerMs > 0 ? SDL_GetQueuedAudioSize(m_AudioDevice) / m_ForkBytesPerMs : 0;
+    if (m_ForkHealth) {
+        m_ForkHealth->packet(forkNow, forkQueuedMs);
     }
 
     // Don't queue if there's already more than 30 ms of audio data waiting
@@ -143,25 +148,40 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
         return true;
     }
 
-    // Provide backpressure on the queue to ensure too many frames don't build up
-    // in SDL's audio queue, but don't wait forever to avoid a deadlock if the
-    // audio device fails.
-    for (int i = 0; i < 100; i++) {
-        // Our device may enter a permanent error status upon removal, so we need
-        // to recreate the audio device to pick up the new default audio device.
-        if (SDL_GetAudioDeviceStatus(m_AudioDevice) == SDL_AUDIO_STOPPED) {
-            return false;
-        }
+    // Our device may enter a permanent error status upon removal, so we need
+    // to recreate the audio device to pick up the new default audio device.
+    if (SDL_GetAudioDeviceStatus(m_AudioDevice) == SDL_AUDIO_STOPPED) {
+        return false;
+    }
 
-        // Only queue more samples where there is 50 ms or less in SDL's queue
-        if (SDL_GetQueuedAudioSize(m_AudioDevice) / m_FrameSize * m_FrameDurationMs <= 50) {
-            break;
+    // [fork] Upstream held this (the decoder's) thread while SDL's queue passed 50 ms, so
+    // moonlight-common-c's queue passed 30 ms and packets were thrown away above; and played each
+    // packet as it came, with no reserve, so a late one was a tick. The pacer keeps a reserve,
+    // holds it against the clocks' drift, and throws a packet away only past its cap
+    // (audiopacing.h); this thread is never held
+    int frameBytes = m_ForkFrameBytes > 0 ? m_ForkFrameBytes : 1;
+    AudioPacing::Decision pace;
+    if (m_ForkPacer) {
+        pace = m_ForkPacer->packet(forkNow, forkQueuedMs, bytesWritten / frameBytes);
+    }
+    if (pace.drop) {
+        if (m_ForkHealth) {
+            m_ForkHealth->thrownAway();
         }
-
-        if (i == 0 && m_ForkHealth) {
-            m_ForkHealth->waited(); // [fork]
-        }
-        SDL_Delay(1);
+        return true;
+    }
+    if (pace.hold) {
+        // The PC paused (silence) and everything played: build the reserve again
+        SDL_PauseAudioDevice(m_AudioDevice, 1);
+    }
+    if (pace.adjust < 0 && bytesWritten >= 2 * frameBytes) {
+        bytesWritten -= frameBytes;     // the speakers run behind: leave the last frame out
+    }
+    else if (pace.adjust > 0 && bytesWritten >= frameBytes) {
+        // The speakers run ahead: play the last frame twice (the buffer has room for it)
+        char* buffer = static_cast<char*>(m_AudioBuffer);
+        SDL_memcpy(buffer + bytesWritten, buffer + bytesWritten - frameBytes, frameBytes);
+        bytesWritten += frameBytes;
     }
 
     if (SDL_QueueAudio(m_AudioDevice, m_AudioBuffer, bytesWritten) < 0) {
@@ -169,6 +189,10 @@ bool SdlAudioRenderer::submitAudio(int bytesWritten)
                      "Failed to queue audio sample: %s",
                      SDL_GetError());
         return false;
+    }
+
+    if (pace.start) {
+        SDL_PauseAudioDevice(m_AudioDevice, 0); // [fork] the reserve is there
     }
 
     // [fork] Every 10 s with anything to say

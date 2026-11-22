@@ -81,6 +81,7 @@ SOURCES += \
     $$PWD/forkbarreach.cpp \
     $$PWD/bitraterules.cpp \
     $$PWD/audiohealth.cpp \
+    $$PWD/audiopacing.cpp \
     $$PWD/hostpacing.cpp \
     $$PWD/macdrive.cpp \
     $$PWD/macdriverules.cpp \
@@ -158,6 +159,7 @@ HEADERS += \
     $$PWD/forkbarreach.h \
     $$PWD/bitraterules.h \
     $$PWD/audiohealth.h \
+    $$PWD/audiopacing.h \
     $$PWD/bitratestate.h \
     $$PWD/macdrive.h \
     $$PWD/macdriverules.h \
