@@ -589,6 +589,15 @@ jobs:
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/micrules_test.cpp app/fork/micrules.cpp -o "$RUNNER_TEMP/micrules_test"
           "$RUNNER_TEMP/micrules_test"
+          # The stream's sound on its way to the speakers, for the log: late packets, nothing
+          # queued, thrown away, pauses
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/audiohealth_test.cpp app/fork/audiohealth.cpp -o "$RUNNER_TEMP/audiohealth_test"
+          "$RUNNER_TEMP/audiohealth_test"
+          # How SDL's renderer paces it: the reserve, building it again after a pause, the drift, the cap
+          clang++ -std=c++17 -Wall -Wextra -Iapp \
+            tests/fork/audiopacing_test.cpp app/fork/audiopacing.cpp -o "$RUNNER_TEMP/audiopacing_test"
+          "$RUNNER_TEMP/audiopacing_test"
           # And where it is in Mac trackpad mode: the moves, the PC's corrections, when it shows, how big
           clang++ -std=c++17 -Wall -Wextra -Iapp \
             tests/fork/cursorrules_test.cpp app/fork/cursorrules.cpp -o "$RUNNER_TEMP/cursorrules_test"

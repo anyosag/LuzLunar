@@ -13,6 +13,7 @@
 #include <SDL.h>
 #include <opus.h>
 
+#include "audiohealth.h"
 #include "backend/nvcomputer.h"
 #include "forkevents.h"
 #include "forkhostmessages.h"
@@ -205,6 +206,15 @@ namespace
     }
 
     // The stream's sound, downmixed to stereo, into the ring the engine plays from
+    // moonlight-common-c's FEC and out-of-order counts, beside the renderer's own
+    std::string rtpLine()
+    {
+        RTP_AUDIO_STATS stats = {};
+        LiGetRTPAudioStats(&stats);
+        return AudioHealth::Monitor::rtpLine(stats.packetCountAudio, stats.packetCountFec, stats.packetCountFecRecovered,
+                                             stats.packetCountFecFailed, stats.packetCountOOS);
+    }
+
     class MicEngineAudioRenderer : public IAudioRenderer
     {
     public:
@@ -215,6 +225,14 @@ namespace
 
         ~MicEngineAudioRenderer() override
         {
+            // What the stream's sound went through, for telling a crackle's cause
+            std::string summary = m_Health.summary();
+            if (!summary.empty()) {
+                MicRules::PcmRing::Stats stats = m_Ring->stats();
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "[fork] Audio (microphone engine), the whole stream: %s; the engine came up short %ld times, %ld frames left out when full; %s",
+                            summary.c_str(), stats.shortPulls, stats.overflowFrames, rtpLine().c_str());
+            }
             if (m_Live) {
                 setRendererLive(false);
                 m_Ring->clear();
@@ -253,7 +271,16 @@ namespace
                 m_Stereo.resize(static_cast<size_t>(frames) * 2);
             }
             MicRules::downmixToStereo(m_Buffer.data(), m_Channels, frames, m_Stereo.data());
+            double now = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+            m_Health.packet(now, m_Ring->queued() * 1000.0 / luzmic::k_sample_rate);
             m_Ring->push(m_Stereo.data(), frames);
+            std::string line = m_Health.report(now);
+            if (!line.empty()) {
+                MicRules::PcmRing::Stats stats = m_Ring->stats();
+                SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                            "[fork] Audio (microphone engine), last 10 s: %s; so far the engine came up short %ld times, %ld frames left out when full; %s",
+                            line.c_str(), stats.shortPulls, stats.overflowFrames, rtpLine().c_str());
+            }
             return true;
         }
 
@@ -268,6 +295,8 @@ namespace
         bool m_Live = false;
         std::vector<float> m_Buffer;
         std::vector<float> m_Stereo;
+        // Late packets and what waited, for the log; 15 ms, as SDL's device buffer, for comparison
+        AudioHealth::Monitor m_Health { 15.0 };
     };
 }
 
@@ -326,7 +355,7 @@ void connectionStarting()
         s_Active = asked;
         if (asked) {
             s_Output = ForkMicMac::currentOutput();
-            s_Ring = std::make_shared<MicRules::PcmRing>(MicRules::k_RingFrames);
+            s_Ring = std::make_shared<MicRules::PcmRing>(MicRules::k_RingFrames, MicRules::k_RingPrimeFrames);
             s_Engine = std::make_unique<ForkMicMac::Engine>(s_Ring, sendFrame);
         }
         s_WantRenderer = asked && MicRules::voiceProcessedPlayback(true, s_Output);
